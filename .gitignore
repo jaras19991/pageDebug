@@ -1,0 +1,26 @@
+# private signing key — never commit
+*.pem
+
+# build artifacts
+*.crx
+*.zip
+dist/
+
+# deps
+node_modules/
+
+# local snapshots and test output
+page-debug-snapshot-*.json
+page-debug-snapshot-*.zip
+test-results/
+playwright-report/
+coverage/
+
+.DS_Store
+Thumbs.db
+
+# Claude Code local permissions (per-user)
+.claude/settings.local.json
+
+# source logos live outside the extension dir (E0-T6); never in dist/
+page-debug-extension/icons/logo*.png
