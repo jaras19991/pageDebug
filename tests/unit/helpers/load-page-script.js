@@ -16,6 +16,8 @@ export function loadPageScript() {
   delete window.PageDebugSnapshot;
   // Indirect eval executes in the global scope. If vitest keeps the jsdom window
   // separate from globalThis, fall back to the window's own eval.
+  // Intentional: the page script must run as a classic script in global scope (test-only).
+  // eslint-disable-next-line no-eval
   const globalEval = window === globalThis ? (0, eval) : window.eval;
   globalEval(src);
   return window.PageDebugSnapshot;

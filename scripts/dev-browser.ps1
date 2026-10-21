@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-  Launch Chrome or Firefox with the Page Debug Snapshot extension loaded on a separate dev profile,
-  or pack the extension into a dev zip for a tester.
+  Build the extension and launch Chrome or Firefox with it on a temporary profile (via scripts/dev-browser.mjs),
+  or pack dist\<browser> into a dev zip for a tester.
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts/dev-browser.ps1 -Browser chrome
@@ -19,17 +19,21 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
-# dist/<target> (after E0 build) wins over the source directory
+Push-Location $repoRoot
+try {
+  & npm run build
+  if ($LASTEXITCODE) { exit $LASTEXITCODE }
+} finally {
+  Pop-Location
+}
+
 $extDir = Join-Path $repoRoot "dist\$Browser"
 if (-not (Test-Path (Join-Path $extDir "manifest.json"))) {
-  $extDir = Join-Path $repoRoot "page-debug-extension"
+  throw "No manifest.json found in dist\$Browser after build"
 }
-if (-not (Test-Path (Join-Path $extDir "manifest.json"))) {
-  throw "No manifest.json found in dist/$Browser or page-debug-extension/"
-}
-Write-Host "Target: $Browser  |  Extension directory: $extDir"
 
 if ($Pack) {
+  Write-Host "Target: $Browser  |  Extension directory: $extDir"
   $stamp = Get-Date -Format "yyyyMMdd-HHmm"
   $zip = Join-Path $repoRoot "page-debug-snapshot-dev-$Browser-$stamp.zip"
   $staging = Join-Path $env:TEMP "pds-pack-$stamp"
@@ -37,7 +41,7 @@ if ($Pack) {
 
   # copy everything except dev-only and oversized files
   Get-ChildItem -Path $extDir -Recurse -File | Where-Object {
-    $_.FullName -notmatch '\\node_modules\\' -and
+    $_.FullName -notmatch '\node_modules\' -and
     $_.Extension -notin @('.zip', '.pem', '.crx') -and
     $_.Name -notlike 'logo*.png' -and
     $_.Name -notlike 'package*.json'
@@ -60,56 +64,6 @@ if ($Pack) {
   exit 0
 }
 
-if ($Browser -eq "firefox") {
-  # Prefer web-ext: fresh profile, extension preloaded, auto-reload on file change
-  $webExt = Get-Command "web-ext" -ErrorAction SilentlyContinue
-  $hasNpx = Get-Command "npx" -ErrorAction SilentlyContinue
-  if ($webExt -or $hasNpx) {
-    Write-Host "Launching Firefox via web-ext (auto-reload on change). Ctrl+C to stop."
-    if ($webExt) {
-      & web-ext run --source-dir $extDir --start-url $Url
-    } else {
-      & npx --yes web-ext run --source-dir $extDir --start-url $Url
-    }
-    exit $LASTEXITCODE
-  }
-
-  $firefox = @(
-    "$env:ProgramFiles\Mozilla Firefox\firefox.exe",
-    "${env:ProgramFiles(x86)}\Mozilla Firefox\firefox.exe",
-    "$env:LOCALAPPDATA\Mozilla Firefox\firefox.exe"
-  ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-  if (-not $firefox) { throw "firefox.exe not found and web-ext unavailable" }
-
-  $profile = Join-Path $env:LOCALAPPDATA "pds-dev-profile-firefox"
-  New-Item -ItemType Directory -Path $profile -Force | Out-Null
-  Write-Host "Launching Firefox (profile: $profile)."
-  Write-Host "Then: about:debugging -> This Firefox -> Load Temporary Add-on -> $extDir\manifest.json"
-  Start-Process -FilePath $firefox -ArgumentList @(
-    "-profile", $profile, "-no-remote",
-    "about:debugging#/runtime/this-firefox", $Url
-  )
-  exit 0
-}
-
-$chrome = @(
-  "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
-  "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
-  "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe"
-) | Where-Object { Test-Path $_ } | Select-Object -First 1
-if (-not $chrome) { throw "chrome.exe not found" }
-
-$profile = Join-Path $env:LOCALAPPDATA "pds-dev-profile-chrome"
-New-Item -ItemType Directory -Path $profile -Force | Out-Null
-
-$chromeArgs = @(
-  "--user-data-dir=$profile",
-  "--no-first-run",
-  "--no-default-browser-check",
-  "--disable-extensions-except=$extDir",
-  "--load-extension=$extDir",
-  "chrome://extensions",
-  $Url
-)
-Write-Host "Launching Chrome (profile: $profile)"
-Start-Process -FilePath $chrome -ArgumentList $chromeArgs
+# web-ext: temporary profile, extension loaded over CDP / RDP, auto-reload on change. Ctrl+C to stop.
+& node (Join-Path $repoRoot "scripts\dev-browser.mjs") $Browser --url $Url
+exit $LASTEXITCODE

@@ -22,15 +22,25 @@ Grupa B (równolegle)
 
 Grupa C
 - [x] E0-T3  popup: snapshot-tab.js + popup.js (executeScript MAIN ×2), inject.js usunięty — 22 testy ✓; walker OK na src/
-- [~] E0-T14b scripts/build.mjs → dist/chrome, dist/firefox + testy AC-4.1/4.2/4.3/4.4/4.8/ST.2 — W TOKU
+- [x] E0-T14b scripts/build.mjs (build({srcDir,outDir,targets})), tests/unit/helpers/build-to-tmp.js — 12 testów ✓; dist 70 KB/target, 11 plików;
+  web-ext lint 0 errors / 2 warnings (data_collection_permissions vs min 128 — dopuszczone w D4); npm test 165/165
 
 Grupa D (po T14b)
-- [ ] E0-T6  test ikon w dist/*/icons (wymiary, łącznie ≤ 50 KB)
-- [ ] E0-T10 test porównawczy manifestów dist/chrome vs dist/firefox
-- [ ] E0-T15 npm run pack: dwa zipy (fflate, stały mtime)
-- [ ] E0-T9  npm run lint zielony (eslint + web-ext lint)
+- [x] E0-T6  tests/unit/icons.test.js — PNG/IHDR bez zależności, 36 962 B/target, zgodność z manifestem — 9 testów ✓
+- [x] E0-T10 tests/unit/manifest-parity.test.js — diff ścieżka po ścieżce, 5 negatywnych, min_chrome 121, gecko regex, brak background — 8 testów ✓
+- [x] E0-T15 scripts/pack.mjs (fflate, mtime 1980-01-01 lokalny, level 9) → dist/page-debug-snapshot-{chrome,firefox}-1.0.0.zip
+  (48 KB każdy, deterministyczne SHA-256) — 6 testów ✓; web-ext lint na zipie: 0 errors / 2 warnings (j.w.)
+  **UWAGA dla fazy Testy:** `npm test` wydłużył się z ~1 s do ~46 s (97% to start środowisk jsdom/build w tmp) — AC-3.2 wymaga ≤ 30 s.
+  Do zbadania: wspólny build w `globalSetup` zamiast `buildToTmp` per plik; `environment: node` tam, gdzie jsdom niepotrzebny.
+- [x] E0-T9  `npm run lint` kod 0: eslint 0/0 (było 25 errors; bloki per katalog, spike w ignores), web-ext 0 errors / 2 warnings:
+  KEY_FIREFOX_UNSUPPORTED_BY_MIN_VERSION i …ANDROID… — `data_collection_permissions` (Firefox 140/142) vs `strict_min_version` 128.
+  **Ocena orkiestratora (ryzyko R4):** dopuszczalne — Firefox < 140 ignoruje nieznany klucz, a AMO wymaga go dla nowych zgłoszeń;
+  podniesienie min do 140 zawęziłoby zgłaszających bez korzyści. Decyzja do potwierdzenia w E0-R2 (store review) i E5.
 - [ ] E0-T16b harness e2e na dist/chrome (CDP triggerAction wg spike-T17)
-- [ ] E0-T11 dev-browser.mjs (web-ext dla obu) + zmiany w dev-browser.ps1
+- [x] E0-T11 scripts/dev-browser.mjs (web-ext 10 `cmd.run`, target chromium/firefox-desktop; Chrome ładowany przez CDP
+  `Extensions.loadUnpacked`, więc blokada `--load-extension` ≥137 nie dotyczy) + dev-browser.ps1 jako wrapper — 7 testów ✓;
+  czasy: chrome ~5–8 s, firefox ~16 s (AC-7.3 ✓); `PDS_CHROMIUM_BINARY` wybiera binarkę (domyślnie chrome-launcher wziął Canary)
+  Docs: dopisać `PDS_CHROMIUM_BINARY` do pds-browser; profile `pds-dev-profile-*` nieużywane. Sprzątanie: `%TEMP%\firefox-profile*` po wymuszonym zamknięciu.
 
 Grupa E (po T16b)
 - [ ] E0-T7a e2e: smoke, błąd zrzutu, strona specjalna, pomiar czasu
