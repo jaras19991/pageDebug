@@ -28,24 +28,36 @@ Spec
 Design
 - [ ] E0-D1 Układ repo: `src/` dla kodu rozszerzenia, `scripts/` dla narzędzi (ikony), `tests/`.
 - [ ] E0-D2 Wybór narzędzi: vitest + jsdom, Playwright (chromium, `--load-extension`), eslint.
-- [ ] E0-D3 Build: `npm run build` kopiuje tylko potrzebne pliki do `dist/`, `npm run pack` robi zip.
+- [ ] E0-D3 Build: `npm run build` składa `dist/chrome/` i `dist/firefox/`, `npm run pack` robi dwa zipy.
+- [ ] E0-D4 Manifesty: `src/manifest.base.json` + `manifest.chrome.json` (`minimum_chrome_version`) +
+      `manifest.firefox.json` (`browser_specific_settings.gecko.id`, `strict_min_version: "128.0"`);
+      lista kluczy, którymi wolno się różnić; reszta identyczna (test porównawczy).
+- [x] E0-D5 Źródłowe logo: **usunięte** (decyzja użytkownika 2026-10-21); ikony 16/48/128 są jedynym źródłem.
 
 Implementacja
 - [ ] E0-T1 `git init`, `.gitignore` (pem, crx, zip, node_modules, snapshoty) — **pem poza repo**.
-- [ ] E0-T2 `package.json`: `sharp` do `devDependencies`, skrypty `test`, `test:e2e`, `lint`, `build`, `pack`.
+- [ ] E0-T2 `package.json` (root): usunąć `sharp`, dodać `web-ext` do `devDependencies`, skrypty `test`, `test:e2e`, `lint`, `build`, `pack`.
 - [ ] E0-T3 Zastąpić `inject.js` wywołaniem `chrome.scripting.executeScript({ world: 'MAIN' })`;
       usunąć `web_accessible_resources`.
 - [ ] E0-T4 Usunąć `host_permissions: <all_urls>` — `activeTab` wystarcza dla obecnego flow.
 - [ ] E0-T5 `popup.js`: wynik `executeScript` ma odzwierciedlać faktyczny sukces/błąd (zwrot z funkcji),
       nie „pobrano” z góry.
-- [ ] E0-T6 Ikony: `logo.png` (4,4 MB) i `logo-640.png` poza katalog rozszerzenia; skrypt generujący 16/48/128.
+- [~] E0-T6 Ikony: `logo.png` i `logo-640.png` usunięte z dysku i historii (2026-10-21); zostaje test wymiarów/rozmiaru ikon w `dist/*/icons`.
 - [ ] E0-T7 Smoke test e2e: załaduj rozszerzenie, otwórz stronę testową, kliknij w popupie, sprawdź pobrany plik.
 - [ ] E0-T8 Unit testy dla `safeJson`, `safeSlice`, `pushLimited`, `deepMerge` (istniejąca logika).
+- [ ] E0-T9 `web-ext` jako devDependency; `npm run lint` = eslint + `web-ext lint --source-dir dist/firefox` (0 errors).
+- [ ] E0-T10 Test porównawczy manifestów `dist/chrome` vs `dist/firefox` (identyczne poza dozwolonymi kluczami).
+- [ ] E0-T11 `scripts/dev-browser.ps1 -Browser chrome|firefox` używa `dist/<target>` po buildzie; Firefox przez `web-ext run`.
+- [ ] E0-T12 Popup: polski komunikat dla `file://` bez zgody („Zezwalaj na dostęp do adresów URL plików”) i dla stron specjalnych.
 
 Testy / Review / QA / Docs / Release
-- [ ] E0-Q1 `npm test` i `npm run test:e2e` zielone na czystym klonie.
-- [ ] E0-R1 Review: brak sekretów, brak `<all_urls>`, paczka `dist/` < 500 KB.
-- [ ] E0-DOC1 README (developer): jak uruchomić, zbudować, przetestować, załadować unpacked.
+- [ ] E0-Q1 `npm run lint`, `npm test` i `npm run test:e2e` zielone na czystym klonie (e2e headless-capable).
+- [ ] E0-Q2 QA ręczne Firefox: `web-ext run --source-dir dist/firefox` na fixture'ach — smoke z AC-1.x przechodzi.
+- [ ] E0-R1 Review: brak sekretów, brak `<all_urls>`, każdy `dist/<target>` < 500 KB.
+- [ ] E0-R2 Store review (`pds-store-reviewer`): single purpose w `description`, uzasadnienia uprawnień w README,
+      brak zdalnego kodu, `gecko.id` poprawny.
+- [ ] E0-DOC1 README (developer): Node ≥ 20, komendy, build/pack, unpacked w Chrome, tymczasowe w Firefoksie,
+      sekcja „Uprawnienia” z uzasadnieniem każdego, „klucz `.pem` trzymamy poza repo”.
 
 ---
 
@@ -69,9 +81,12 @@ Design
 - [ ] E1-D4 Bufor między nawigacjami w obrębie karty (SPA i pełne przeładowania) — co trzymamy, co gubimy, limity.
 - [ ] E1-D5 Hooki: `Proxy` na `XMLHttpRequest` i `fetch` zamiast podmiany konstruktora; `console` hook
       zapisuje `new Error().stack` i nie psuje źródła logu w DevTools (użyć `console[level].bind` + stack z hooka).
+- [ ] E1-D6 Tło cross-browser: jeden `background.js` jako `service_worker` (Chrome) **i** `scripts` (Firefox event page);
+      bez `importScripts`, stan tylko w `storage.session`; host permissions zawsze przez `permissions.request` z popupu
+      (w Firefoksie MV3 są opcjonalne z definicji).
 
 Implementacja
-- [ ] E1-T1 Service worker: komendy `startRecording(tabId)`, `stopAndCollect(tabId)`, `getStatus(tabId)`.
+- [ ] E1-T1 Tło (SW / event page): komendy `startRecording(tabId)`, `stopAndCollect(tabId)`, `getStatus(tabId)`.
 - [ ] E1-T2 Rejestracja/wyrejestrowanie content scriptu MAIN dla origin karty; auto-reload karty po starcie.
 - [ ] E1-T3 Refaktor `page-debug-snapshot.js` → `recorder.js` (hooki, bufor) + `collector.js` (zrzut DOM/perf/storage).
 - [ ] E1-T4 Proxy-hooki XHR/fetch zachowujące `instanceof`, stałe statyczne, `withCredentials`, `responseType`.
@@ -104,7 +119,8 @@ Spec
 Design
 - [ ] E2-D1 CWV: `web-vitals` (attribution build) wbudowane w `recorder.js` lub własne `PerformanceObserver`
       z `buffered: true` na `largest-contentful-paint`, `layout-shift`, `event`, `long-animation-frame`,
-      `paint`, `resource`. Decyzja z uzasadnieniem (rozmiar vs utrzymanie).
+      `paint`, `resource`. Decyzja z uzasadnieniem (rozmiar vs utrzymanie). Firefox nie daje CLS/INP/LoAF —
+      paczka i `summary.md` mówią „niedostępne w tej przeglądarce”.
 - [ ] E2-D2 Kody HTTP i rozmiary: `chrome.webRequest` (observational, permission `webRequest`) w SW,
       korelacja z wpisami z MAIN world po URL+czasie. Alternatywa: tylko fetch/XHR z MAIN. Decyzja.
 - [ ] E2-D3 Treść odpowiedzi: klon odpowiedzi fetch/XHR tylko dla `content-type` tekstowych, limit N KB,
@@ -221,9 +237,12 @@ Testy / Review / QA / Docs / Release
 **Efekt:** zgłaszający dostaje link, instaluje w 2 kliknięcia; developer ma powtarzalny release.
 
 Spec
-- [ ] E5-S1 Decyzja użytkownika: Chrome Web Store (unlisted) vs polityka enterprise (`ExtensionInstallForcelist`)
-      vs `.crx` self-hosted. Orkiestrator **zatrzymuje się** i pyta.
-- [ ] E5-S2 Wersjonowanie (semver), CHANGELOG, polityka wsparcia Chrome (min. wersja).
+- [ ] E5-S1 Decyzja użytkownika — Chrome: Web Store (unlisted) vs polityka enterprise (`ExtensionInstallForcelist`)
+      vs `.crx` self-hosted; Firefox: AMO listed/unlisted (podpis **wymagany** nawet do self-hostingu `.xpi`)
+      vs polityka enterprise. Orkiestrator **zatrzymuje się** i pyta.
+- [ ] E5-S2 Wersjonowanie (semver), CHANGELOG, min. wersje: Chrome (`minimum_chrome_version`), Firefox (`strict_min_version`).
+- [ ] E5-S3 Materiały sklepowe: polityka prywatności (publiczny URL), deklaracja danych CWS „Privacy practices”
+      i AMO (deklaracja zbieranych danych w manifeście/na AMO — zweryfikować aktualny wymóg), uzasadnienia uprawnień.
 
 Design
 - [ ] E5-D1 Pipeline: lint → test → e2e → build → pack → (opcjonalnie) upload. GitHub Actions lub lokalny skrypt.
@@ -233,12 +252,14 @@ Design
 Implementacja
 - [ ] E5-T1 Skrypt release: podbicie wersji w `manifest.json` i `package.json`, tag, zip w `dist/`.
 - [ ] E5-T2 CI (jeśli repo zdalne) — pipeline z E5-D1.
-- [ ] E5-T3 Materiały do sklepu/polityki: opis, zrzuty ekranu, polityka prywatności.
+- [ ] E5-T3 Materiały do sklepów: opis, zrzuty ekranu (1280×800), polityka prywatności, teksty PL/EN.
 - [ ] E5-T4 Telemetria **zero** — jawnie w README i polityce.
+- [ ] E5-T5 Podpis Firefox: `web-ext sign` (kanał wg E5-S1) z kluczami AMO poza repo; artefakt `.xpi` w `dist/`.
+- [ ] E5-T6 Automatyczny smoke Firefox: Selenium + geckodriver, `installAddon(zip, temporary)`, 3 scenariusze z AC-1.x.
 
 Testy / Review / QA / Docs / Release
-- [ ] E5-Q1 Instalacja z wybranego kanału na czystym profilu Chrome przez osobę nietechniczną (lub symulacja).
-- [ ] E5-R1 Review manifestu i uprawnień pod kątem review Web Store (uzasadnienie każdego permission).
+- [ ] E5-Q1 Instalacja z wybranego kanału na czystym profilu Chrome **i** Firefox przez osobę nietechniczną (lub symulacja).
+- [ ] E5-R1 Pełny audyt `pds-store-reviewer` (CWS + AMO) z werdyktem *publishable* przed wysłaniem do review.
 - [ ] E5-DOC1 CHANGELOG 1.0.0, instrukcja aktualizacji.
 
 ---
@@ -247,5 +268,5 @@ Testy / Review / QA / Docs / Release
 
 - Nagrywanie wideo sesji (session replay) — duży koszt, rozwiązuje to Jam/Sentry; nasze kroki + screenshoty wystarczą.
 - Własny backend do odbioru paczek — na razie e-mail/Slack/Jira; wrócić po E5, jeśli wolumen uzasadni.
-- Firefox/Safari.
+- Safari (Firefox jest w zakresie od E0).
 - Specjalizacja branżowa (reklamy, consent) — nie w tym narzędziu.

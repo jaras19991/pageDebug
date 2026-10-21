@@ -1,6 +1,6 @@
 # Page Debug Snapshot
 
-Rozszerzenie Chrome (MV3), które pozwala osobie zgłaszającej problem na stronie nagrać
+Rozszerzenie przeglądarkowe (MV3, **Chrome i Firefox** z jednej bazy kodu), które pozwala osobie zgłaszającej problem na stronie nagrać
 to, co się działo (konsola, błędy, sieć, kroki, CWV, DOM, storage), zapisać jedną paczkę
 i wysłać ją developerowi. Developer otwiera paczkę i w minutę rozumie kontekst błędu.
 
@@ -16,10 +16,13 @@ i wysłać ją developerowi. Developer otwiera paczkę i w minutę rozumie konte
 ```
 page-debug-extension/      kod rozszerzenia (manifest.json, popup, page-debug-snapshot.js)
   console-snapshot.js      wersja jednoplikowa do wklejenia w konsolę (fallback bez instalacji)
+scripts/dev-browser.ps1    Chrome/Firefox z rozszerzeniem na osobnym profilu / dev-zip dla testera
+dist/chrome, dist/firefox  wynik `npm run build` (po E0); manifesty składane z src/manifest.*.json
 docs/BACKLOG.md            epiki E0–E5 i zadania; źródło prawdy o zakresie
 docs/epics/E*/             spec.md, design.md, state.md, qa-report.md per epik
-.claude/agents/            subagenci pds-* (analyst, architect, implementer, tester, reviewer, qa, docs, release)
-.claude/skills/            /pds-deliver (orkiestrator), /pds-status, skille wiedzy (mv3, schema, redaction, cwv, testing)
+.claude/agents/            subagenci pds-* (analyst, architect, implementer, tester, reviewer, qa, store-reviewer, docs, release)
+.claude/skills/            /pds-deliver (orkiestrator), /pds-status, /pds-browser (pętla dev w Chrome),
+                           skille wiedzy (mv3, schema, redaction, cwv, testing)
 ```
 
 ## Konwencje
@@ -34,6 +37,10 @@ docs/epics/E*/             spec.md, design.md, state.md, qa-report.md per epik
 - Dane wrażliwe nigdy nie trafiają do paczki w jawnej postaci — patrz skill `privacy-redaction`.
 - Nie monkey-patchuj konstruktorów przez podmianę na zwykłą funkcję — używaj `Proxy`
   lub subclass, zachowaj `instanceof` i stałe statyczne.
+- Dwa targety od E0: Chrome i Firefox. API tylko z promisami (`await chrome.*`), bez callbacków,
+  bez `importScripts`. Tło pisane tak, by działało jako service worker i jako event page.
+  Różnice między przeglądarkami tylko w `manifest.chrome.json` / `manifest.firefox.json` — patrz skill
+  `mv3-extension-rules`, sekcja Firefox.
 
 ## Rzeczy, których nie ruszamy bez decyzji użytkownika
 

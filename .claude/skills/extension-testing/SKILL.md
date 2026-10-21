@@ -78,6 +78,22 @@ export async function launchWithExtension(extPath = path.resolve('page-debug-ext
 - **Headless**: jeśli CI wymaga, `headless: true` + `args: ['--headless=new']`; przetestuj lokalnie,
   bo zachowanie `captureVisibleTab` w headless bywa różne.
 
+## Firefox — czego Playwright nie zrobi i co zamiast tego
+
+**Playwright nie ładuje rozszerzeń w Firefoksie.** Nie ma API, `--load-extension` jest ignorowane,
+background page nie jest dostępny jako Page/Worker. Narzędzia społecznościowe (`playwright-webext`,
+`playwright-webextext`) nie wspierają w pełni MV3 na Firefoksie. Nie próbuj tego obchodzić w testach.
+
+Podział:
+| Poziom | Chrome | Firefox |
+|---|---|---|
+| unit (vitest) | wspólne | wspólne |
+| statyczny lint manifestu/kodu | eslint | eslint + `npx web-ext lint --source-dir dist/firefox` (0 errors) |
+| e2e pełne | Playwright | — |
+| smoke | Playwright | **E0:** ręczne QA przez `npx web-ext run --source-dir dist/firefox --start-url <fixture>`; **E5:** Selenium + geckodriver, `driver.installAddon(pathToZipOrXpi, true)` — przekazuj **ścieżkę do pliku .zip/.xpi**, nie katalog (znany błąd w bindingach JS) |
+
+Każde kryterium akceptacyjne e2e ma w planie testów kolumnę „Firefox: auto / QA ręczne / n.d.”.
+
 ## Strony fixture (`tests/fixtures/pages/`)
 
 | Plik | Po co |

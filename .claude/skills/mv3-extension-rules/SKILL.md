@@ -97,9 +97,34 @@ nie chcemy ich w paczce), `tabCapture`/`desktopCapture`.
 Popup żyje tylko gdy jest otwarty. Nie trzymaj w nim stanu — pytaj SW (`getStatus`). Każdy komunikat
 do zgłaszającego po polsku, bez żargonu. Trzy stany: *Gotowy* / *Nagrywam od HH:MM:SS* / *Zapisano*.
 
+## Firefox — jedna baza kodu, dwa manifesty
+
+Firefox obsługuje MV3, `scripting.executeScript` / `registerContentScripts` z `world: "MAIN"` (od **128**),
+`storage.session` (115+), `webRequest` (obserwacyjnie i blokująco), `tabs.captureVisibleTab`, `downloads`.
+Różnice, które trzeba obsłużyć:
+
+| Temat | Chrome | Firefox | Co robimy |
+|---|---|---|---|
+| Tło | `background.service_worker` | `background.scripts` (event page; brak SW) | **oba klucze** w manifeście — Chrome ≥121 i Firefox ≥121 akceptują; jeden plik `background.js` działający w obu modelach |
+| Identyfikator | — | `browser_specific_settings.gecko.id`, `strict_min_version: "128.0"` wymagane | tylko w `manifest.firefox.json` |
+| Min. wersja | `minimum_chrome_version` | nieznany klucz (lint ostrzega) | tylko w `manifest.chrome.json` |
+| Host permissions | `host_permissions` nadawane przy instalacji | w MV3 **wszystkie opcjonalne** — trzeba `permissions.request` z gestu | zawsze flow `optional_host_permissions` + request z popupu; identyczny kod |
+| API | `chrome.*` z promisami | `browser.*` i alias `chrome.*`, oba z promisami | `chrome.*` + `await`; zero callbacków; `importScripts` zakazane |
+| Instalacja na stałe | unpacked w trybie dev / CWS / policy | **podpis AMO wymagany** nawet do self-hostingu; tymczasowa przez `about:debugging` znika po restarcie | E5 |
+| Performance API | pełne | brak `layout-shift`, `interactionId`, `long-animation-frame` | E2: raportować „niedostępne w Firefoksie” |
+| Lint | — | `web-ext lint` | w `npm run lint` dla `dist/firefox` |
+
+Build: `src/manifest.base.json` + `manifest.chrome.json` + `manifest.firefox.json` → `dist/chrome/manifest.json`,
+`dist/firefox/manifest.json`. Test automatyczny: oba manifesty identyczne poza listą kluczy dozwolonych
+do różnienia się (`browser_specific_settings`, `minimum_chrome_version`, `background`).
+
+Reguła kodu tła: pisz tak, jakby proces mógł zniknąć po każdym zdarzeniu (prawda w obu przeglądarkach).
+Stan → `storage.session`. Listenery na top-level. Bez `self.importScripts`, bez `window`.
+
 ## CSP i strony specjalne
 
-- `chrome://`, `edge://`, Web Store, `file://` bez zgody — `executeScript` rzuci. Popup ma to złapać
-  i powiedzieć „Na tej stronie nie da się nagrywać”.
+- `chrome://`, `edge://`, `about:`, `moz-extension://`, Web Store/AMO, `file://` bez zgody — `executeScript`
+  rzuci. Popup ma to złapać i powiedzieć po polsku „Na tej stronie nie da się zapisać paczki”; dla `file://`
+  dodatkowo podpowiedzieć, gdzie włączyć „Zezwalaj na dostęp do adresów URL plików” (decyzja E0 #4).
 - Strony z `Content-Security-Policy` blokującym `connect-src` nie przeszkadzają hookom (hooki nie robią
   własnych requestów). Nie wysyłaj nic z MAIN world do sieci.

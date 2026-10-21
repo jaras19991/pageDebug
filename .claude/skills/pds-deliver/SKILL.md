@@ -54,9 +54,12 @@ Jeśli raport mówi „zablokowane” → zapisz w state.md, przejdź do następ
 Pełny `npm test` + `npm run test:e2e`, uzupełnienie brakujących testów z design.md, raport regresji.
 Czerwone → wróć do fazy 3 z listą failujących testów (maks. 2 iteracje, potem bramka).
 
-### 5. Review + QA → `pds-reviewer` ∥ `pds-qa` (równolegle)
+### 5. Review + QA + Store → `pds-reviewer` ∥ `pds-qa` ∥ `pds-store-reviewer` (równolegle, jedna wiadomość)
 Reviewer: diff całego epiku, findings z wagą. QA: scenariusze z kryteriów akceptacji, dowody w `qa-report.md`.
-Findings *critical/high* → faza 3 dla poprawek → ponowny test → ponowny review tylko tych punktów.
+Store reviewer: zgodność z Chrome Web Store (i AMO, gdy `dist/firefox` istnieje) — uruchamiaj, gdy epik
+dotyka manifestu, uprawnień, danych użytkownika lub kodu runtime (E0, E1, E2, E3, E5; w E4 tylko gdy
+zmienia się manifest). Findings *critical/high/blocker* → faza 3 dla poprawek → ponowny test → ponowny
+review tylko tych punktów. Finding *blocker* ze store reviewera = bramka, nawet z `--auto`.
 
 ### 6. Docs → agent `pds-docs`
 README developera, instrukcja zgłaszającego (PL), `docs/snapshot-schema.md` jeśli schema się zmieniła, CHANGELOG.
@@ -73,12 +76,15 @@ poprawić w procesie — 3 punkty maks.). Powiedz użytkownikowi, który epik je
 
 | Epik | Skille |
 |---|---|
-| E0 | mv3-extension-rules, extension-testing |
+| E0 | mv3-extension-rules, extension-testing, pds-browser |
 | E1 | mv3-extension-rules, extension-testing, snapshot-schema |
 | E2 | cwv-capture, snapshot-schema, mv3-extension-rules |
 | E3 | privacy-redaction, snapshot-schema |
 | E4 | snapshot-schema, privacy-redaction |
-| E5 | mv3-extension-rules |
+| E5 | mv3-extension-rules, pds-browser |
+
+Targety: **Chrome i Firefox** (oba MV3) od E0. Każdy design musi powiedzieć, co różni się między
+`dist/chrome` a `dist/firefox`, nawet jeśli odpowiedź brzmi „nic poza manifestem”.
 
 ## Szablon `state.md`
 

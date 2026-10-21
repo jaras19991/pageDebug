@@ -69,6 +69,13 @@ Z `long-animation-frame`: `{ t: startTime, duration, blockingDuration, scripts: 
 sourceFunctionName, duration }] }` — top 20 po `blockingDuration`. To odpowiada na „który skrypt
 zamroził stronę”. Bez LoAF (starszy Chrome): `longtask` z `attribution[0].containerSrc`.
 
+## Firefox
+
+Firefox dostarcza TTFB, FCP i LCP (od 122). **Nie** dostarcza `layout-shift` (CLS), `interactionId`
+w `event` (INP) ani `long-animation-frame`. `web-vitals` po prostu nie wywoła callbacka — pole w paczce
+będzie `undefined`. `summary.md` i viewer mają wtedy pisać „niedostępne w tej przeglądarce”, a nie zostawiać
+pustej komórki ani „0”. Zapisz `navigator.userAgent` w `environment` — developer musi wiedzieć, czemu brak.
+
 ## Pułapki
 
 - **Wiele wpisów LCP** — każdy większy element nadpisuje. Bierz ostatni, nie pierwszy.
