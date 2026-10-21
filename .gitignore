@@ -23,4 +23,4 @@ Thumbs.db
 .claude/settings.local.json
 
 # source logos live outside the extension dir (E0-T6); never in dist/
-page-debug-extension/icons/logo*.png
+src/icons/logo*.png
