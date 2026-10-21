@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "PDS Spike T17",
+  "version": "0.0.1",
+  "permissions": ["activeTab", "scripting"],
+  "action": { "default_popup": "popup.html", "default_title": "PDS Spike" },
+  "background": { "service_worker": "sw.js" },
+  "commands": { "_execute_action": { "suggested_key": { "default": "Alt+Shift+Y" } } }
+}

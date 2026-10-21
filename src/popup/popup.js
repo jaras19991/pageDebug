@@ -1,3 +1,9 @@
+// Popup UI only: find the active tab, run snapshotTab and show a Polish message.
+// All decisions live in snapshot-tab.js; technical details go to console.error.
+import { snapshotTab } from './snapshot-tab.js';
+import { MESSAGES, messageFor } from './messages.js';
+import { isFirefoxRuntime, isFileAccessAllowed } from './target.js';
+
 const runButton = document.getElementById('runSnapshot');
 const statusEl = document.getElementById('status');
 
@@ -7,39 +13,28 @@ function setStatus(message, isError = false) {
 }
 
 async function getActiveTab() {
-  const [tab] = await chrome.tabs.query({
-    active: true,
-    currentWindow: true
-  });
-
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   return tab;
 }
 
+const api = {
+  scripting: chrome.scripting,
+  isAllowedFileSchemeAccess: () => isFileAccessAllowed(chrome),
+  isFirefox: isFirefoxRuntime(chrome),
+};
+
 runButton.addEventListener('click', async () => {
   runButton.disabled = true;
-  setStatus('Uruchamianie snapshotu...');
+  setStatus(MESSAGES.working);
 
+  let outcome;
   try {
-    const tab = await getActiveTab();
-
-    if (!tab?.id) {
-      throw new Error('Nie udało się pobrać aktywnej karty.');
-    }
-
-    if (!tab.url || !/^https?:|^file:/.test(tab.url)) {
-      throw new Error('Ta karta nie obsługuje uruchomienia rozszerzenia.');
-    }
-
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ['inject.js']
-    });
-
-    setStatus('Snapshot został uruchomiony i pobrany.');
+    outcome = await snapshotTab(await getActiveTab(), api);
   } catch (error) {
-    console.error(error);
-    setStatus(error.message || 'Wystąpił błąd.', true);
-  } finally {
-    runButton.disabled = false;
+    console.error('[Page Debug Snapshot]', error);
+    outcome = { kind: 'failed' };
   }
+
+  setStatus(messageFor(outcome), outcome.kind !== 'success');
+  runButton.disabled = false;
 });

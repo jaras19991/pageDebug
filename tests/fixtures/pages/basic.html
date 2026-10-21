@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: basic</title>
+  <script>
+    // AC-2.3: record every node added to the DOM after load, so e2e can check that the
+    // extension injects no <script src="chrome-extension://..."> and leaves nothing behind.
+    window.__added = [];
+    new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          window.__added.push({
+            nodeName: node.nodeName,
+            src: node.nodeType === 1 ? node.getAttribute('src') : null,
+            id: node.nodeType === 1 ? node.id : null,
+          });
+        }
+      }
+    }).observe(document.documentElement, { childList: true, subtree: true });
+    console.log('basic fixture loaded');
+  </script>
+</head>
+<body>
+  <h1>Strona testowa</h1>
+  <p id="content">Syntetyczna treść do testów rozszerzenia Page Debug Snapshot.</p>
+  <button id="action" type="button">Kliknij</button>
+</body>
+</html>

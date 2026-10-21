@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: throw on snapshot</title>
+  <script>
+    // AC-1.2: the snapshot reads document.title in collectEnvironment, before the Blob exists,
+    // so this getter makes the snapshot fail and no file is downloaded.
+    // Note: page.title() in Playwright throws here too; use the URL to identify the tab.
+    Object.defineProperty(Document.prototype, 'title', {
+      configurable: true,
+      get() { throw new Error('forced'); },
+    });
+  </script>
+</head>
+<body>
+  <h1>Strona testowa: błąd zrzutu</h1>
+  <p>Zrzut na tej stronie zawsze kończy się błędem.</p>
+</body>
+</html>
