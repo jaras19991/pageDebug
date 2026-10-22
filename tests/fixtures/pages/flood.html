@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: flood</title>
+  <script>
+    // E1-T19e: buffer limits (AC-4.8, NFR flood) and hook overhead (NFR). Called by e2e via page.evaluate.
+
+    // n × console.log('flood <i>' + optional padding); the newest entry has index n - 1.
+    window.floodConsole = (n, padChars = 0) => {
+      const pad = padChars > 0 ? ' ' + 'x'.repeat(padChars) : '';
+      for (let i = 0; i < n; i++) console.log(`flood ${i}${pad}`);
+      return n;
+    };
+
+    // n sequential fetches to /api/fail (500); returns the number of finished requests.
+    window.floodFetch = async (n) => {
+      let done = 0;
+      for (let i = 0; i < n; i++) {
+        await fetch(`/api/fail?flood=${i}`).then((r) => r.text()).catch(() => {});
+        done++;
+      }
+      return done;
+    };
+
+    // One console.log whose argument serializes to well over 10 000 chars of JSON.
+    window.bigLog = () => {
+      const big = { kind: 'big-log', items: Array.from({ length: 500 }, (_, i) => ({ i, text: 'y'.repeat(40) })) };
+      console.log(big);
+      return JSON.stringify(big).length;
+    };
+
+    const sorted = (values) => [...values].sort((a, b) => a - b);
+    const stats = (samples) => {
+      const s = sorted(samples);
+      const at = (q) => s[Math.min(s.length - 1, Math.ceil(q * s.length) - 1)];
+      return { n: s.length, median: at(0.5), p95: at(0.95), min: s[0], max: s[s.length - 1] };
+    };
+
+    // Time of each of n sequential fetches (after `warmup` unmeasured ones), in ms.
+    window.timedFetch = async (n, warmup = 10) => {
+      const samples = [];
+      for (let i = 0; i < n + warmup; i++) {
+        const t0 = performance.now();
+        const res = await fetch(`/api/fail?timed=${i}`);
+        const t1 = performance.now();
+        await res.text();
+        if (i >= warmup) samples.push(t1 - t0);
+      }
+      return stats(samples);
+    };
+
+    // Time of n console.log calls. performance.now() is coarse (≥ 5 µs, often 100 µs), so each
+    // sample is a batch of `batch` calls divided by `batch`.
+    window.timedConsole = (n, batch = 10) => {
+      const samples = [];
+      for (let i = 0; i < n / batch; i++) {
+        const t0 = performance.now();
+        for (let j = 0; j < batch; j++) console.log('timed', i, j);
+        samples.push((performance.now() - t0) / batch);
+      }
+      return stats(samples);
+    };
+
+    // A page that still answers: resolves on the next macrotask.
+    window.ping = () => new Promise((r) => setTimeout(() => r('pong'), 0));
+  </script>
+</head>
+<body>
+  <h1>Strona testowa: zalew danych</h1>
+</body>
+</html>

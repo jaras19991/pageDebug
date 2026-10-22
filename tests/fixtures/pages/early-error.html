@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: early error</title>
+  <script>
+    // AC-4.1: the very first script of the document throws before DOMContentLoaded.
+    throw new Error('head-boom');
+  </script>
+  <script>
+    // AC-4.1/4.2: network, console.error and an unhandled rejection, all from <head>, before
+    // DOMContentLoaded. window.__requestsDone resolves when all three requests have finished.
+    window.__requestsDone = Promise.all([
+      fetch('/api/fail').then((r) => r.status),
+      fetch('/api/ok').then((r) => r.status),
+      new Promise((resolve) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', '/api/ok?via=xhr');
+        xhr.onloadend = () => resolve(xhr.status);
+        xhr.send();
+      }),
+    ]);
+    console.error('head-console', { a: 1 });
+    Promise.reject(new Error('head-rejection'));
+  </script>
+</head>
+<body>
+  <h1>Strona testowa: błąd w nagłówku</h1>
+  <p id="content">Błąd, zapytania i wpis konsoli przed DOMContentLoaded.</p>
+  <script>
+    // Unique per document, so a test can tell this load from the previous one.
+    window.__marker = 'marker-' + Math.random().toString(36).slice(2);
+    console.log(window.__marker);
+  </script>
+</body>
+</html>

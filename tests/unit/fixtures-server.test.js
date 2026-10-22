@@ -45,6 +45,14 @@ describe('fixtures server', () => {
     expect(await res.json()).toHaveProperty('error');
   });
 
+  it('returns 200 JSON for /api/ok', async () => {
+    server = await startFixtureServer();
+    const res = await fetch(`${server.url}/api/ok`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toMatch(/^application\/json/);
+    expect(await res.json()).toEqual({ ok: true });
+  });
+
   it('adds CSP header for csp-strict.html', async () => {
     tmp = mkdtempSync(join(tmpdir(), 'pds-fixtures-'));
     writeFileSync(join(tmp, 'csp-strict.html'), '<!doctype html><title>t</title>');

@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <script>
+    // AC-5.6 (E1-T19c): a hostile page. Runs as the first page script, but the extension's
+    // content scripts (document_start) run before it, so the private channel (design D3) is
+    // already bound. The page:
+    // - listens on window/document for every channel event type and `message` → window.__seen;
+    // - patches EventTarget.prototype.addEventListener/dispatchEvent, the CustomEvent `detail`
+    //   and MouseEvent `relatedTarget` getters and JSON.parse/stringify; any call carrying
+    //   channel traffic is logged to window.__intercepted (JSON calls are only counted);
+    // - forges the handshake, channel messages and window messages, and defines its own
+    //   window.PageDebugSnapshot with download().
+    // The page's own forgeries use saved originals and are not logged.
+    (function () {
+      'use strict';
+      var CHANNEL_TYPES = ['pds:main-ready', 'pds:isolated-ready', 'pds:i2m', 'pds:m2i'];
+      var FORGED_NONCE = 'forged-nonce';
+      // Built at runtime so the page source (in the package's outerHTML) does not contain it.
+      var FORGED = ['forged', 'payload', 'x7'].join('-');
+      var seen = [];
+      var intercepted = [];
+      var ownEvents = []; // events this page dispatches itself
+      window.__seen = seen;
+      window.__intercepted = intercepted;
+      window.__jsonCalls = 0;
+      // The recorder installs its marker at document_start, before this script.
+      window.__markerBeforePage = Object.getOwnPropertySymbols(window).indexOf(Symbol.for('pds.installed')) !== -1;
+
+      var apply = Reflect.apply;
+      var etProto = EventTarget.prototype;
+      var origAdd = etProto.addEventListener;
+      var origDispatch = etProto.dispatchEvent;
+      var detailDesc = Object.getOwnPropertyDescriptor(CustomEvent.prototype, 'detail');
+      var relatedDesc = Object.getOwnPropertyDescriptor(MouseEvent.prototype, 'relatedTarget');
+      var typeGet = Object.getOwnPropertyDescriptor(Event.prototype, 'type').get;
+      var origStringify = JSON.stringify;
+      var origParse = JSON.parse;
+
+      function short(value) {
+        try {
+          var s = typeof value === 'string' ? value : apply(origStringify, JSON, [value]);
+          return typeof s === 'string' ? s.slice(0, 2000) : String(s);
+        } catch (e) {
+          return '[unserializable]';
+        }
+      }
+      function isChannelType(type) {
+        return typeof type === 'string' && type.slice(0, 4) === 'pds:';
+      }
+      function eventType(event) {
+        try { return apply(typeGet, event, []); } catch (e) { return null; }
+      }
+
+      function hear(where) {
+        return function (event) {
+          if (ownEvents.indexOf(event) !== -1) return;
+          var entry = { where: where, type: eventType(event) };
+          if (event instanceof CustomEvent) entry.detail = short(apply(detailDesc.get, event, []));
+          if (event instanceof MouseEvent) entry.relatedTarget = apply(relatedDesc.get, event, []) !== null;
+          if (event instanceof MessageEvent) {
+            if (event.data && event.data.__hostile === true) return;
+            entry.data = short(event.data);
+          }
+          seen.push(entry);
+        };
+      }
+      var targets = [[window, 'window'], [document, 'document']];
+      for (var i = 0; i < targets.length; i++) {
+        var types = CHANNEL_TYPES.concat(['message']);
+        for (var j = 0; j < types.length; j++) {
+          apply(origAdd, targets[i][0], [types[j], hear(targets[i][1]), true]);
+        }
+      }
+
+      // Patched APIs: log every call that touches channel traffic.
+      etProto.addEventListener = function (type) {
+        if (isChannelType(type)) intercepted.push({ api: 'addEventListener', type: type });
+        return apply(origAdd, this, arguments);
+      };
+      etProto.dispatchEvent = function (event) {
+        var type = eventType(event);
+        if (isChannelType(type)) intercepted.push({ api: 'dispatchEvent', type: type });
+        return apply(origDispatch, this, arguments);
+      };
+      Object.defineProperty(CustomEvent.prototype, 'detail', {
+        configurable: true,
+        enumerable: true,
+        get: function () {
+          var value = apply(detailDesc.get, this, []);
+          var type = eventType(this);
+          if (isChannelType(type)) intercepted.push({ api: 'detail', type: type, detail: short(value) });
+          return value;
+        },
+      });
+      Object.defineProperty(MouseEvent.prototype, 'relatedTarget', {
+        configurable: true,
+        enumerable: true,
+        get: function () {
+          var value = apply(relatedDesc.get, this, []);
+          var type = eventType(this);
+          if (isChannelType(type)) intercepted.push({ api: 'relatedTarget', type: type });
+          return value;
+        },
+      });
+      JSON.stringify = function (value) {
+        window.__jsonCalls++;
+        if (value && typeof value === 'object' && 'n' in value && 'v' in value && 'type' in value) {
+          intercepted.push({ api: 'JSON.stringify', value: short(value) });
+        }
+        return apply(origStringify, JSON, arguments);
+      };
+      JSON.parse = function (text) {
+        window.__jsonCalls++;
+        if (typeof text === 'string' && /"n":/.test(text) && /"v":1/.test(text)) {
+          intercepted.push({ api: 'JSON.parse', text: text.slice(0, 2000) });
+        }
+        return apply(origParse, JSON, arguments);
+      };
+
+      // A forged recorder API: saving must not go through it.
+      window.PageDebugSnapshot = {
+        fake: true,
+        download: function () {
+          window.__fakeDownloadCalls = (window.__fakeDownloadCalls || 0) + 1;
+          return 'page-debug-snapshot-' + FORGED + '.json';
+        },
+      };
+
+      // Forgeries. A node of our own offered as the bridge: whatever answers on it is logged.
+      var fakeNode = document.createElement('div');
+      apply(origAdd, fakeNode, ['pds:m2i', hear('fakeNode'), false]);
+      apply(origAdd, fakeNode, ['pds:i2m', hear('fakeNode'), false]);
+      function forgedDetail(type, payload) {
+        return apply(origStringify, JSON, [{ n: FORGED_NONCE, v: 1, id: 'c1', type: type, payload: payload }]);
+      }
+      function own(target, event) {
+        ownEvents.push(event);
+        apply(origDispatch, target, [event]);
+      }
+      window.__forge = function () {
+        own(document, new MouseEvent('pds:isolated-ready', { relatedTarget: fakeNode }));
+        own(document, new Event('pds:main-ready'));
+        var forged = [
+          ['pds:m2i', 'result', apply(origStringify, JSON, [{ forged: FORGED }])],
+          ['pds:m2i', 'hello', { version: FORGED }],
+          ['pds:i2m', 'bind', null],
+          ['pds:i2m', 'collect', null],
+          ['pds:i2m', 'destroy', null],
+        ];
+        for (var k = 0; k < forged.length; k++) {
+          var detail = forgedDetail(forged[k][1], forged[k][2]);
+          own(document, new CustomEvent(forged[k][0], { detail: detail }));
+          own(fakeNode, new CustomEvent(forged[k][0], { detail: detail }));
+        }
+        window.postMessage({ __hostile: true, __pds: FORGED_NONCE, type: 'result', payload: FORGED }, '*');
+        window.postMessage({ __hostile: true, __pds: FORGED_NONCE, type: 'destroy' }, '*');
+      };
+      window.__forge();
+    })();
+  </script>
+  <title>PDS fixture: hostile page</title>
+</head>
+<body>
+  <h1>Strona testowa: wroga strona</h1>
+  <p id="content">Strona podsłuchuje zdarzenia i podmienia API, żeby sprawdzić izolację nagrywania.</p>
+</body>
+</html>

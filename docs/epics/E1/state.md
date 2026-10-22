@@ -75,7 +75,20 @@ ostatnia aktualizacja: 2026-10-22
   dist/chrome = dist/firefox: 19 plików ~150 KB (background 4,4 KB, content 72 KB, lib 47 KB, popup 28 KB); web-ext 0 errors; npm test 637/637 poza T17
 - [x] E1-T17 usunięte 14 plików (page-debug-snapshot.js, snapshot-tab.js, run-in-page.js, ich testy, 6 speców e2e E0, throw-on-snapshot.html); reachable-files/layout/eslint poprawione; tests/unit/no-e0-flow.test.js — **npm test 588/588, lint 0, build OK, gen --check 0**
   csp-strict.html zostaje (T19c użyje w teście izolacji/CSP). harness.spec.js z E0 → T18 zastępuje.
-- [~] E1-T18 harness e2e dla tła (w toku)
+- [x] E1-T18 launch.js (serviceWorker(), stopServiceWorker, grantOrigin, sessionStorage.get/set, downloadDir), recording.js (startRecording, saveRecording, setRecordingLimit, popupState), download.js na katalogu; harness-e1.spec.js smoke 5/5 (~1 s) — ✓
+  Odstępstwa: uchwyt SW po restarcie przez stary Worker; wybudzanie SW kartą manifest.json + sendMessage; pobrania wg S7. Stary harness.spec.js (E0) usunięty przez orkiestratora.
+  Docs: tekst „zatrzymane po 10 minutach” stały (przy teście 3 s też) — OK; extension-testing skill do aktualizacji.
+- grupa F zamknięta; checkpoint commit
+- [~] E1-T19a..e e2e (grupa G, równolegle, start)
+  - [x] T19e tests/e2e/perf.spec.js + console-fallback.spec.js + fixtures/flood.html — 5 e2e ✓ (6 przebiegów). Narzut hooków: fetch mediana −0,5…+0,6 ms, p95 ≤ 0,7 ms (spec ≤ 2 ms); console p95 ≤ 0,07 ms (spec ≤ 0,5 ms). Flood 6000 → 5000 + truncated; 20 000×1 KB → 4,2 MB, documentChars tnie do 3046. Fallback konsolowy OK (AC-7.2/7.3).
+  - [x] T19c tests/e2e/isolation.spec.js + fixtures/hostile.html — 6 e2e ✓ (4/4 solo; w pełnym przebiegu 4/5 — raz padł w saveRecording przy równoległych agentach, przyczyna nieustalona → tester sprawdza stabilność). AC-5.1, 5.3, 5.4, 5.5, 5.6 + CSP. `fetch.toString()` w trakcie: `function () { [native code] }`, po zapisie `function fetch() { [native code] }`.
+    Review (do rozważenia E1 lub E3): serialize.js używa żywych JSON.stringify/parse strony (hostile naliczyła 4 wywołania; nonce nie wycieka, ale podmieniony JSON może zepsuć zapis args) → przechwycić JSON na document_start; destroy() przywraca oryginalny fetch i nadpisze wrapper założony przez stronę w trakcie (np. Sentry).
+  - [x] T19d tests/e2e/{restricted,failure,packed-zip}.spec.js — 7 e2e ✓ + 1 fixme (3× stabilne; pełny zestaw 34–35/35). AC-1.7, 1.4 (odmowa: bąbel zamyka popup → `permissionDenied` 9/9), 2.4 (pageBusy ≥14,5 s), 2.2 (deny → `saveCancelled` z USER_CANCELED), zip E0 AC-4.5 + Firefox zip.
+    QA ręczne: strona CWS (Playwright traci kartę), jawne „Odrzuć” w bąblu.
+    **Poprawki po grupie G (F-e1-1):** (a) BUG src/popup/controller.js applyStatus — po timeoucie 15 s tło robi failSave bez lastError, stan saving→recording zeruje `outcome` → pusty status zamiast `pageBusy` (zależne od kolejności zdarzeń; test „verdict stays on screen” fixme → zdjąć po naprawie); (b) helper openPopupFor wraca zanim dokument to popup.html (getElementById null) → `waitFor` dokumentu w helperze.
+  - [x] T19a tests/e2e/recording.spec.js + fixtures/early-error.html + /api/ok — 10 e2e ✓ (600/600 z --repeat-each). AC-1.1, 1.2, 1.3, 1.5, 1.6, 2.1, 2.5, 2.6, 4.1, 4.2, 4.5, 4.7, 4.8.
+    **F-e1-1 (c):** `popup.close()` w launch.js wraca natychmiast po `Target.closeTarget`; kolejny `openPopupFor` trafia w zamykany cel (2/250) → przenieść oczekiwanie „popup zniknął z Target.getTargets” do `popup.close()` (adapter `settled()` w recording.spec do usunięcia po poprawce).
+    Tester: NFR „save→Zapisano mediana z 5 ≤ 5 s” brak w T19e — dopisać w fazie Testy; `hooks-overhead.json` kasowany przez równoległe przebiegi — QA bierze z przebiegu na wyłączność.
 - [ ] E1-TEST1..3, R1, Q1, DOC1
 
 ## Wejście z E0 (obowiązkowe dla analityka i architekta)

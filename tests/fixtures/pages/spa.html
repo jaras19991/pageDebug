@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: spa</title>
+  <script>
+    // AC-4.3 / AC-4.4: SPA navigation (pushState, replaceState, popstate) keeps one document,
+    // a full reload starts a new one. Each step logs a marker the e2e test looks for.
+    window.addEventListener('popstate', () => console.log('after-popstate'));
+    document.addEventListener('DOMContentLoaded', () => {
+      const on = (id, fn) => document.getElementById(id).addEventListener('click', fn);
+      on('push', () => {
+        history.pushState({ step: 'push' }, '', '/spa.html?view=pushed');
+        console.log('after-push');
+      });
+      on('replace', () => {
+        history.replaceState({ step: 'replace' }, '', '/spa.html?view=replaced');
+        console.log('after-replace');
+      });
+      on('fetch', () => {
+        fetch('/api/fail').catch(() => {});
+      });
+      on('reload', () => location.reload());
+    });
+  </script>
+</head>
+<body>
+  <h1>Strona testowa SPA</h1>
+  <button id="push" type="button">Dalej (pushState)</button>
+  <button id="replace" type="button">Zamień (replaceState)</button>
+  <button id="fetch" type="button">Pobierz dane</button>
+  <button id="reload" type="button">Odśwież</button>
+</body>
+</html>

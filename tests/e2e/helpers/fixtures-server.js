@@ -47,6 +47,9 @@ function createHandler(root) {
         'Content-Type': MIME['.json'],
       });
     }
+    if (pathname === '/api/ok') {
+      return send(res, 200, JSON.stringify({ ok: true }), { 'Content-Type': MIME['.json'] });
+    }
     if (pathname === '/img/404.png') return notFound(res);
     if (pathname === '/') pathname = '/basic.html';
 
