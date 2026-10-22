@@ -36,14 +36,18 @@ Grupa D (po T14b)
   KEY_FIREFOX_UNSUPPORTED_BY_MIN_VERSION i …ANDROID… — `data_collection_permissions` (Firefox 140/142) vs `strict_min_version` 128.
   **Ocena orkiestratora (ryzyko R4):** dopuszczalne — Firefox < 140 ignoruje nieznany klucz, a AMO wymaga go dla nowych zgłoszeń;
   podniesienie min do 140 zawęziłoby zgłaszających bez korzyści. Decyzja do potwierdzenia w E0-R2 (store review) i E5.
-- [ ] E0-T16b harness e2e na dist/chrome (CDP triggerAction wg spike-T17)
+- [x] E0-T16b playwright.config.js, tests/e2e/helpers/launch.js (launchWithExtension, openPopupFor → {evaluate,click,textOf,waitForText}, expectDownload),
+  global-setup (build + git status) / global-teardown (AC-3.4 guard), harness.spec.js — 3 e2e ✓, 10/10 stabilnych, 2–6 s; `waitForEvent('download')` działa
+- grupa E start (2026-10-22): T7a, T7b równolegle
 - [x] E0-T11 scripts/dev-browser.mjs (web-ext 10 `cmd.run`, target chromium/firefox-desktop; Chrome ładowany przez CDP
   `Extensions.loadUnpacked`, więc blokada `--load-extension` ≥137 nie dotyczy) + dev-browser.ps1 jako wrapper — 7 testów ✓;
   czasy: chrome ~5–8 s, firefox ~16 s (AC-7.3 ✓); `PDS_CHROMIUM_BINARY` wybiera binarkę (domyślnie chrome-launcher wziął Canary)
   Docs: dopisać `PDS_CHROMIUM_BINARY` do pds-browser; profile `pds-dev-profile-*` nieużywane. Sprzątanie: `%TEMP%\firefox-profile*` po wymuszonym zamknięciu.
 
 Grupa E (po T16b)
-- [ ] E0-T7a e2e: smoke, błąd zrzutu, strona specjalna, pomiar czasu
+- [x] E0-T7a tests/e2e/{smoke,failure,restricted}.spec.js + helpers/download.js — 6 e2e ✓ (AC-1.1, 1.2, 1.3, 1.4e2e, 2.3, 6.5);
+  mediana klik→download ≈ 48–67 ms (baseline 411f60e niezmierzony → QA porównuje); restricted w ~1,1 s
+  Uwaga dla T7b/T9: `tests/e2e/csp.spec.js` ma `no-undef window` (l. 28) — lint czerwony do poprawki.
 - [ ] E0-T7b e2e: podwójne kliknięcie, CSP, paczka z zipa
 
 Fazy po implementacji
