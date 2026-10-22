@@ -1,0 +1,10 @@
+browser Chrome/155.0.8059.79
+extension id peifcadooakhannlhfgdjiedlahijbon
+dev mode -> {"dev":true}
+f3-1-first-click | status: "Gotowe. Zapisano plik page-debug-snapshot-1792658659781.json — znajdziesz go w pobranych plikach." | error: false | new files: ["page-debug-snapshot-1792658659781.json"]
+radios: SETTINGS-CATEGORY-DEFAULT-RADIO-GROUP# name=null label= checked=undefined | SETTINGS-RADIO-GROUP#settingsCategoryDefaultRadioGroup name=null label= checked=undefined | CR-RADIO-GROUP# name=null label= checked=undefined | SETTINGS-COLLAPSE-RADIO-BUTTON#allowRadioOption name=allow label= checked=false | SETTINGS-COLLAPSE-RADIO-BUTTON#askRadioOption name=ask label= checked=true | SETTINGS-COLLAPSE-RADIO-BUTTON#blockRadioOption name=block label= checked=false
+click block -> blocked checked=false
+radios after: SETTINGS-COLLAPSE-RADIO-BUTTON#allowRadioOption name=allow label= checked=false | SETTINGS-COLLAPSE-RADIO-BUTTON#askRadioOption name=ask label= checked=false | SETTINGS-COLLAPSE-RADIO-BUTTON#blockRadioOption name=block label= checked=true
+f3-2-second-click-after-block | status: "Gotowe. Zapisano plik page-debug-snapshot-1792658670654.json — znajdziesz go w pobranych plikach." | error: false | new files: []
+f3-3-third-click-after-block | status: "Gotowe. Zapisano plik page-debug-snapshot-1792658674162.json — znajdziesz go w pobranych plikach." | error: false | new files: []
+final files: ["page-debug-snapshot-1792658659781.json"]

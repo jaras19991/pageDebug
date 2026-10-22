@@ -104,10 +104,32 @@ Nie udało się zasymulować kliknięcia przed pierwszym bajtem strony (harness 
 
 Sprzątanie: usunięto 9 plików `page-debug-snapshot-*.json` z Pobrane, które sam wygenerowałem (Chrome stable: 1792655809436, 1792655876633; Firefox: 1792656682876, 1792656690064, 1792656693684, 1792656697278, 1792656730275, 1792656732064, 1792656734470). Pozostały dwa wcześniejsze pliki użytkownika (1792487181606, 1792580787863), nietknięte. Usunięto worktree `411f60e`, klon tymczasowy i profile `tmp-web-ext-*` / `firefox-profile*`; zatrzymano serwery fixture i przeglądarki dev.
 
-## Werdykt: FAIL
+## Werdykt pierwszego QA (e48fc41): FAIL
 
-Blokujące:
-1. F1 — Firefox: zrzut nie działa na zwykłych stronach (AC-1.1, 1.5, 2.4); Firefox jest drugim targetem E0.
-2. F2 — Chrome: `file://` bez zgody pokazuje zły komunikat (AC-1.6).
+Blokujące: F1 (Firefox: zrzut nie działa na zwykłych stronach, AC-1.1/1.5/2.4) i F2 (Chrome: file:// bez zgody, AC-1.6). Poza tym Chrome zgodny ze spec; Q1 w czystym klonie zielone. Stan po poprawkach: patrz Re-QA niżej.
 
-Poza tym Chrome (stable 155 i Chromium 147) działa zgodnie ze spec; Q1 w czystym klonie zielone (200 unit, 13 e2e, lint 0 errors).
+## Re-QA (commit 9ea6ed2)
+
+Zakres: tylko F7, F8, F3 (nie powtarzam pełnego QA). Środowisko: Chrome stable 155.0.8059.79 (tymczasowy profil, własny klient CDP po pipe: `Extensions.loadUnpacked` + `Extensions.triggerAction`, bez zdarzeń myszy; pobrania realne, bez przechwytywania przez Playwrighta), Firefox stable (web-ext + Marionette, bez myszy). `dist` przebudowany z 9ea6ed2; `dist/*/popup/snapshot-tab.js:38` ma `files: ['/page/page-debug-snapshot.js']`.
+Uwaga metodyczna: opcję „Zezwalaj na dostęp do adresów URL plików” przełączałem programowo (`developerPrivate.updateExtensionConfiguration`, odpowiednik przełącznika w Szczegółach) i włączyłem tryb deweloperski profilu, bo bez niego Chrome 155 wyłącza przeładowane rozszerzenie unpacked (`unsupportedDeveloperExtension`) — artefakt harnessu, nie rozszerzenia. Dowody: `qa-evidence/requa-*`.
+
+| ID | Scenariusz | Wynik | Dowód |
+|---|---|---|---|
+| F7 / AC-1.1 | Firefox, basic.html, klik | **PASS** | `requa-firefox-basic-click1.png`: „Gotowe. Zapisano plik page-debug-snapshot-1792657987137.json — znajdziesz go w pobranych plikach.”; plik w Pobranych |
+| F7 / AC-1.5 | drugi klik → drugi plik | **PASS** | `requa-firefox-basic-click2.png`: plik …989715.json (2 różne pliki w Pobranych) |
+| F7 / AC-2.4 | Firefox, csp-strict.html | **PASS** | `requa-firefox-csp-strict.png`: sukces, plik …992453.json |
+| F7 | Firefox, about:blank | **PASS** (nadal restricted) | `requa-firefox-about-blank.png`: „Na tej stronie nie da się zapisać paczki. Otwórz stronę, na której widzisz problem, i kliknij ponownie.” |
+| F8 / AC-1.6 | Chrome 155, file:// bez zgody | **PASS** | `requa-chrome-f8-1-file-noconsent.png`: „To jest plik z dysku. Żeby zapisać paczkę, wpisz w pasku adresu chrome://extensions, kliknij „Szczegóły” przy Page Debug Snapshot i włącz „Zezwalaj na dostęp do adresów URL plików”. Potem odśwież stronę i kliknij ponownie.” (= `MESSAGES.fileAccess`), brak pliku |
+| F8 | file:// po włączeniu zgody | **PASS** | `requa-chrome-f8-2-file-consent.png`: sukces + plik |
+| F8 | chrome://version, about:blank | **PASS** (nadal restricted) | `requa-chrome-f8-3-chrome-version.png`, `requa-chrome-f8-4-about-blank.png` |
+
+Logi: `requa-firefox-run.log`, `requa-chrome-f8.log`, `requa-chrome-f3.log`. F1 i F2 z pierwszego QA: **zamknięte** (F7 = F1, F8 = F2).
+
+### F3 — obserwacja (nie FAIL dla E0; do E1-T8)
+Chrome 155, basic.html, domyślne „Automatyczne pobieranie” = Pytaj. Klik 1: sukces i plik (`requa-chrome-f3-1-first-click.png`). Następnie chrome://settings/content/automaticDownloads → Blokuj (potwierdzone: `blockRadioOption` checked). Klik 2 i 3 bez interakcji ze stroną: popup nadal pokazał zielone „Gotowe. Zapisano plik page-debug-snapshot-1792658670654.json — znajdziesz go w pobranych plikach.” (`requa-chrome-f3-2-second-click-after-block.png`, `requa-chrome-f3-3-third-click-after-block.png`), a **plik NIE powstał** (po 3 kliknięciach w katalogu pobrań tylko plik z kliknięcia 1; `requa-chrome-f3.log`, „final files”). Potwierdza fałszywy sukces: rozszerzenie nie zna wyniku pobrania (brak uprawnienia `downloads`). Dla zgłaszającego: komunikat kłamie, w popupie nie ma żadnego śladu problemu. Waga dla E1: HIGH. Nie sprawdzałem wariantu „Pytaj” z monitem w pasku adresu.
+
+Sprzątanie Re-QA: z Pobranych usunięto 3 pliki Firefoksa (page-debug-snapshot-1792657987137.json, -1792657989715.json, -1792657992453.json); pliki Chrome trafiały do katalogu w scratchpadzie (usunięty, razem z page-debug-snapshot-1792658515252.json i -1792658659781.json), w Pobranych nie został żaden mój plik (zostały 2 pliki użytkownika: 1792487181606, 1792580787863). Zatrzymano Chrome, Firefox i serwer fixtures; usunięto profile requa-profile-*, tmp-web-ext-*, firefox-profile*.
+
+## Werdykt: PASS z uwagami (po re-QA 9ea6ed2)
+
+Blokujące F1 (Firefox) i F2 (Chrome file://) naprawione i zweryfikowane w przeglądarkach. Otwarte: AC-5.5 BLOCKED (README, czeka na E0-DOC1); F3-review (fałszywy sukces przy zablokowanych pobraniach, E1-T8); F3-QA/F4/F5/F6 (low/info, bez zmian).
