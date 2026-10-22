@@ -25,6 +25,9 @@ export const DOWNLOAD_TIMEOUT_MS = 60_000;
 const START_FAILURES = new Set(['permissionDenied', 'recordFailed', 'restricted', 'fileAccess', 'failed']);
 const COLLECT_FAILURES = new Set(['pageBusy', 'failed']);
 const STATUS_ERRORS = new Set(['saveCancelled', 'downloadFailed', 'pageBusy', 'permissionDenied', 'recordFailed', 'restricted', 'failed']);
+// Save verdicts stay until the next user action or a new lastError (AC-2.4): after its own
+// collect timeout the background goes saving -> recording without lastError, which says nothing new.
+const STICKY_OUTCOMES = new Set(['pageBusy', 'failed', 'downloadFailed', 'saveCancelled']);
 
 class TimeoutError extends Error {}
 
@@ -127,7 +130,7 @@ export function createController(api) {
 
   function applyStatus(next) {
     // A new background state makes an older local message stale.
-    if (status && status.state !== next.state && !ctx.busy) ctx.outcome = null;
+    if (status && status.state !== next.state && !ctx.busy && !STICKY_OUTCOMES.has(ctx.outcome?.kind)) ctx.outcome = null;
     status = next;
     const lastError = STATUS_ERRORS.has(next.lastError) ? next.lastError : missedError;
     missedError = null;

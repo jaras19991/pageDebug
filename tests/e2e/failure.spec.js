@@ -118,11 +118,9 @@ test('page main thread blocked during save: pageBusy/failed after 15 s, never Za
   }
 });
 
-// KNOWN BUG (found here, src/popup/controller.js applyStatus): the popup shows pageBusy for
-// ~10 ms, then the background's own collect timeout moves the state saving -> recording and
-// applyStatus drops the local outcome, so the reporter sees an empty status. Racy (1 of 3 runs
-// kept the text), hence fixme instead of fail. Enable once fixed.
-test.fixme('page main thread blocked during save: the pageBusy/failed verdict stays on screen', async () => {
+// Regression (F-e1-1): ~10 ms after pageBusy the background's own collect timeout moves the
+// state saving -> recording without lastError; the local verdict must survive that.
+test('page main thread blocked during save: the pageBusy/failed verdict stays on screen', async () => {
   test.setTimeout(60_000);
   const page = await ext.context.newPage();
   try {

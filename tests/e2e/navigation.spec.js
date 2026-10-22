@@ -159,10 +159,9 @@ test('navigation to localhost (other origin): popup shows otherOrigin; save keep
   for (const doc of json.documents) expect(String(doc.url).startsWith(`${server.url}/`)).toBe(true);
 });
 
-// FIXME(E1-T19b): after stopServiceWorker() about 1 in 8 saves hangs on "Zapisuję paczkę…": the woken
-// worker answers getStatus, but `collect` never reaches the store (`pds:rec.save` stays null). Never
-// seen without the stop (24/24). Re-enable once the cause (background or CDP stop) is fixed.
-test.fixme('service worker stop during recording: entries logged after it are saved', async () => {
+// F-e1-2: the save hang seen in T19b (about 1 in 8) did not reproduce in ~350 stop/save runs, alone or
+// under load. If it comes back, compare with a parallel e2e run rebuilding dist/chrome under this browser.
+test('service worker stop during recording: entries logged after it are saved', async () => {
   const page = await openPage(`${server.url}/basic.html`);
   await startRecording(page);
   await ext.stopServiceWorker();

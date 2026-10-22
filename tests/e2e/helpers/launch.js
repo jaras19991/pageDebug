@@ -15,6 +15,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 export const DIST_CHROME = resolve(ROOT, 'dist/chrome');
 
 const POPUP_TIMEOUT = 5_000;
+const POPUP_CLOSE_TIMEOUT = 2_000;
 const SW_TIMEOUT = 5_000;
 const DOWNLOAD_TIMEOUT = 10_000;
 const POLL_MS = 50;
@@ -286,6 +287,9 @@ function createSessionClient(cdp, sessionId) {
   };
 }
 
+const POPUP_LOADED = `location.pathname.endsWith('/popup/popup.html') && document.readyState === 'complete'
+  && !!(document.getElementById('ready') || document.getElementById('recording') || document.getElementById('status'))`;
+
 function toMatcher(predicate) {
   if (typeof predicate === 'function') return predicate;
   if (predicate instanceof RegExp) return (text) => predicate.test(text);
@@ -330,9 +334,12 @@ export async function openPopupFor(page, { timeout = POPUP_TIMEOUT } = {}) {
     return result.value;
   }
 
-  // Module scripts run before DOMContentLoaded, so 'complete' means popup.js is wired up.
+  // Module scripts run before DOMContentLoaded, so 'complete' means popup.js is wired up. The
+  // session may first see the initial about:blank document, so wait for popup.html itself.
   const deadline = Date.now() + timeout;
-  while ((await evaluate('document.readyState')) !== 'complete') {
+  for (;;) {
+    const loaded = await evaluate(POPUP_LOADED).catch(() => false);
+    if (loaded) break;
     if (Date.now() > deadline) throw new Error('Popup did not finish loading');
     await delay(POLL_MS);
   }
@@ -378,9 +385,16 @@ export async function openPopupFor(page, { timeout = POPUP_TIMEOUT } = {}) {
         await delay(POLL_MS);
       }
     },
+    // Returns once the target is gone: a popup opened while this one is still closing may be
+    // left unanswered or evaluated in the wrong document.
     async close() {
       client.dispose();
       await cdp.send('Target.closeTarget', { targetId: target.targetId }).catch(() => {});
+      const end = Date.now() + POPUP_CLOSE_TIMEOUT;
+      while ((await cdp.send('Target.getTargets')).targetInfos.some((t) => t.targetId === target.targetId)) {
+        if (Date.now() > end) throw new Error(`Popup ${target.targetId} did not close within ${POPUP_CLOSE_TIMEOUT} ms`);
+        await delay(POLL_MS);
+      }
     },
   };
   return popup;

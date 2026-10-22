@@ -425,6 +425,48 @@ describe('popup controller: Zapisz paczkę', () => {
     expect(t.models.some((m) => m.statusText.startsWith('Zapisano'))).toBe(false);
   });
 
+  it('pageBusy stays after the background closes its own attempt (saving → recording, no lastError) until a new lastError', async () => {
+    vi.useFakeTimers();
+    const t = await recordingPopup({ handlers: { collect: NEVER } });
+    t.bg.status = recording({ state: 'saving' });
+    const done = t.controller.onSave();
+    await vi.advanceTimersByTimeAsync(RESPONSE_TIMEOUT_MS);
+    await done;
+    expect(t.last()).toMatchObject({ statusText: MESSAGES.pageBusy, isError: true });
+    // ~13 ms later the background's collect timeout runs failSave without lastError.
+    t.bg.status = recording();
+    t.changed();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(t.last()).toMatchObject({ section: 'recording', statusText: MESSAGES.pageBusy, isError: true, buttons: { save: true } });
+    // A later state change keeps it too; only a new lastError replaces it.
+    t.bg.status = recording({ state: 'stopped', stopReason: 'time-limit' });
+    t.changed();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(t.last().statusText).toBe(MESSAGES.pageBusy);
+    t.bg.status = recording({ lastError: 'saveCancelled' });
+    t.changed();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(t.last().statusText).toBe(MESSAGES.saveCancelled);
+  });
+
+  it.each(['failed', 'downloadFailed', 'saveCancelled'])('%s verdict survives saving → recording without lastError; next save clears it', async (kind) => {
+    const t = await recordingPopup();
+    t.bg.status = recording({ state: 'saving' });
+    await t.controller.onSave();
+    t.bg.status = recording({ state: 'saving', lastError: kind });
+    t.changed();
+    await flush();
+    expect(t.last().statusText).toBe(MESSAGES[kind]);
+    t.bg.status = recording();
+    t.changed();
+    await flush();
+    expect(t.last()).toMatchObject({ statusText: MESSAGES[kind], isError: true });
+    t.bg.status = recording({ state: 'saving' });
+    const again = t.controller.onSave();
+    expect(t.last().statusText).toBe(MESSAGES.saving);
+    await again;
+  });
+
   it.each([
     [{ ok: false, reason: 'pageBusy' }, 'pageBusy'],
     [{ ok: false, reason: 'failed' }, 'failed'],

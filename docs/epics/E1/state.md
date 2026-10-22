@@ -88,6 +88,13 @@ ostatnia aktualizacja: 2026-10-22
     **Poprawki po grupie G (F-e1-1):** (a) BUG src/popup/controller.js applyStatus — po timeoucie 15 s tło robi failSave bez lastError, stan saving→recording zeruje `outcome` → pusty status zamiast `pageBusy` (zależne od kolejności zdarzeń; test „verdict stays on screen” fixme → zdjąć po naprawie); (b) helper openPopupFor wraca zanim dokument to popup.html (getElementById null) → `waitFor` dokumentu w helperze.
   - [x] T19a tests/e2e/recording.spec.js + fixtures/early-error.html + /api/ok — 10 e2e ✓ (600/600 z --repeat-each). AC-1.1, 1.2, 1.3, 1.5, 1.6, 2.1, 2.5, 2.6, 4.1, 4.2, 4.5, 4.7, 4.8.
     **F-e1-1 (c):** `popup.close()` w launch.js wraca natychmiast po `Target.closeTarget`; kolejny `openPopupFor` trafia w zamykany cel (2/250) → przenieść oczekiwanie „popup zniknął z Target.getTargets” do `popup.close()` (adapter `settled()` w recording.spec do usunięcia po poprawce).
+  - [x] T19b tests/e2e/navigation.spec.js + time-limit.spec.js + fixtures/spa.html — 5 e2e ✓ (50/50 repeat) + 1 fixme. AC-4.3, 4.4, 3.3, 3.4, 1.9, 4.9.
+    **F-e1-2 (HIGH):** po `stopServiceWorker()` ~1/8 zapisów wisi na „Zapisuję paczkę…” (pds:rec.save null, collect nie dociera lub odpowiedź ginie); bez stopu 24/24 OK. Nie wiadomo: tło czy artefakt Target.closeTarget. Realny scenariusz: Chrome ubija SW po bezczynności, zgłaszający nagrywa minutami.
+    Uwaga: w karcie B *Nagrywaj* jest aktywny (klik kończy nagranie w A bez zapisu — D1); brief mówił „wyłączony” — kod/design wygrywa.
+- **Implementacja E1: 27/27 (commit grupy G). 589 unit, 47 e2e (2 fixme → F-e1-1, F-e1-2).**
+- [x] F-e1-1: controller STICKY_OUTCOMES (pageBusy/failed/downloadFailed/saveCancelled nie kasowane zmianą stanu tła) + 4 testy; popup.close() czeka na zniknięcie targetId, openPopupFor na gotowy dokument; fixme w failure.spec zdjęty; adapter w recording.spec usunięty — 593/593, lint 0; e2e recording 150/150 repeat
+  Tester: 1/330 „after save: reload has no recorder” — startRecording nie doczekał reloadu w 10 s przy równoległym Chromium; sprawdzić na przebiegu na wyłączność (może wiązać się z F-e1-2).
+- [~] F-e1-2: zawieszony zapis po restarcie SW — diagnoza + naprawa (start)
     Tester: NFR „save→Zapisano mediana z 5 ≤ 5 s” brak w T19e — dopisać w fazie Testy; `hooks-overhead.json` kasowany przez równoległe przebiegi — QA bierze z przebiegu na wyłączność.
 - [ ] E1-TEST1..3, R1, Q1, DOC1
 

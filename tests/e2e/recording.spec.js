@@ -7,7 +7,7 @@ import { MESSAGES } from '../../src/popup/messages.js';
 import { countDownloads } from './helpers/download.js';
 import { startFixtureServer } from './helpers/fixtures-server.js';
 import { launchWithExtension, openPopupFor } from './helpers/launch.js';
-import * as recording from './helpers/recording.js';
+import { popupState, saveRecording, startRecording } from './helpers/recording.js';
 
 const REC_KEY = 'pds:rec';
 const MARKER_KEY = 'pds.installed';
@@ -59,26 +59,6 @@ async function recordEarlyError(page) {
 }
 
 // Arguments are stored as JSON values (strings stay strings, objects stay objects).
-// Adapter over helpers/recording.js: the helpers close the popup with Target.closeTarget and
-// return at once. Opening the next popup while the old one is still closing sometimes leaves
-// the new one unanswered or evaluated in the wrong document, so each step waits until it is gone.
-async function popupGone(timeout = 5_000) {
-  const popupUrl = `chrome-extension://${ext.extensionId}/popup/popup.html`;
-  await expect
-    .poll(async () => (await ext.browserCdp.send('Target.getTargets')).targetInfos.some((t) => t.url === popupUrl), { timeout, intervals: [50] })
-    .toBe(false);
-}
-const settled = (step) => async (...args) => {
-  try {
-    return await step(...args);
-  } finally {
-    await popupGone();
-  }
-};
-const startRecording = settled(recording.startRecording);
-const saveRecording = settled(recording.saveRecording);
-const popupState = settled(recording.popupState);
-
 const argsText = (entry) => JSON.stringify(entry.args);
 
 test('ready popup shows disclosure, no-upload sentence and reload notice', async () => {
@@ -109,7 +89,6 @@ test('ready popup shows disclosure, no-upload sentence and reload notice', async
       });
     } finally {
       await popup.close();
-      await popupGone();
     }
   });
 });
