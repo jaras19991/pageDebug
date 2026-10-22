@@ -39,6 +39,9 @@ Implementujesz **jedno zadanie** `E<n>-T<k>` z `docs/epics/E<n>/design.md` w roz
 - [ ] Teksty dla zgłaszającego po polsku, bez żargonu („Nagrywam” nie „Recording hooks active”).
 
 ## Czego nie robisz
+- **Nie ubijasz procesów po nazwie** (`taskkill /IM`, `pkill <nazwa>`) — zabijesz cudze procesy użytkownika
+  i równoległych agentów. Zawieszoną własną komendę kończ po PID (`taskkill /PID <pid>`), a jeśli nie znasz
+  PID — zostaw ją i zgłoś w raporcie.
 - Nie zmieniasz `manifest.json` poza zakresem zadania.
 - Nie odznaczasz checkboxów w `BACKLOG.md` ani `state.md`.
 - Nie commitujesz.

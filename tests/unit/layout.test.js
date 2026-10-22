@@ -1,19 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { bundle } from '../../scripts/gen-content.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
-
-// SHA-256 of console-snapshot.js as committed (LF line endings). The standalone
-// fallback must stay byte-identical in E0 (decision 6, risk 5).
-const CONSOLE_SNAPSHOT_SHA256 = 'bc8ee7c0f696b5d6c3f45f5145dbc15014390688110165b96c08270faf233505';
 
 describe('repo layout', () => {
   it('extension sources live in src/', () => {
     const files = [
       'src/page/page-debug-snapshot.js',
+      'src/page/console-entry.js',
       'src/popup/popup.html',
       'src/icons/icon16.png',
       'src/icons/icon48.png',
@@ -30,10 +28,10 @@ describe('repo layout', () => {
     expect(out.trim()).toBe('');
   });
 
-  it('console-snapshot.js unchanged', () => {
-    // Normalize CRLF so the hash does not depend on core.autocrlf of the checkout.
+  it('console-snapshot.js is generated from src/page/console-entry.js and up to date', () => {
+    // Replaces the E0 hash check (E1 D6, US-7): the fallback now comes from the shared recorder modules.
+    // Normalize CRLF so the comparison does not depend on core.autocrlf of the checkout.
     const text = readFileSync(root + 'src/standalone/console-snapshot.js', 'utf8').replace(/\r\n/g, '\n');
-    const hash = createHash('sha256').update(text, 'utf8').digest('hex');
-    expect(hash).toBe(CONSOLE_SNAPSHOT_SHA256);
+    expect(text).toBe(bundle({ entry: 'page/console-entry.js', srcDir: join(root, 'src') }));
   });
 });

@@ -22,6 +22,7 @@ function allTexts() {
 
 const OUTCOMES = [
   'saveCancelled',
+  'downloadFailed',
   'pageBusy',
   'permissionDenied',
   'recordFailed',

@@ -30,6 +30,8 @@ export const MESSAGES = Object.freeze({
   saved: (fileName) => `Zapisano plik ${fileName} — znajdziesz go w pobranych plikach.`,
   saveCancelled:
     'Zapis został przerwany lub anulowany. Nagrywanie trwa — kliknij „Zapisz paczkę” ponownie.',
+  downloadFailed:
+    'Nie udało się zapisać pliku na dysku. Nagrywanie trwa — kliknij „Zapisz paczkę” ponownie.',
   pageBusy:
     'Strona jeszcze się ładuje albo nie odpowiada. Poczekaj chwilę i kliknij „Zapisz paczkę” ponownie.',
 
@@ -65,6 +67,7 @@ function clockText(startedAt) {
 
 const OUTCOME_KINDS = [
   'saveCancelled',
+  'downloadFailed',
   'pageBusy',
   'permissionDenied',
   'recordFailed',

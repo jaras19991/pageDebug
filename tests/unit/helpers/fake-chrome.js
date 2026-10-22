@@ -53,6 +53,12 @@ export function createFakeChrome({
     sendMessage: async () => {
       throw new Error(NO_RECEIVER);
     },
+    /** Handler for runtime.sendMessage(message) (popup → background); default: no receiver. */
+    runtimeSendMessage: async () => {
+      throw new Error(NO_RECEIVER);
+    },
+    /** Tab returned by tabs.query({ active: true }); default: the first tab. */
+    activeTabId: tabs[0]?.id ?? null,
     sessionData,
     registered,
     badges,
@@ -199,6 +205,12 @@ export function createFakeChrome({
         log('tabs.sendMessage', [tabId, message, options]);
         return fake.sendMessage(tabId, message, options);
       },
+      async query(queryInfo) {
+        log('tabs.query', [queryInfo]);
+        const all = [...tabMap.values()];
+        const picked = queryInfo?.active ? all.filter((t) => t.id === fake.activeTabId) : all;
+        return picked.map((t) => ({ ...t }));
+      },
     },
     action: {
       async setBadgeText({ tabId, text }) {
@@ -260,6 +272,10 @@ export function createFakeChrome({
       getURL(path) {
         log('runtime.getURL', [path]);
         return `chrome-extension://${extensionId}/${String(path).replace(/^\//, '')}`;
+      },
+      async sendMessage(message) {
+        log('runtime.sendMessage', [message]);
+        return fake.runtimeSendMessage(message);
       },
     },
   };

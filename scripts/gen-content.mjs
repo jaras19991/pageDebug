@@ -206,7 +206,8 @@ export function bundle({ entry, srcDir = join(ROOT, 'src', 'page'), banner = HEA
       exportNames: exports.map(([n]) => n),
       code: [
         `// module: ${name}`,
-        `const __pds_m${modules.size} = (function () {`,
+        // The entry (loaded last, nothing imports it) only runs: binding it would be an unused const.
+        importer ? `const __pds_m${modules.size} = (function () {` : '(function () {',
         ...prologue,
         source.replace(/\n+$/, ''),
         `return Object.freeze({ ${exports.map(([n, e]) => `${n}: ${e}`).join(', ')} });`,
@@ -234,7 +235,8 @@ export function bundle({ entry, srcDir = join(ROOT, 'src', 'page'), banner = HEA
  */
 export async function generateAll({ root = ROOT, check = false } = {}) {
   const src = join(root, 'src');
-  const srcDir = join(src, 'page');
+  // Imports may reach all of src/ (console-entry.js uses ../lib/package.js); entries stay in src/page/.
+  const srcDir = src;
   for (const { entry } of BUNDLES) {
     if (!existsSync(join(src, entry))) throw new Error(`Missing entry module: src/${entry} (created in E1-T15/T7)`);
   }

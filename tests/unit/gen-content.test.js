@@ -142,6 +142,25 @@ describe('bundle', () => {
     expect(() => bundle({ entry: 'entry.js', srcDir: dir })).toThrow(/entry\.js:1: a\.js does not export 'b'/);
   });
 
+  it('runs the entry module without binding it (no unused __pds_m const)', () => {
+    const code = graph();
+    const entry = code.slice(code.indexOf('// module: entry.js'));
+    expect(entry).toMatch(/^\/\/ module: entry\.js\n\(function \(\) \{\n/);
+    expect(entry).not.toMatch(/const __pds_m\d+ = /);
+    expect(code.match(/^const __pds_m\d+ = /gm)).toHaveLength(6);
+  });
+
+  it('real bundles pass eslint with the project config (no exceptions for generated code)', async () => {
+    const { ESLint } = await import('eslint');
+    const root = fileURLToPath(new URL('../../', import.meta.url));
+    const eslint = new ESLint({ cwd: root });
+    for (const { out, entry } of BUNDLES) {
+      const code = bundle({ entry, srcDir: join(root, 'src') });
+      const [result] = await eslint.lintText(code, { filePath: join(root, 'src', out) });
+      expect(result.messages.map((m) => `${m.line}: ${m.ruleId} ${m.message}`), out).toEqual([]);
+    }
+  });
+
   it('throws SyntaxError on duplicate top-level names within one module', async () => {
     const dir = join(tmp, 'dup');
     await mkdir(dir, { recursive: true });

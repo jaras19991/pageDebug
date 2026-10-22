@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "PDS Spike E1-T0",
+  "version": "0.0.1",
+  "description": "Throwaway spike for E1-T0 (background, origin grant, MAIN/ISOLATED channel, downloads).",
+  "permissions": ["activeTab", "scripting", "storage", "downloads"],
+  "optional_host_permissions": ["http://*/*", "https://*/*", "file:///*"],
+  "background": { "service_worker": "sw.js", "type": "module" },
+  "action": { "default_popup": "popup/popup.html", "default_title": "PDS spike" }
+}

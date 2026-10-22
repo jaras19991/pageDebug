@@ -1,40 +1,28 @@
-// Popup UI only: find the active tab, run snapshotTab and show a Polish message.
-// All decisions live in snapshot-tab.js; technical details go to console.error.
-import { snapshotTab } from './snapshot-tab.js';
-import { MESSAGES, messageFor } from './messages.js';
-import { isFirefoxRuntime, isFileAccessAllowed } from './target.js';
+// Popup entry: wires popup.html to the controller. DOM only; every decision lives in
+// controller.js and view.js. Technical details go to console.error for developers.
+import { createController } from './controller.js';
+import { applyModel } from './view.js';
 
-const runButton = document.getElementById('runSnapshot');
-const statusEl = document.getElementById('status');
-
-function setStatus(message, isError = false) {
-  statusEl.textContent = message || '';
-  statusEl.classList.toggle('error', !!isError);
-}
-
-async function getActiveTab() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  return tab;
-}
-
-const api = {
-  scripting: chrome.scripting,
-  isAllowedFileSchemeAccess: () => isFileAccessAllowed(chrome),
-  isFirefox: isFirefoxRuntime(chrome),
-};
-
-runButton.addEventListener('click', async () => {
-  runButton.disabled = true;
-  setStatus(MESSAGES.working);
-
-  let outcome;
-  try {
-    outcome = await snapshotTab(await getActiveTab(), api);
-  } catch (error) {
-    console.error('[Page Debug Snapshot]', error);
-    outcome = { kind: 'failed' };
-  }
-
-  setStatus(messageFor(outcome), outcome.kind !== 'success');
-  runButton.disabled = false;
+const controller = createController({
+  runtime: chrome.runtime,
+  permissions: chrome.permissions,
+  downloads: chrome.downloads,
+  storage: chrome.storage,
+  tabs: chrome.tabs,
+  extension: chrome.extension,
+  URL,
+  Blob,
+  render: (model) => applyModel(document, model),
+  logError: (...details) => console.error('[Page Debug Snapshot]', ...details),
 });
+
+// No async work before onRecord(): permissions.request must run in the click's tick (D9).
+document.getElementById('record').addEventListener('click', () => {
+  controller.onRecord();
+});
+document.getElementById('save').addEventListener('click', () => {
+  controller.onSave();
+});
+window.addEventListener('pagehide', () => controller.destroy());
+
+controller.init();
