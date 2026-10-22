@@ -1,0 +1,290 @@
+{
+  "schemaVersion": 2,
+  "extensionVersion": "0.2.0",
+  "source": "extension",
+  "collectedAt": "2026-10-22T21:32:36.944Z",
+  "recordingStartedAt": "2026-10-22T21:32:32.947Z",
+  "recordingStoppedReason": null,
+  "timeOrigin": 1792704755114,
+  "documents": [
+    {
+      "id": 0,
+      "url": "http://127.0.0.1:8080/spa.html",
+      "timeOrigin": 1792704752956,
+      "navigationType": "reload",
+      "recorded": true,
+      "flushed": true,
+      "current": false,
+      "counts": {
+        "consoleLogs": 4,
+        "runtimeErrors": 0,
+        "network": 0
+      },
+      "kept": {
+        "consoleLogs": 4,
+        "runtimeErrors": 0,
+        "network": 0
+      }
+    },
+    {
+      "id": 1,
+      "url": "http://127.0.0.1:8080/spa.html",
+      "timeOrigin": 1792704755114,
+      "navigationType": "reload",
+      "recorded": true,
+      "flushed": true,
+      "current": true,
+      "counts": {
+        "consoleLogs": 1,
+        "runtimeErrors": 1,
+        "network": 0
+      },
+      "kept": {
+        "consoleLogs": 1,
+        "runtimeErrors": 1,
+        "network": 0
+      }
+    }
+  ],
+  "limits": {
+    "consoleLogs": 5000,
+    "runtimeErrors": 1000,
+    "network": 5000,
+    "entryChars": 10000
+  },
+  "truncated": {
+    "consoleLogs": false,
+    "runtimeErrors": false,
+    "network": false
+  },
+  "notes": [
+    "Recording started at 2026-10-22T21:32:32.947Z (page reloaded); earlier data is not included."
+  ],
+  "environment": {
+    "timestamp": "2026-10-22T21:32:36.942Z",
+    "location": {
+      "href": "http://127.0.0.1:8080/spa.html",
+      "origin": "http://127.0.0.1:8080",
+      "protocol": "http:",
+      "host": "127.0.0.1:8080",
+      "hostname": "127.0.0.1",
+      "port": "8080",
+      "pathname": "/spa.html",
+      "search": "",
+      "hash": ""
+    },
+    "document": {
+      "title": "PDS fixture: spa",
+      "referrer": "",
+      "readyState": "complete",
+      "visibilityState": "visible",
+      "lastModified": "10/22/2026 23:32:36"
+    },
+    "navigator": {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
+      "language": "pl",
+      "languages": [
+        "pl",
+        "en-US",
+        "en"
+      ],
+      "cookieEnabled": true,
+      "onLine": true,
+      "platform": "Win32",
+      "hardwareConcurrency": 32,
+      "deviceMemory": null
+    },
+    "screen": {
+      "width": 3440,
+      "height": 1440,
+      "availWidth": 3440,
+      "availHeight": 1392,
+      "colorDepth": 24,
+      "pixelDepth": 24
+    },
+    "viewport": {
+      "innerWidth": 1280,
+      "innerHeight": 955,
+      "outerWidth": 1296,
+      "outerHeight": 1048,
+      "devicePixelRatio": 1,
+      "scrollX": 0,
+      "scrollY": 0
+    }
+  },
+  "dom": {
+    "counts": {
+      "totalElements": 11,
+      "scripts": 1,
+      "stylesheets": 0,
+      "images": 0,
+      "links": 0,
+      "iframes": 0,
+      "forms": 0
+    },
+    "html": {
+      "doctype": {
+        "name": "html",
+        "publicId": "",
+        "systemId": ""
+      },
+      "lang": "pl",
+      "charset": "UTF-8",
+      "compatMode": "CSS1Compat",
+      "outerHTML": "<html lang=\"pl\"><head>\n  <meta charset=\"utf-8\">\n  <title>PDS fixture: spa</title>\n  <script>\n    // AC-4.3 / AC-4.4: SPA navigation (pushState, replaceState, popstate) keeps one document,\n    // a full reload starts a new one. Each step logs a marker the e2e test looks for.\n    window.addEventListener('popstate', () => console.log('after-popstate'));\n    document.addEventListener('DOMContentLoaded', () => {\n      const on = (id, fn) => document.getElementById(id).addEventListener('click', fn);\n      on('push', () => {\n        history.pushState({ step: 'push' }, '', '/spa.html?view=pushed');\n        console.log('after-push');\n      });\n      on('replace', () => {\n        history.replaceState({ step: 'replace' }, '', '/spa.html?view=replaced');\n        console.log('after-replace');\n      });\n      on('fetch', () => {\n        fetch('/api/fail').catch(() => {});\n      });\n      on('reload', () => location.reload());\n    });\n  </script>\n</head>\n<body>\n  <h1>Strona testowa SPA</h1>\n  <button id=\"push\" type=\"button\">Dalej (pushState)</button>\n  <button id=\"replace\" type=\"button\">Zamień (replaceState)</button>\n  <button id=\"fetch\" type=\"button\">Pobierz dane</button>\n  <button id=\"reload\" type=\"button\">Odśwież</button>\n\n\n</body></html>"
+    },
+    "meta": [
+      {
+        "tagName": "META",
+        "id": null,
+        "className": null,
+        "name": null,
+        "type": null,
+        "src": null,
+        "href": null,
+        "text": "",
+        "attributes": {
+          "charset": "utf-8"
+        }
+      }
+    ],
+    "canonical": null,
+    "hreflangs": [],
+    "scripts": [
+      {
+        "src": null,
+        "type": null,
+        "async": false,
+        "defer": false,
+        "textLength": 844,
+        "id": null,
+        "attributes": {}
+      }
+    ],
+    "stylesheets": [],
+    "images": [],
+    "iframes": [],
+    "forms": [],
+    "rootMarkers": {
+      "bodyClassName": null,
+      "htmlClassName": null,
+      "dataAttributesOnHtml": {
+        "lang": "pl"
+      },
+      "dataAttributesOnBody": {}
+    }
+  },
+  "performance": {
+    "timeOrigin": 1792704755114,
+    "navigation": {
+      "name": "http://127.0.0.1:8080/spa.html",
+      "entryType": "navigation",
+      "startTime": 0,
+      "duration": 10,
+      "initiatorType": "navigation",
+      "nextHopProtocol": "http/1.1",
+      "workerStart": 0,
+      "redirectStart": 0,
+      "redirectEnd": 0,
+      "fetchStart": 0,
+      "domainLookupStart": 0,
+      "domainLookupEnd": 0,
+      "connectStart": 0,
+      "secureConnectionStart": 0,
+      "connectEnd": 0,
+      "requestStart": 3,
+      "responseStart": 4,
+      "responseEnd": 4,
+      "domInteractive": 9,
+      "domContentLoadedEventStart": 9,
+      "domContentLoadedEventEnd": 10,
+      "domComplete": 10,
+      "loadEventStart": 10,
+      "loadEventEnd": 10,
+      "transferSize": 1566,
+      "encodedBodySize": 1266,
+      "decodedBodySize": 1266,
+      "type": "reload"
+    },
+    "resources": [
+      {
+        "name": "http://127.0.0.1:8080/favicon.ico",
+        "entryType": "resource",
+        "initiatorType": "other",
+        "startTime": 10,
+        "duration": 2,
+        "transferSize": 0,
+        "encodedBodySize": 9,
+        "decodedBodySize": 9,
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": null,
+        "responseEnd": 12
+      }
+    ]
+  },
+  "storage": {
+    "cookies": "",
+    "localStorage": {},
+    "sessionStorage": {}
+  },
+  "consoleLogs": [
+    {
+      "t": 1203,
+      "doc": 0,
+      "level": "log",
+      "args": [
+        "after-push"
+      ],
+      "stack": "@http://127.0.0.1:8080/spa.html:14:17\n@http://127.0.0.1:8080/spa.html:2:39\n@http://127.0.0.1:8080/spa.html:3:8"
+    },
+    {
+      "t": 1523,
+      "doc": 0,
+      "level": "log",
+      "args": [
+        "doc1-marker"
+      ],
+      "stack": "o<@http://127.0.0.1:8080/spa.html?view=pushed line 2 > injectedScript:1:61\n@http://127.0.0.1:8080/spa.html?view=pushed line 2 > injectedScript:1:92\n@http://127.0.0.1:8080/spa.html?view=pushed line 2 > injectedScript:1:238\n@http://127.0.0.1:8080/spa.html:2:346\n@http://127.0.0.1:8080/spa.html:3:8"
+    },
+    {
+      "t": 1527,
+      "doc": 0,
+      "level": "log",
+      "args": [
+        "after-replace"
+      ],
+      "stack": "@http://127.0.0.1:8080/spa.html:18:17\n@http://127.0.0.1:8080/spa.html:2:42\n@http://127.0.0.1:8080/spa.html:3:8"
+    },
+    {
+      "t": 1742,
+      "doc": 0,
+      "level": "log",
+      "args": [
+        "after-popstate"
+      ],
+      "stack": "@http://127.0.0.1:8080/spa.html:9:55"
+    },
+    {
+      "t": 1506,
+      "doc": 1,
+      "level": "log",
+      "args": [
+        "doc2-marker"
+      ],
+      "stack": "o<@http://127.0.0.1:8080/spa.html line 2 > injectedScript:1:61\n@http://127.0.0.1:8080/spa.html line 2 > injectedScript:1:149\n@http://127.0.0.1:8080/spa.html line 2 > injectedScript:1:296\n@http://127.0.0.1:8080/spa.html:2:404\n@http://127.0.0.1:8080/spa.html:3:8"
+    }
+  ],
+  "runtimeErrors": [
+    {
+      "t": 1506,
+      "doc": 1,
+      "type": "error",
+      "message": "Error: doc2-error",
+      "filename": "http://127.0.0.1:8080/spa.html line 2 > injectedScript",
+      "lineno": 1,
+      "colno": 106,
+      "stack": "@http://127.0.0.1:8080/spa.html line 2 > injectedScript:1:106\n"
+    }
+  ],
+  "network": []
+}

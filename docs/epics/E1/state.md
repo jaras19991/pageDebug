@@ -111,7 +111,9 @@ ostatnia aktualizacja: 2026-10-22
 - Do QA (wysłane): Firefox — panel pobrań może zamknąć popup → revokeObjectURL → plik ucięty? (F19). Jeśli tak → fallback D7(d) blob w event page.
 - Known limitation (docs): `xhr.constructor === XMLHttpRequest` → false przy Proxy (prototype.constructor to oryginał).
 - [x] H1 (store F1/F2/F5 + review high): disclosureItems ×5, `consentNotice` (#noUpload < #consentNotice < #record), README storage PL/EN — 595/595, recording e2e 11/11; słownik AC-1.4 przepuścił teksty
-- [~] H2 (review): console restore guard, enforceTotalBudget przed set, deadline Date.now, recorded/bridgeError + notatka (start)
+- [x] H2 (review): console restore guard (wrapper strony zostaje, nasz przelotowy), enforceTotalBudget przed set (D cały, A do liczników), deadline Date.now() (test uśpienia 11 min), recorded/bridgeError + `meta.currentMissingReason:'loadedAfterStop'` — 601/601, e2e isolation/navigation/time-limit 12/12
+  Docs: zmieniła się treść notatek i `documents[].recorded` przy bridgeError. Backlog E2/E3: timer setTimeout też monotoniczny — stop('time-limit') po uśpieniu zapada dopiero przy odpaleniu timera (rekordy już odrzucane).
+- commit poprawek H1+H2
 - Release E1: wersja **0.3.0** (F11). Docs: README cofanie dostępu (F12). E5: F6 źródła dla AMO, F7 notatka, F9, F10.
     Tester: NFR „save→Zapisano mediana z 5 ≤ 5 s” brak w T19e — dopisać w fazie Testy; `hooks-overhead.json` kasowany przez równoległe przebiegi — QA bierze z przebiegu na wyłączność.
 - [ ] E1-TEST1..3, R1, Q1, DOC1

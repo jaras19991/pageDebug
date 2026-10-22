@@ -1,0 +1,258 @@
+{
+  "schemaVersion": 2,
+  "extensionVersion": "0.2.0",
+  "source": "extension",
+  "collectedAt": "2026-10-22T23:14:26.933Z",
+  "recordingStartedAt": "2026-10-22T23:14:17.222Z",
+  "recordingStoppedReason": null,
+  "timeOrigin": 1792710857238.3,
+  "documents": [
+    {
+      "id": 0,
+      "url": "file:///C:/Users/jaros/AppData/Local/Temp/claude/c--Agora-pluginDebbuging/94b08794-091e-478e-a80b-9950a8bfade1/scratchpad/site/privacy.html",
+      "timeOrigin": 1792710857238.3,
+      "navigationType": "reload",
+      "recorded": true,
+      "flushed": true,
+      "current": true,
+      "counts": {
+        "consoleLogs": 2,
+        "runtimeErrors": 0,
+        "network": 0
+      },
+      "kept": {
+        "consoleLogs": 2,
+        "runtimeErrors": 0,
+        "network": 0
+      }
+    }
+  ],
+  "limits": {
+    "consoleLogs": 5000,
+    "runtimeErrors": 1000,
+    "network": 5000,
+    "entryChars": 10000
+  },
+  "truncated": {
+    "consoleLogs": false,
+    "runtimeErrors": false,
+    "network": false
+  },
+  "notes": [
+    "Recording started at 2026-10-22T23:14:17.222Z (page reloaded); earlier data is not included."
+  ],
+  "environment": {
+    "timestamp": "2026-10-22T23:14:26.930Z",
+    "location": {
+      "href": "file:///C:/Users/jaros/AppData/Local/Temp/claude/c--Agora-pluginDebbuging/94b08794-091e-478e-a80b-9950a8bfade1/scratchpad/site/privacy.html",
+      "origin": "file://",
+      "protocol": "file:",
+      "host": "",
+      "hostname": "",
+      "port": "",
+      "pathname": "/C:/Users/jaros/AppData/Local/Temp/claude/c--Agora-pluginDebbuging/94b08794-091e-478e-a80b-9950a8bfade1/scratchpad/site/privacy.html",
+      "search": "",
+      "hash": ""
+    },
+    "document": {
+      "title": "PDS QA privacy page",
+      "referrer": "",
+      "readyState": "complete",
+      "visibilityState": "visible",
+      "lastModified": "10/22/2026 09:51:18"
+    },
+    "navigator": {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+      "language": "pl-PL",
+      "languages": [
+        "pl-PL",
+        "pl",
+        "en-US",
+        "en"
+      ],
+      "cookieEnabled": true,
+      "onLine": true,
+      "platform": "Win32",
+      "hardwareConcurrency": 32,
+      "deviceMemory": 32
+    },
+    "screen": {
+      "width": 1280,
+      "height": 720,
+      "availWidth": 1280,
+      "availHeight": 720,
+      "colorDepth": 24,
+      "pixelDepth": 24
+    },
+    "viewport": {
+      "innerWidth": 1280,
+      "innerHeight": 720,
+      "outerWidth": 1296,
+      "outerHeight": 854,
+      "devicePixelRatio": 1,
+      "scrollX": 0,
+      "scrollY": 0
+    }
+  },
+  "dom": {
+    "counts": {
+      "totalElements": 11,
+      "scripts": 1,
+      "stylesheets": 0,
+      "images": 0,
+      "links": 0,
+      "iframes": 0,
+      "forms": 1
+    },
+    "html": {
+      "doctype": {
+        "name": "html",
+        "publicId": "",
+        "systemId": ""
+      },
+      "lang": "pl",
+      "charset": "UTF-8",
+      "compatMode": "CSS1Compat",
+      "outerHTML": "<html lang=\"pl\"><head><meta charset=\"utf-8\"><title>PDS QA privacy page</title>\n<script>\nlocalStorage.setItem('auth_token','SECRET-TOKEN-QA-7f3a9c1d');\nsessionStorage.setItem('session_secret','SESSION-SECRET-QA-55aa');\ndocument.cookie='sid=COOKIE-SECRET-QA-91bb; path=/';\nconsole.log('privacy page loaded');\n</script></head><body><h1>Formularz</h1>\n<form onsubmit=\"return false\"><input id=\"email\" type=\"email\" value=\"jan.kowalski.qa@example.org\"><input id=\"pwd\" type=\"password\" value=\"HASLO-QA-hunter2\"><button id=\"go\">Wyslij</button></form>\n\n</body></html>"
+    },
+    "meta": [
+      {
+        "tagName": "META",
+        "id": null,
+        "className": null,
+        "name": null,
+        "type": null,
+        "src": null,
+        "href": null,
+        "text": "",
+        "attributes": {
+          "charset": "utf-8"
+        }
+      }
+    ],
+    "canonical": null,
+    "hreflangs": [],
+    "scripts": [
+      {
+        "src": null,
+        "type": null,
+        "async": false,
+        "defer": false,
+        "textLength": 220,
+        "id": null,
+        "attributes": {}
+      }
+    ],
+    "stylesheets": [],
+    "images": [],
+    "iframes": [],
+    "forms": [
+      {
+        "id": null,
+        "name": null,
+        "method": "get",
+        "action": "file:///C:/Users/jaros/AppData/Local/Temp/claude/c--Agora-pluginDebbuging/94b08794-091e-478e-a80b-9950a8bfade1/scratchpad/site/privacy.html",
+        "enctype": "application/x-www-form-urlencoded",
+        "elements": [
+          {
+            "tagName": "INPUT",
+            "type": "email",
+            "name": null,
+            "id": "email",
+            "value": "jan.kowalski.qa@example.org",
+            "checked": false
+          },
+          {
+            "tagName": "INPUT",
+            "type": "password",
+            "name": null,
+            "id": "pwd",
+            "value": "[redacted]",
+            "checked": false
+          },
+          {
+            "tagName": "BUTTON",
+            "type": "submit",
+            "name": null,
+            "id": "go",
+            "value": ""
+          }
+        ]
+      }
+    ],
+    "rootMarkers": {
+      "bodyClassName": null,
+      "htmlClassName": null,
+      "dataAttributesOnHtml": {
+        "lang": "pl"
+      },
+      "dataAttributesOnBody": {}
+    }
+  },
+  "performance": {
+    "timeOrigin": 1792710857238.3,
+    "navigation": {
+      "name": "file:///C:/Users/jaros/AppData/Local/Temp/claude/c--Agora-pluginDebbuging/94b08794-091e-478e-a80b-9950a8bfade1/scratchpad/site/privacy.html",
+      "entryType": "navigation",
+      "startTime": 0,
+      "duration": 16,
+      "initiatorType": "navigation",
+      "nextHopProtocol": "",
+      "renderBlockingStatus": "non-blocking",
+      "workerStart": 0,
+      "redirectStart": 0,
+      "redirectEnd": 0,
+      "fetchStart": 0.5,
+      "domainLookupStart": 0.5,
+      "domainLookupEnd": 0.5,
+      "connectStart": 0.5,
+      "secureConnectionStart": 0,
+      "connectEnd": 0.5,
+      "requestStart": 0.5,
+      "responseStart": 0.5,
+      "responseEnd": 1.899999976158142,
+      "domInteractive": 15.700000047683716,
+      "domContentLoadedEventStart": 15.700000047683716,
+      "domContentLoadedEventEnd": 15.700000047683716,
+      "domComplete": 16,
+      "loadEventStart": 16,
+      "loadEventEnd": 16,
+      "transferSize": 871,
+      "encodedBodySize": 571,
+      "decodedBodySize": 571,
+      "type": "reload"
+    },
+    "resources": []
+  },
+  "storage": {
+    "cookies": "",
+    "localStorage": {
+      "auth_token": "SECRET-TOKEN-QA-7f3a9c1d"
+    },
+    "sessionStorage": {
+      "session_secret": "SESSION-SECRET-QA-55aa"
+    }
+  },
+  "consoleLogs": [
+    {
+      "t": 14.600000023841858,
+      "doc": 0,
+      "level": "log",
+      "args": [
+        "privacy page loaded"
+      ],
+      "stack": "    at file:///C:/Users/jaros/AppData/Local/Temp/claude/c--Agora-pluginDebbuging/94b08794-091e-478e-a80b-9950a8bfade1/scratchpad/site/privacy.html:6:9"
+    },
+    {
+      "t": 8827.899999976158,
+      "doc": 0,
+      "level": "log",
+      "args": [
+        "file-marker"
+      ],
+      "stack": "    at eval (eval at evaluate (:370:30), <anonymous>:1:15)\n    at UtilityScript.evaluate (<anonymous>:372:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)"
+    }
+  ],
+  "runtimeErrors": [],
+  "network": []
+}

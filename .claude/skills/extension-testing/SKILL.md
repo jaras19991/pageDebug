@@ -18,7 +18,8 @@ description: Jak testować Page Debug Snapshot — vitest+jsdom dla logiki recor
 tests/
   unit/            *.test.js — jeden plik na moduł
   e2e/
-    helpers/launch.js   launchWithExtension, openPopupFor, expectDownload (patrz niżej)
+    helpers/launch.js   launchWithExtension, openPopupFor, listDownloads/expectDownload (patrz niżej)
+    helpers/recording.js   startRecording, saveRecording, setRecordingLimit, popupState
     helpers/fixtures-server.js   serwuje tests/fixtures/pages na localhost:0
     *.spec.js
   fixtures/
@@ -43,31 +44,51 @@ tests/
 - jsdom nie ma `PerformanceObserver`, `CompressionStream`, `crypto.subtle` w starszych wersjach —
   dla tych modułów używaj `// @vitest-environment node` z polyfillem lub testuj przez e2e.
 
-## E2E — uruchomienie rozszerzenia MV3 (stan po E0)
+## E2E — rozszerzenie MV3 z tłem (stan po E1)
 
-Harness: `tests/e2e/helpers/launch.js`. Rozszerzenie jest ładowane z `dist/chrome` (wynik `npm run build`,
-nigdy z `src/`); `globalSetup` buduje projekt.
+Harness: `tests/e2e/helpers/launch.js` + `helpers/recording.js` + `helpers/download.js`. Rozszerzenie jest ładowane z `dist/chrome`
+(wynik `npm run build`, nigdy z `src/`); `globalSetup` buduje projekt, chyba że `PDS_E2E_NO_BUILD=1`.
 
-- `launchWithExtension({ distDir?, headless? })` — `chromium.launchPersistentContext('', { channel: 'chromium', ... })`:
-  pełny Chromium w nowym headless (domyślnie headless; `PDS_E2E_HEADED=1` pokazuje okno). Argumenty:
-  `--disable-extensions-except`, `--load-extension` oraz `--enable-unsafe-extension-debugging` (odsłania domenę CDP
-  `Extensions`). Zwraca `{ context, extensionId, extensionInfo, browserCdp, close }`. ID rozszerzenia z
-  `chrome.developerPrivate.getExtensionsInfo()` na `chrome://extensions` (E0 nie ma service workera, więc nie ma `serviceWorker`).
-- `openPopupFor(page)` — otwiera prawdziwy popup jak klik ikony: CDP `Extensions.triggerAction` na celu `tab` danej strony.
-  Zwraca `{ evaluate, click, textOf, waitForText, close }`.
-  - **Popup nie jest `Page` w Playwright** — nie ma `page.goto('chrome-extension://…/popup.html')` z aktywną kartą;
-    popupem steruje się przez CDP (`Target.sendMessageToTarget` + `Runtime.evaluate`), stąd API powyżej.
-  - **`activeTab` działa do nawigacji**: po `page.goto` trzeba wywołać `openPopupFor` ponownie.
-- `expectDownload(page, action)` — `waitForEvent('download')` + akcja; zwraca `{ suggestedFilename, path }`.
-  Pliki zostają w katalogu tymczasowym Playwright (bez `downloadsPath`, nic w Pobranych).
-- `globalTeardown` porównuje `git status` ze stanem z `globalSetup` i failuje, gdy e2e zmieniło drzewo robocze (AC-3.4).
-- Inne helpery: `helpers/download.js`, `helpers/unzip.js` (test zipa z `npm run pack`), `helpers/fixtures-server.js`.
+**Nie uruchamiaj dwóch przebiegów e2e naraz bez `PDS_E2E_NO_BUILD=1`** — drugi przebieg przebudowuje `dist/chrome` pod działającą
+przeglądarką pierwszego (losowe porażki, ~50% w takim scenariuszu). Zbuduj raz, potem uruchamiaj z flagą.
+
+### `launchWithExtension({ distDir?, headless?, downloadDir? })`
+`chromium.launchPersistentContext` z `channel: 'chromium'` (nowy headless; `PDS_E2E_HEADED=1` pokazuje okno), argumenty
+`--disable-extensions-except`, `--load-extension`, `--enable-unsafe-extension-debugging` (CDP `Extensions`). Zwraca
+`{ context, extensionId, extensionInfo, browserCdp, downloadDir, serviceWorker, stopServiceWorker, grantOrigin, sessionStorage, close }`:
+
+- `grantOrigin(pattern)` — nadaje dostęp do witryny bez okna zgody: `chrome.developerPrivate.addHostPermission` (spike E1-T0).
+  Wzorzec jak w `originPatternFor` (np. `http://127.0.0.1/*`).
+- `serviceWorker()` — uchwyt SW (wybudza go kartą `manifest.json` + `sendMessage`, jeśli został ubity); `stopServiceWorker()` —
+  `Target.closeTarget` na celu `service_worker` + polling `Target.getTargets` (test „stan przeżywa uśpienie SW”).
+- `sessionStorage.get(key)` / `.set(key, value)` — odczyt/zapis `chrome.storage.session` rozszerzenia przez SW (np. `pds:rec`,
+  `pds:test:recordingLimitMs`).
+- `downloadDir` — katalog pobrań. Pobrania idą przez `Browser.setDownloadBehavior { behavior: 'default' }` + `download.default_directory`
+  w `Preferences` tymczasowego profilu (przy `allow` Chrome ignoruje `filename` i zapisuje `<uuid>.json`; Playwrightowe `allowAndName` też psuje
+  nazwę). Nic nie ląduje w Pobranych użytkownika.
+
+### Popup i przepływ użytkownika
+- `openPopupFor(page)` — prawdziwy popup jak klik ikony: CDP `Extensions.triggerAction` na celu `tab` strony. Zwraca
+  `{ evaluate, click, textOf, waitForText, waitFor, close }`. **Popup nie jest `Page`** — steruje się nim przez CDP
+  (`Runtime.evaluate`; klik ma `userGesture: true`, bez tego `permissions.request` odrzuca). **Tylko jeden popup naraz.**
+  `popup.close()` czeka na zniknięcie celu; `openPopupFor` czeka na gotowy dokument `popup.html`.
+- `startRecording(page, { grant = true })` — klik „Nagrywaj” (z `grantOrigin`, więc bez okna zgody), czeka na przeładowanie karty
+  i „Nagrywam od HH:MM:SS”. `saveRecording(page)` — klik „Zapisz paczkę”, czeka (≥ 16 s, dłużej niż 15 s timeout kontrolera, żeby zgubiona
+  odpowiedź była widoczna jako `pageBusy`) na „Zapisano plik …” i czyta plik z `downloadDir` po nazwie z komunikatu →
+  `{ fileName, path, json, statusText, savedAfterMs }`. `setRecordingLimit(page|ext, ms|null)` — limit testowy (tło ogranicza do 1000–600000).
+  `popupState(page)` — stan popupu (sekcja, tekst, aktywność przycisków).
+- `activeTab` działa do nawigacji: po `page.goto` wywołaj `openPopupFor` ponownie.
+- `listDownloads`, `waitForDownloadFile`, `expectDownload(pageOrExt, action)` — pliki z `downloadDir` (pobranie inicjuje popup, więc nie ma
+  zdarzenia `download` Playwrighta).
+- Inne helpery: `helpers/unzip.js` (zip z `npm run pack`), `helpers/fixtures-server.js`, `helpers/git-status.js`.
+- `globalTeardown` porównuje `git status` ze stanem z `globalSetup` i failuje, gdy e2e zmieniło drzewo robocze.
 - Stabilność: `retries: 0`, `workers: 2`; nie dodawaj `retries` bez komentarza z przyczyną.
-- Gdy dojdzie tło (E1): `context.serviceWorkers()` najpierw, potem `waitForEvent('serviceworker')`; SW bywa ubijany — wybudź go przed `evaluate`.
-- Pobranie paczki: `const { suggestedFilename, path } = await expectDownload(page, () => popup.click('#runSnapshot'))`,
-  potem `JSON.parse(readFileSync(path))` (JSON w E0; zip od E3).
-- `document_start` (E1): fixture rzuca błąd w pierwszym `<script>` w `<head>` i robi `fetch('/api/fail')` przed DCL —
-  test akceptacyjny E1.
+- Zgoda w oknie przeglądarki (bąbel `permissions.request`) zamyka popup — scenariusz odmowy testuje `failure.spec.js` (`permissionDenied`).
+
+### Pliki specyfikacji
+`recording.spec.js` (przepływ, `document_start`), `navigation.spec.js` (nawigacje, SPA, restart SW), `time-limit.spec.js`,
+`isolation.spec.js` (wroga strona, CSP, AC-5.x), `perf.spec.js`, `console-fallback.spec.js`, `restricted.spec.js`, `failure.spec.js`,
+`packed-zip.spec.js`, `harness-e1.spec.js` (smoke harnessu). Strony: `tests/fixtures/pages/`.
 
 ## Firefox — czego Playwright nie zrobi i co zamiast tego
 
@@ -91,6 +112,7 @@ Każde kryterium akceptacyjne e2e ma w planie testów kolumnę „Firefox: auto 
 |---|---|
 | `basic.html` | zwykła strona, happy path |
 | `early-error.html` | błąd w `<head>`, fetch 500 przed DCL, `console.error` z obiektem |
+| `hostile.html`, `flood.html` | wroga strona (podmienia `JSON`, `dispatchEvent`, nasłuchuje zdarzeń) / zalew logów i zapytań (limity buforów) |
 | `spa.html` | `history.pushState`, dynamiczne fetch, brak przeładowań |
 | `cwv-bad.html` | obraz hero bez wymiarów (CLS), duży obraz ładowany późno (LCP), `onclick` z pętlą 400 ms (INP) |
 | `sensitive.html` | localStorage `token=eyJ…`, cookie `sid=…`, formularz z e-mailem i hasłem, URL `?access_token=…` |

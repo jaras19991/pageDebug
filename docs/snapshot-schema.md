@@ -75,7 +75,7 @@ wyjątkiem z v1 dla `dom.forms`. Sekcje `environment`, `dom`, `performance`, `st
 | `documents` | object[] | dokumenty nagrane w karcie, w kolejności otwarcia; indeks w tablicy = `doc` w rekordach | v2 | nie |
 | `limits` | object | `consoleLogs` (5000), `runtimeErrors` (1000), `network` (5000) — maks. liczba wpisów w paczce; `entryChars` (10000) — limit znaków serializowanego argumentu/powodu | v2 | nie |
 | `truncated` | object | `consoleLogs`, `runtimeErrors`, `network`: `true`, gdy brakuje jakichkolwiek wpisów tej kategorii (bufor dokumentu, budżet zrzutu, limit paczki, odrzucony dokument) | v2 | nie |
-| `notes` | string[] | po angielsku: zakres nagrania, pominięte dokumenty z liczbami wpisów, brak danych bieżącej strony, dokumenty bez zrzutu, auto-stop, obcięcia | v1 | nie |
+| `notes` | string[] | po angielsku: zakres nagrania, pominięte dokumenty z liczbami wpisów, dokumenty nienagrane (błąd mostu), dokumenty bez zrzutu, brak danych bieżącej strony (z powodem, patrz niżej), sekcje, których nie udało się zebrać, auto-stop, obcięcia | v1 | nie |
 | `environment`, `dom`, `performance`, `storage` | object \| null | jak w v1, z bieżącego dokumentu; `null` + wpis w `notes`, gdy bieżąca strona nie odpowiedziała, opuściła origin nagrania albo sekcja się nie zebrała | v1 | jak v1 |
 | `consoleLogs` | object[] | `t`, `doc`, `level` (`log`/`info`/`warn`/`error`/`debug`), `args` (stringi JSON lub `{ truncated: true, preview }`), `stack?` (wywołanie na stronie, ≤ 4000 znaków; brak przy `Error.stackTraceLimit = 0`) | v1 (kształt v2) | nie |
 | `runtimeErrors` | object[] | `t`, `doc`, `type`: `error` → `message`, `filename`, `lineno`, `colno`, `stack`; `unhandledrejection` → `message`, `stack`, `reason?` | v1 (kształt v2) | nie |
@@ -89,11 +89,20 @@ wyjątkiem z v1 dla `dom.forms`. Sekcje `environment`, `dom`, `performance`, `st
 | `url` | string \| null | adres dokumentu |
 | `timeOrigin` | number \| null | `performance.timeOrigin` tego dokumentu; `null`, gdy jego dane nie dotarły |
 | `navigationType` | string \| null | `navigate` / `reload` / `back_forward` / `prerender` |
-| `recorded` | boolean | dokument był nagrywany |
+| `recorded` | boolean | `true` — dokument był nagrywany. `false`, gdy recorder nie nagrywał go: most nie połączył się ze stroną (błąd kanału, np. `unbound`) albo tło oznaczyło go jako nienagrywany. Liczniki są wtedy zerowe, a `notes` ma wpis „was not recorded”. Powód techniczny nie jest polem paczki — trafia tylko do `notes` |
 | `flushed` | boolean | `false` — zrzut przy opuszczaniu strony nie dotarł (np. crash karty); wpisów brak, jest notatka |
 | `current` | boolean | bieżący dokument w chwili zapisu (najwyżej jeden, zawsze ostatni) |
 | `counts` | object | ile wpisów każdej kategorii zebrano w dokumencie (także usuniętych później) |
 | `kept` | object | ile z nich trafiło do paczki |
+
+### Notatki o braku danych bieżącej strony
+
+Gdy `environment`, `dom`, `performance` i `storage` są `null`, `notes` zawiera jedną z dwóch notatek:
+
+- „The current page was not available: page was loaded after the recording stopped (time limit); package contains documents recorded before the limit. …” — nagranie zatrzymał limit 10 min, a karta załadowała się później (nie ma w niej recordera); w paczce są dokumenty nagrane przed limitem. Tło wie o tym z własnego stanu (`meta.currentMissingReason: "loadedAfterStop"` przekazywane do `assemblePackage`; to wejście funkcji, **nie pole paczki**);
+- „The current page was not available (it left the recorded origin or did not answer); …” — pozostałe przypadki.
+
+Sekcja, której nie udało się zebrać na stronie, daje notatkę „Section <nazwa> could not be collected (<błąd>)”.
 
 ### Czas, dokumenty i limity
 

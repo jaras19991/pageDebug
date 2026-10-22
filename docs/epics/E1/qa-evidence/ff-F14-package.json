@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 2,
+  "extensionVersion": "0.2.0",
+  "source": "extension",
+  "collectedAt": "2026-10-22T21:35:46.499Z",
+  "recordingStartedAt": "2026-10-22T21:35:39.380Z",
+  "recordingStoppedReason": null,
+  "timeOrigin": null,
+  "documents": [
+    {
+      "id": 0,
+      "url": "http://127.0.0.1:8080/basic.html",
+      "timeOrigin": null,
+      "navigationType": null,
+      "recorded": true,
+      "flushed": false,
+      "current": false,
+      "counts": {
+        "consoleLogs": 0,
+        "runtimeErrors": 0,
+        "network": 0
+      },
+      "kept": {
+        "consoleLogs": 0,
+        "runtimeErrors": 0,
+        "network": 0
+      }
+    }
+  ],
+  "limits": {
+    "consoleLogs": 5000,
+    "runtimeErrors": 1000,
+    "network": 5000,
+    "entryChars": 10000
+  },
+  "truncated": {
+    "consoleLogs": false,
+    "runtimeErrors": false,
+    "network": false
+  },
+  "notes": [
+    "Recording started at 2026-10-22T21:35:39.380Z (page reloaded); earlier data is not included.",
+    "The data of document 0 was not received (http://127.0.0.1:8080/basic.html); its entries are missing.",
+    "The current page was not available (it left the recorded origin or did not answer); environment, dom, performance and storage are null."
+  ],
+  "environment": null,
+  "dom": null,
+  "performance": null,
+  "storage": null,
+  "consoleLogs": [],
+  "runtimeErrors": [],
+  "network": []
+}

@@ -176,6 +176,7 @@ nadal są wołane. Zasady wspólne:
 - Marker: `Object.defineProperty(window, Symbol.for('pds.installed'), { value: Object.freeze({ version }), enumerable: false,
   configurable: false })`. Gdy marker istnieje, druga instalacja w tym samym dokumencie jest no-opem (AC-5.5). Bufor żyje wyłącznie
   w domknięciu, `window.PageDebugSnapshot` i `__PAGE_DEBUG_SNAPSHOT__` w trybie rozszerzenia nie istnieją (AC-5.4).
+(zmienione w implementacji: `fetch.toString()` na `Proxy` w V8 zwraca w trakcie nagrywania `function () { [native code] }` — bez nazwy, więc zdanie o zachowaniu `toString` dotyczy tylko `name` i `length`; po zdjęciu hooka wraca `function fetch() { [native code] }`.)
 Konsekwencje: `xhr.hasOwnProperty('open') === true` na instancjach (ukryte przed `Object.keys`), do opisania jako znane
 ograniczenie. Wydajność: `new Error()` + `safeJson` na każdym `console.*` to główny koszt, mierzony w NFR (T19e).
 
@@ -218,6 +219,7 @@ w popupie (`Promise.race`) i w tle (`tabs.sendMessage` z timeoutem). Przekroczen
 ładuje”) lub `failed`. **60 s** od startu do `complete`, potem tło robi `downloads.cancel(id)` i ustawia `failed`. Nigdy sukces.
 Po sukcesie tło po kolei: wyrejestrowuje skrypty, wysyła `destroy` do karty (best-effort), czyści `pds:rec` i `pds:doc:*`,
 zapisuje `pds:last:<tabId>` i czyści badge (AC-2.5).
+(zmienione w implementacji: tło ignoruje nazwę pliku z popupu — `saveStarted { downloadId }` wystarcza; nazwę ustala tło z `downloads.search({ id })`. Po sukcesie tło zapisuje `pds:last:<tabId>` jako `{ fileName, downloadId, at }`, a `getStatus` zwraca to jako `lastSaved`, żeby popup dopasował wynik do własnego zapisu po `downloadId`.)
 Konsekwencje: jeśli popup zamknie się przed startem pobrania, zapis kończy się `failed` przy następnym otwarciu
 (uczciwie, bez sukcesu). `downloads.download` z API rozszerzenia nie podlega blokadzie „Automatyczne pobieranie” (regresja F3,
 AC-2.3 w QA). Paczka idzie przez `runtime.sendMessage` jako string (≤ 10 MB, limit Chrome to 64 MB). Fallback, jeśli T0 pokaże
@@ -278,6 +280,7 @@ Opcje: (a) wyłącznie QA ręczne; (b) rozszerzenie harnessu E0 (CDP `triggerAct
 (`Browser.setDownloadBehavior({ behavior:'allow', downloadPath: mkdtemp, eventsEnabled: true })` przez `browserCdp`,
 bo Playwrightowe `allowAndName` zapisuje pod GUID i psuje AC-2.1), limit testowy przez SW.
 **Wybór: (b), weryfikowane spike'iem E1-T0 przed T18.**
+(zmienione w implementacji, po spike'u T0: pobrania w e2e idą przez `Browser.setDownloadBehavior { behavior: 'default' }` + `download.default_directory` w `Preferences` tymczasowego profilu, a nie przez `allow` + `downloadPath` — przy `allow` Chrome ignoruje `filename` z `downloads.download` i zapisuje `<uuid>.json`.)
 Uzasadnienie: AC-1.3, 1.5, 2.1, 4.1–4.4 wymagają prawdziwego `document_start`, tła i pobrania. Wszystkie elementy (b) mają
 znany mechanizm, ale nie były sprawdzone na tej wersji Chromium. Popup dalej nie jest `Page` (E0 T17). Plik czytamy
 z `downloadPath` po nazwie z komunikatu `Zapisano`, a nie z Playwrightowego zdarzenia `download` (pobranie inicjuje popup).

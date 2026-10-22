@@ -11,15 +11,15 @@ Każda zmiana struktury musi być jawna i wersjonowana, inaczej któryś z nich 
 ## Zasady
 
 1. **`schemaVersion`** (integer) na górze `snapshot.json`. Obecny kod (wersja z `version: '1.0.0'`,
-   bez `schemaVersion`) traktujemy jako `schemaVersion: 1`. Pierwsza zmiana → `2`.
+   bez `schemaVersion`) traktujemy jako `schemaVersion: 1`. Pierwsza zmiana → `2` (**zrealizowane w E1**, rozszerzenie 0.3.0; `SCHEMA_VERSION` w `src/lib/package.js`).
    Podbijasz, gdy: usuwasz/zmieniasz nazwę lub typ pola, zmieniasz semantykę (np. jednostkę czasu).
    **Nie** podbijasz, gdy tylko dodajesz pole opcjonalne — ale dopisujesz je do `docs/snapshot-schema.md`
    z adnotacją „od wersji rozszerzenia x.y.z”.
 2. **Konsumenci czytają defensywnie**: brak pola = `undefined`, nie wyjątek. Viewer i MCP wspierają
    wszystkie wersje ≥ 1 (tabela migracji w `docs/snapshot-schema.md`).
 3. **Czas**: wszystkie znaczniki w rekordach to `t` — milisekundy od `performance.timeOrigin` (number).
-   Jedno pole ISO w nagłówku: `collectedAt`, `recordingStartedAt`. Nie mieszaj (obecny kod ma ISO w każdym
-   rekordzie — do zmiany w E1).
+   Jedno pole ISO w nagłówku: `collectedAt`, `recordingStartedAt`. Nie mieszaj (v1 miało ISO w każdym
+   rekordzie — zmienione w v2/E1; `t` liczone od `documents[doc].timeOrigin` **swojego** dokumentu).
 4. **Limity** są częścią schematu: każda tablica ma w nagłówku `limits.<nazwa>` (max) i `truncated.<nazwa>`
    (bool). Developer ma wiedzieć, że czegoś brakuje.
 5. **Redakcja** zostawia ślad: pole zastąpione → `"[redacted:<reguła>]"` (string), nigdy `null`
@@ -29,10 +29,16 @@ Każda zmiana struktury musi być jawna i wersjonowana, inaczej któryś z nich 
 
 ## Docelowa struktura (kierunek dla E1–E4; pola oznaczone epikiem, w którym się pojawiają)
 
+**Stan: v2 jest zrealizowane w E1** (aktualny opis pól: `docs/snapshot-schema.md`; fixture `tests/fixtures/snapshots/v2.json`; składa ją
+`assemblePackage` z `src/lib/package.js`). Poniższy szkic to kierunek: pola z oznaczeniem E2/E3/E4 jeszcze nie istnieją. E1 dodało też
+`documents[]` (id, url, timeOrigin, navigationType, recorded, flushed, current, counts, kept) i `recordingStoppedReason`, których szkic nie
+pokazuje. Pola dodane w E2 (`steps`, `vitals`, `screenshots`, `status`…) to zmiana niełamiąca → wpis w dokumentacji; **v3 dopiero, jeśli E2
+zmieni istniejące pole lub jego semantykę** (np. kształt `network[]`, jednostki).
+
 ```jsonc
 {
   "schemaVersion": 2,
-  "extensionVersion": "0.2.0",
+  "extensionVersion": "0.3.0",
   "collectedAt": "ISO",
   "recordingStartedAt": "ISO",            // E1
   "timeOrigin": 1760950000000,

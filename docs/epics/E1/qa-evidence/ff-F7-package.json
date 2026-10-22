@@ -1,0 +1,404 @@
+{
+  "schemaVersion": 2,
+  "extensionVersion": "0.2.0",
+  "source": "extension",
+  "collectedAt": "2026-10-22T21:36:44.280Z",
+  "recordingStartedAt": "2026-10-22T21:36:36.420Z",
+  "recordingStoppedReason": null,
+  "timeOrigin": 1792704996426,
+  "documents": [
+    {
+      "id": 0,
+      "url": "http://127.0.0.1:8080/early-error.html",
+      "timeOrigin": 1792704996426,
+      "navigationType": "reload",
+      "recorded": true,
+      "flushed": true,
+      "current": true,
+      "counts": {
+        "consoleLogs": 4,
+        "runtimeErrors": 2,
+        "network": 3
+      },
+      "kept": {
+        "consoleLogs": 4,
+        "runtimeErrors": 2,
+        "network": 3
+      }
+    }
+  ],
+  "limits": {
+    "consoleLogs": 5000,
+    "runtimeErrors": 1000,
+    "network": 5000,
+    "entryChars": 10000
+  },
+  "truncated": {
+    "consoleLogs": false,
+    "runtimeErrors": false,
+    "network": false
+  },
+  "notes": [
+    "Recording started at 2026-10-22T21:36:36.420Z (page reloaded); earlier data is not included."
+  ],
+  "environment": {
+    "timestamp": "2026-10-22T21:36:44.277Z",
+    "location": {
+      "href": "http://127.0.0.1:8080/early-error.html",
+      "origin": "http://127.0.0.1:8080",
+      "protocol": "http:",
+      "host": "127.0.0.1:8080",
+      "hostname": "127.0.0.1",
+      "port": "8080",
+      "pathname": "/early-error.html",
+      "search": "",
+      "hash": ""
+    },
+    "document": {
+      "title": "PDS fixture: early error",
+      "referrer": "",
+      "readyState": "complete",
+      "visibilityState": "visible",
+      "lastModified": "10/22/2026 23:36:44"
+    },
+    "navigator": {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
+      "language": "pl",
+      "languages": [
+        "pl",
+        "en-US",
+        "en"
+      ],
+      "cookieEnabled": true,
+      "onLine": true,
+      "platform": "Win32",
+      "hardwareConcurrency": 32,
+      "deviceMemory": null
+    },
+    "screen": {
+      "width": 3440,
+      "height": 1440,
+      "availWidth": 3440,
+      "availHeight": 1392,
+      "colorDepth": 24,
+      "pixelDepth": 24
+    },
+    "viewport": {
+      "innerWidth": 1280,
+      "innerHeight": 955,
+      "outerWidth": 1296,
+      "outerHeight": 1048,
+      "devicePixelRatio": 1,
+      "scrollX": 0,
+      "scrollY": 0
+    }
+  },
+  "dom": {
+    "counts": {
+      "totalElements": 10,
+      "scripts": 3,
+      "stylesheets": 0,
+      "images": 0,
+      "links": 0,
+      "iframes": 0,
+      "forms": 0
+    },
+    "html": {
+      "doctype": {
+        "name": "html",
+        "publicId": "",
+        "systemId": ""
+      },
+      "lang": "pl",
+      "charset": "UTF-8",
+      "compatMode": "CSS1Compat",
+      "outerHTML": "<html lang=\"pl\"><head>\n  <meta charset=\"utf-8\">\n  <title>PDS fixture: early error</title>\n  <script>\n    // AC-4.1: the very first script of the document throws before DOMContentLoaded.\n    throw new Error('head-boom');\n  </script>\n  <script>\n    // AC-4.1/4.2: network, console.error and an unhandled rejection, all from <head>, before\n    // DOMContentLoaded. window.__requestsDone resolves when all three requests have finished.\n    window.__requestsDone = Promise.all([\n      fetch('/api/fail').then((r) => r.status),\n      fetch('/api/ok').then((r) => r.status),\n      new Promise((resolve) => {\n        const xhr = new XMLHttpRequest();\n        xhr.open('GET', '/api/ok?via=xhr');\n        xhr.onloadend = () => resolve(xhr.status);\n        xhr.send();\n      }),\n    ]);\n    console.error('head-console', { a: 1 });\n    Promise.reject(new Error('head-rejection'));\n  </script>\n</head>\n<body>\n  <h1>Strona testowa: błąd w nagłówku</h1>\n  <p id=\"content\">Błąd, zapytania i wpis konsoli przed DOMContentLoaded.</p>\n  <script>\n    // Unique per document, so a test can tell this load from the previous one.\n    window.__marker = 'marker-' + Math.random().toString(36).slice(2);\n    console.log(window.__marker);\n  </script>\n\n\n</body></html>"
+    },
+    "meta": [
+      {
+        "tagName": "META",
+        "id": null,
+        "className": null,
+        "name": null,
+        "type": null,
+        "src": null,
+        "href": null,
+        "text": "",
+        "attributes": {
+          "charset": "utf-8"
+        }
+      }
+    ],
+    "canonical": null,
+    "hreflangs": [],
+    "scripts": [
+      {
+        "src": null,
+        "type": null,
+        "async": false,
+        "defer": false,
+        "textLength": 122,
+        "id": null,
+        "attributes": {}
+      },
+      {
+        "src": null,
+        "type": null,
+        "async": false,
+        "defer": false,
+        "textLength": 630,
+        "id": null,
+        "attributes": {}
+      },
+      {
+        "src": null,
+        "type": null,
+        "async": false,
+        "defer": false,
+        "textLength": 188,
+        "id": null,
+        "attributes": {}
+      }
+    ],
+    "stylesheets": [],
+    "images": [],
+    "iframes": [],
+    "forms": [],
+    "rootMarkers": {
+      "bodyClassName": null,
+      "htmlClassName": null,
+      "dataAttributesOnHtml": {
+        "lang": "pl"
+      },
+      "dataAttributesOnBody": {}
+    }
+  },
+  "performance": {
+    "timeOrigin": 1792704996426,
+    "navigation": {
+      "name": "http://127.0.0.1:8080/early-error.html",
+      "entryType": "navigation",
+      "startTime": 0,
+      "duration": 19,
+      "initiatorType": "navigation",
+      "nextHopProtocol": "http/1.1",
+      "workerStart": 0,
+      "redirectStart": 0,
+      "redirectEnd": 0,
+      "fetchStart": 6,
+      "domainLookupStart": 6,
+      "domainLookupEnd": 6,
+      "connectStart": 6,
+      "secureConnectionStart": 0,
+      "connectEnd": 6,
+      "requestStart": 7,
+      "responseStart": 8,
+      "responseEnd": 8,
+      "domInteractive": 18,
+      "domContentLoadedEventStart": 18,
+      "domContentLoadedEventEnd": 18,
+      "domComplete": 19,
+      "loadEventStart": 19,
+      "loadEventEnd": 19,
+      "transferSize": 1564,
+      "encodedBodySize": 1264,
+      "decodedBodySize": 1264,
+      "type": "reload"
+    },
+    "resources": [
+      {
+        "name": "http://127.0.0.1:8080/api/fail",
+        "entryType": "resource",
+        "initiatorType": "fetch",
+        "startTime": 16,
+        "duration": 6,
+        "transferSize": 326,
+        "encodedBodySize": 26,
+        "decodedBodySize": 26,
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": null,
+        "responseEnd": 22
+      },
+      {
+        "name": "http://127.0.0.1:8080/api/ok?via=xhr",
+        "entryType": "resource",
+        "initiatorType": "xmlhttprequest",
+        "startTime": 17,
+        "duration": 5,
+        "transferSize": 311,
+        "encodedBodySize": 11,
+        "decodedBodySize": 11,
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": null,
+        "responseEnd": 22
+      },
+      {
+        "name": "http://127.0.0.1:8080/api/ok",
+        "entryType": "resource",
+        "initiatorType": "fetch",
+        "startTime": 17,
+        "duration": 5,
+        "transferSize": 311,
+        "encodedBodySize": 11,
+        "decodedBodySize": 11,
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": null,
+        "responseEnd": 22
+      },
+      {
+        "name": "http://127.0.0.1:8080/favicon.ico",
+        "entryType": "resource",
+        "initiatorType": "other",
+        "startTime": 19,
+        "duration": 6,
+        "transferSize": 0,
+        "encodedBodySize": 9,
+        "decodedBodySize": 9,
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": null,
+        "responseEnd": 25
+      }
+    ]
+  },
+  "storage": {
+    "cookies": "",
+    "localStorage": {},
+    "sessionStorage": {}
+  },
+  "consoleLogs": [
+    {
+      "t": 17,
+      "doc": 0,
+      "level": "error",
+      "args": [
+        "head-console",
+        {
+          "a": 1
+        }
+      ],
+      "stack": "@http://127.0.0.1:8080/early-error.html:23:13"
+    },
+    {
+      "t": 18,
+      "doc": 0,
+      "level": "log",
+      "args": [
+        "marker-4ed8hrlz9f6"
+      ],
+      "stack": "@http://127.0.0.1:8080/early-error.html:33:13"
+    },
+    {
+      "t": 1509,
+      "doc": 0,
+      "level": "log",
+      "args": [
+        "before-kill"
+      ],
+      "stack": "o<@http://127.0.0.1:8080/early-error.html line 2 > injectedScript:1:61\n@http://127.0.0.1:8080/early-error.html line 2 > injectedScript:1:92\n@http://127.0.0.1:8080/early-error.html line 2 > injectedScript:1:239\n@http://127.0.0.1:8080/early-error.html:2:347\n@http://127.0.0.1:8080/early-error.html:3:8"
+    },
+    {
+      "t": 5804,
+      "doc": 0,
+      "level": "log",
+      "args": [
+        "after-kill"
+      ],
+      "stack": "o<@http://127.0.0.1:8080/early-error.html line 2 > injectedScript:1:61\n@http://127.0.0.1:8080/early-error.html line 2 > injectedScript:1:91\n@http://127.0.0.1:8080/early-error.html line 2 > injectedScript:1:238\n@http://127.0.0.1:8080/early-error.html:2:346\n@http://127.0.0.1:8080/early-error.html:3:8"
+    }
+  ],
+  "runtimeErrors": [
+    {
+      "t": 16,
+      "doc": 0,
+      "type": "error",
+      "message": "Error: head-boom",
+      "filename": "http://127.0.0.1:8080/early-error.html",
+      "lineno": 8,
+      "colno": 11,
+      "stack": "@http://127.0.0.1:8080/early-error.html:8:11\n"
+    },
+    {
+      "t": 18,
+      "doc": 0,
+      "type": "unhandledrejection",
+      "message": "head-rejection",
+      "stack": "@http://127.0.0.1:8080/early-error.html:24:20\n",
+      "reason": {
+        "name": "Error",
+        "message": "head-rejection",
+        "stack": "@http://127.0.0.1:8080/early-error.html:24:20\n"
+      }
+    }
+  ],
+  "network": [
+    {
+      "t": 16,
+      "doc": 0,
+      "type": "fetch",
+      "method": "GET",
+      "url": "http://127.0.0.1:8080/api/fail",
+      "status": 500,
+      "statusText": "Internal Server Error",
+      "ok": false,
+      "redirected": false,
+      "durationMs": 8,
+      "requestHeaders": {},
+      "responseHeaders": {
+        "cache-control": "no-store",
+        "connection": "keep-alive",
+        "content-type": "application/json; charset=utf-8",
+        "date": "Thu, 22 Oct 2026 21:36:36 GMT",
+        "keep-alive": "timeout=5",
+        "transfer-encoding": "chunked"
+      },
+      "requestBody": null,
+      "error": null
+    },
+    {
+      "t": 17,
+      "doc": 0,
+      "type": "xhr",
+      "method": "GET",
+      "url": "http://127.0.0.1:8080/api/ok?via=xhr",
+      "status": 200,
+      "statusText": "OK",
+      "ok": true,
+      "redirected": false,
+      "durationMs": 5,
+      "requestHeaders": {},
+      "responseHeaders": {
+        "cache-control": "no-store",
+        "connection": "keep-alive",
+        "content-type": "application/json; charset=utf-8",
+        "date": "Thu, 22 Oct 2026 21:36:36 GMT",
+        "keep-alive": "timeout=5",
+        "transfer-encoding": "chunked"
+      },
+      "requestBody": null,
+      "error": null
+    },
+    {
+      "t": 17,
+      "doc": 0,
+      "type": "fetch",
+      "method": "GET",
+      "url": "http://127.0.0.1:8080/api/ok",
+      "status": 200,
+      "statusText": "OK",
+      "ok": true,
+      "redirected": false,
+      "durationMs": 7,
+      "requestHeaders": {},
+      "responseHeaders": {
+        "cache-control": "no-store",
+        "connection": "keep-alive",
+        "content-type": "application/json; charset=utf-8",
+        "date": "Thu, 22 Oct 2026 21:36:36 GMT",
+        "keep-alive": "timeout=5",
+        "transfer-encoding": "chunked"
+      },
+      "requestBody": null,
+      "error": null
+    }
+  ]
+}

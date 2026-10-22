@@ -1,0 +1,311 @@
+{
+  "schemaVersion": 2,
+  "extensionVersion": "0.2.0",
+  "source": "extension",
+  "collectedAt": "2026-10-22T21:43:24.724Z",
+  "recordingStartedAt": "2026-10-22T21:43:23.179Z",
+  "recordingStoppedReason": null,
+  "timeOrigin": 1792705403185,
+  "documents": [
+    {
+      "id": 0,
+      "url": "http://127.0.0.1:8080/basic.html",
+      "timeOrigin": 1792705403185,
+      "navigationType": "reload",
+      "recorded": true,
+      "flushed": true,
+      "current": true,
+      "counts": {
+        "consoleLogs": 2,
+        "runtimeErrors": 0,
+        "network": 1
+      },
+      "kept": {
+        "consoleLogs": 2,
+        "runtimeErrors": 0,
+        "network": 1
+      }
+    }
+  ],
+  "limits": {
+    "consoleLogs": 5000,
+    "runtimeErrors": 1000,
+    "network": 5000,
+    "entryChars": 10000
+  },
+  "truncated": {
+    "consoleLogs": false,
+    "runtimeErrors": false,
+    "network": false
+  },
+  "notes": [
+    "Recording started at 2026-10-22T21:43:23.179Z (page reloaded); earlier data is not included."
+  ],
+  "environment": {
+    "timestamp": "2026-10-22T21:43:24.722Z",
+    "location": {
+      "href": "http://127.0.0.1:8080/basic.html",
+      "origin": "http://127.0.0.1:8080",
+      "protocol": "http:",
+      "host": "127.0.0.1:8080",
+      "hostname": "127.0.0.1",
+      "port": "8080",
+      "pathname": "/basic.html",
+      "search": "",
+      "hash": ""
+    },
+    "document": {
+      "title": "PDS fixture: basic",
+      "referrer": "",
+      "readyState": "complete",
+      "visibilityState": "visible",
+      "lastModified": "10/22/2026 23:43:24"
+    },
+    "navigator": {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
+      "language": "pl",
+      "languages": [
+        "pl",
+        "en-US",
+        "en"
+      ],
+      "cookieEnabled": true,
+      "onLine": true,
+      "platform": "Win32",
+      "hardwareConcurrency": 32,
+      "deviceMemory": null
+    },
+    "screen": {
+      "width": 3440,
+      "height": 1440,
+      "availWidth": 3440,
+      "availHeight": 1392,
+      "colorDepth": 24,
+      "pixelDepth": 24
+    },
+    "viewport": {
+      "innerWidth": 1280,
+      "innerHeight": 955,
+      "outerWidth": 1296,
+      "outerHeight": 1048,
+      "devicePixelRatio": 1,
+      "scrollX": 0,
+      "scrollY": 0
+    }
+  },
+  "dom": {
+    "counts": {
+      "totalElements": 13,
+      "scripts": 1,
+      "stylesheets": 0,
+      "images": 0,
+      "links": 0,
+      "iframes": 0,
+      "forms": 1
+    },
+    "html": {
+      "doctype": {
+        "name": "html",
+        "publicId": "",
+        "systemId": ""
+      },
+      "lang": "pl",
+      "charset": "UTF-8",
+      "compatMode": "CSS1Compat",
+      "outerHTML": "<html lang=\"pl\"><head>\n  <meta charset=\"utf-8\">\n  <title>PDS fixture: basic</title>\n  <script>\n    // AC-2.3: record every node added to the DOM after load, so e2e can check that the\n    // extension injects no <script src=\"chrome-extension://...\"> and leaves nothing behind.\n    window.__added = [];\n    new MutationObserver((records) => {\n      for (const record of records) {\n        for (const node of record.addedNodes) {\n          window.__added.push({\n            nodeName: node.nodeName,\n            src: node.nodeType === 1 ? node.getAttribute('src') : null,\n            id: node.nodeType === 1 ? node.id : null,\n          });\n        }\n      }\n    }).observe(document.documentElement, { childList: true, subtree: true });\n    console.log('basic fixture loaded');\n  </script>\n</head>\n<body>\n  <h1>Strona testowa</h1>\n  <p id=\"content\">Syntetyczna treść do testów rozszerzenia Page Debug Snapshot.</p>\n  <button id=\"action\" type=\"button\">Kliknij</button>\n\n\n<form><input id=\"em\" name=\"email\" type=\"email\"><input id=\"pw\" name=\"pw\" type=\"password\"><input id=\"hid\" type=\"hidden\" name=\"h\" value=\"SECRET-HIDDEN-999\"></form></body></html>"
+    },
+    "meta": [
+      {
+        "tagName": "META",
+        "id": null,
+        "className": null,
+        "name": null,
+        "type": null,
+        "src": null,
+        "href": null,
+        "text": "",
+        "attributes": {
+          "charset": "utf-8"
+        }
+      }
+    ],
+    "canonical": null,
+    "hreflangs": [],
+    "scripts": [
+      {
+        "src": null,
+        "type": null,
+        "async": false,
+        "defer": false,
+        "textLength": 681,
+        "id": null,
+        "attributes": {}
+      }
+    ],
+    "stylesheets": [],
+    "images": [],
+    "iframes": [],
+    "forms": [
+      {
+        "id": null,
+        "name": null,
+        "method": "get",
+        "action": "http://127.0.0.1:8080/basic.html",
+        "enctype": "application/x-www-form-urlencoded",
+        "elements": [
+          {
+            "tagName": "INPUT",
+            "type": "email",
+            "name": "email",
+            "id": "em",
+            "value": "jan.kowalski@example.com",
+            "checked": false
+          },
+          {
+            "tagName": "INPUT",
+            "type": "password",
+            "name": "pw",
+            "id": "pw",
+            "value": "[redacted]",
+            "checked": false
+          },
+          {
+            "tagName": "INPUT",
+            "type": "hidden",
+            "name": "h",
+            "id": "hid",
+            "value": "[redacted]",
+            "checked": false
+          }
+        ]
+      }
+    ],
+    "rootMarkers": {
+      "bodyClassName": null,
+      "htmlClassName": null,
+      "dataAttributesOnHtml": {
+        "lang": "pl"
+      },
+      "dataAttributesOnBody": {}
+    }
+  },
+  "performance": {
+    "timeOrigin": 1792705403185,
+    "navigation": {
+      "name": "http://127.0.0.1:8080/basic.html",
+      "entryType": "navigation",
+      "startTime": 0,
+      "duration": 8,
+      "initiatorType": "navigation",
+      "nextHopProtocol": "http/1.1",
+      "workerStart": 0,
+      "redirectStart": 0,
+      "redirectEnd": 0,
+      "fetchStart": 0,
+      "domainLookupStart": 0,
+      "domainLookupEnd": 0,
+      "connectStart": 0,
+      "secureConnectionStart": 0,
+      "connectEnd": 0,
+      "requestStart": 2,
+      "responseStart": 2,
+      "responseEnd": 2,
+      "domInteractive": 7,
+      "domContentLoadedEventStart": 7,
+      "domContentLoadedEventEnd": 8,
+      "domComplete": 8,
+      "loadEventStart": 8,
+      "loadEventEnd": 8,
+      "transferSize": 1299,
+      "encodedBodySize": 999,
+      "decodedBodySize": 999,
+      "type": "reload"
+    },
+    "resources": [
+      {
+        "name": "http://127.0.0.1:8080/favicon.ico",
+        "entryType": "resource",
+        "initiatorType": "other",
+        "startTime": 8,
+        "duration": 10,
+        "transferSize": 0,
+        "encodedBodySize": 9,
+        "decodedBodySize": 9,
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": null,
+        "responseEnd": 18
+      },
+      {
+        "name": "http://127.0.0.1:8080/api/ok",
+        "entryType": "resource",
+        "initiatorType": "fetch",
+        "startTime": 1509,
+        "duration": 2,
+        "transferSize": 311,
+        "encodedBodySize": 11,
+        "decodedBodySize": 11,
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": null,
+        "responseEnd": 1511
+      }
+    ]
+  },
+  "storage": {
+    "cookies": "sid=SECRET-COOKIE-777",
+    "localStorage": {
+      "auth_token": "SECRET-TOKEN-abc123"
+    },
+    "sessionStorage": {
+      "sess": "SECRET-SESSION-xyz"
+    }
+  },
+  "consoleLogs": [
+    {
+      "t": 7,
+      "doc": 0,
+      "level": "log",
+      "args": [
+        "basic fixture loaded"
+      ],
+      "stack": "@http://127.0.0.1:8080/basic.html:21:13"
+    },
+    {
+      "t": 1518,
+      "doc": 0,
+      "level": "log",
+      "args": [
+        "user email jan.kowalski@example.com token SECRET-TOKEN-abc123"
+      ],
+      "stack": "o<@http://127.0.0.1:8080/basic.html line 2 > injectedScript:1:774"
+    }
+  ],
+  "runtimeErrors": [],
+  "network": [
+    {
+      "t": 1509,
+      "doc": 0,
+      "type": "fetch",
+      "method": "POST",
+      "url": "http://127.0.0.1:8080/api/ok",
+      "status": 200,
+      "statusText": "OK",
+      "ok": true,
+      "redirected": false,
+      "durationMs": 9,
+      "requestHeaders": {
+        "Authorization": "Bearer SECRET-BEARER-111",
+        "Content-Type": "application/json"
+      },
+      "responseHeaders": {
+        "cache-control": "no-store",
+        "connection": "keep-alive",
+        "content-type": "application/json; charset=utf-8",
+        "date": "Thu, 22 Oct 2026 21:43:24 GMT",
+        "keep-alive": "timeout=5",
+        "transfer-encoding": "chunked"
+      },
+      "requestBody": "{\"password\":\"SECRET-BODY-222\"}",
+      "error": null
+    }
+  ]
+}

@@ -36,6 +36,10 @@ Dodatek tymczasowy w Firefoksie **znika po restarcie** — to normalne, nie bł�
 
 ## `reload` — po zmianie kodu
 
+**Zmiana w `src/page` (recorder, hooki, kanał, collector) = najpierw `npm run gen`**, potem `npm run build`. Przeglądarka ładuje
+wygenerowane `src/content/*.js` (trafiają do `dist/`), nie moduły z `src/page`; bez `gen` zmiana jest niewidoczna, a `npm run gen -- --check`
+i test `gen-content` padają. Pętla: edycja `src/page` → `npm run gen` → `npm run build` (albo `dev:*` robi build) → odśwież rozszerzenie → przeładuj kartę.
+
 | Co zmieniłeś | Chrome | Firefox |
 |---|---|---|
 | popup, skrypty strony | zamknij/otwórz popup + przeładuj stronę | `web-ext run` przeładowuje sam; ręcznie: about:debugging → „Przeładuj” |
