@@ -1,6 +1,6 @@
 # E1 — Model nagrywania: dane od startu strony — stan
 
-faza: test
+faza: review-qa
 rozpoczęto: 2026-10-22
 ostatnia aktualizacja: 2026-10-22
 
@@ -96,7 +96,23 @@ ostatnia aktualizacja: 2026-10-22
   Tester: 1/330 „after save: reload has no recorder” — startRecording nie doczekał reloadu w 10 s przy równoległym Chromium; sprawdzić na przebiegu na wyłączność (może wiązać się z F-e1-2).
 - [x] F-e1-2: nieodtwarzalne (350+ prób ze znacznikami SW/ISOLATED/popup, 0 zawieszeń; navigation 100/100). Popup nie wisi (kontroler 15 s → pageBusy). Przyczyna losowych porażek w grupie G: **równoległe przebiegi e2e przebudowują dist/chrome pod działającą przeglądarką** (21/40 porażek w takim scenariuszu). Skrypt diagnostyczny: scratchpad/diag/run.mjs.
   Dla testera: (1) `saveRecording` czekać ≥ 16 s (dłużej niż timeout kontrolera), (2) global-setup: build do katalogu per przebieg lub blokada/flaga `PDS_E2E_NO_BUILD`, żeby równoległe przebiegi nie psuły dist.
-- [~] E1-TEST pds-tester (start 2026-10-23)
+- [x] E1-TEST pds-tester: lint ✓, unit 593/593 (~3 s), e2e 39/39 ×3 + repeat-each 111/111, **0 flaky / ~400 uruchomień**; harness: PDS_E2E_NO_BUILD, saveRecording 16 s; +3 testy (NFR zapis 122 ms, E0 AC-3.3, AC-2.3); 44/44 AC → docs/epics/E1/test-coverage.md; narzut fetch p95 ≤ 0 ms; dist 150 KB, zipy 53 KB. Werdykt: zielone.
+- [x] E1-R1 pds-reviewer: **request-changes** — 1 high (ujawnienie bez treści żądań = store F1 → H1), 3 medium, 6 low (poniżej) ∥ E1-R2 pds-store-reviewer ✓ (would-be-rejected — blokery E3/E5; E0-1 ujawnienie częściowo → H1; docs/epics/E1/store-review.md) ∥ E1-Q1 pds-qa (w toku)
+### Findings R1 E1 (pds-reviewer, 2026-10-23)
+- [high] messages.js disclosure bez `requestBody` (hasło z POST /api/login jawnie w pliku) → **H1**. Decyzja orkiestratora: ujawniamy teraz (tekst F1), zapis body zostaje; redakcja w E3.
+- [medium] hooks-console.js restore() nadpisuje wrapper strony (Sentry/Datadog) → **H2.1**
+- [medium] session-store.js budżet łączny po `set` → przy quota ginie najnowszy dokument → **H2.2**
+- [medium] serialize.js limit 10 000 zn. dopiero po pełnym stringify (console.log(5 MB) = dziesiątki ms w wątku strony) → **E3** (serializacja z budżetem + outerHTML cięty przed odczytem + test perf na dużym obiekcie)
+- [low] package.js `recorded` zawsze true dla bieżącego dokumentu → **H2.4a**
+- [low] recorder.js termin z performance.now() (uśpienie laptopa → nagrywanie poza limitem) → **H2.3**
+- [low] rec.docs przycinane do 100, a pds:doc:* zostają → kolejność documents[] → **E2/E3 backlog**
+- [low] notatka przy current:null po auto-stopie myląca → **H2.4b**
+- [low] serialize.js żywe JSON strony (jakość danych, nie bezpieczeństwo) → **E3** (przechwycić JSON na document_start)
+- Do QA (wysłane): Firefox — panel pobrań może zamknąć popup → revokeObjectURL → plik ucięty? (F19). Jeśli tak → fallback D7(d) blob w event page.
+- Known limitation (docs): `xhr.constructor === XMLHttpRequest` → false przy Proxy (prototype.constructor to oryginał).
+- [x] H1 (store F1/F2/F5 + review high): disclosureItems ×5, `consentNotice` (#noUpload < #consentNotice < #record), README storage PL/EN — 595/595, recording e2e 11/11; słownik AC-1.4 przepuścił teksty
+- [~] H2 (review): console restore guard, enforceTotalBudget przed set, deadline Date.now, recorded/bridgeError + notatka (start)
+- Release E1: wersja **0.3.0** (F11). Docs: README cofanie dostępu (F12). E5: F6 źródła dla AMO, F7 notatka, F9, F10.
     Tester: NFR „save→Zapisano mediana z 5 ≤ 5 s” brak w T19e — dopisać w fazie Testy; `hooks-overhead.json` kasowany przez równoległe przebiegi — QA bierze z przebiegu na wyłączność.
 - [ ] E1-TEST1..3, R1, Q1, DOC1
 

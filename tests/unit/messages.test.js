@@ -39,6 +39,7 @@ describe('MESSAGES', () => {
         'disclosureTitle',
         'disclosureItems',
         'noUpload',
+        'consentNotice',
         'reloadNotice',
         'otherTabRecording',
         'starting',
@@ -70,13 +71,19 @@ describe('MESSAGES', () => {
   it('disclosure lists the five categories from AC-1.1 and the no-upload sentence verbatim', () => {
     expect(MESSAGES.disclosureTitle).toBe('Do pliku trafią:');
     expect(MESSAGES.disclosureItems).toEqual([
-      'adres strony i dane przeglądarki',
+      'adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu',
       'logi konsoli i błędy',
-      'zapytania sieciowe (adresy i nagłówki)',
-      'treść i struktura strony, w tym wartości wpisane w formularze',
-      'ciasteczka i dane zapisane przez stronę',
+      'zapytania sieciowe strony: adresy, nagłówki i wysyłana treść (mogą zawierać dane logowania) oraz adresy wczytanych plików',
+      'treść i struktura strony, w tym wartości wpisane w formularze (bez haseł i pól ukrytych)',
+      'ciasteczka i dane zapisane przez stronę (mogą zawierać dane logowania)',
     ]);
     expect(MESSAGES.noUpload).toBe('Plik zostaje na Twoim dysku, rozszerzenie niczego nie wysyła.');
+  });
+
+  it('consent notice (store review F2) warns about personal data and ties "Nagrywaj" to consent, verbatim', () => {
+    expect(MESSAGES.consentNotice).toBe(
+      'Plik może zawierać Twoje dane osobowe i dane logowania — wyślij go tylko developerowi. Klikając „Nagrywaj”, zgadzasz się na zapisanie tych danych w pliku.',
+    );
   });
 
   it('reload notice mentions odświeży', () => {

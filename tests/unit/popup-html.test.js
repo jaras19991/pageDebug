@@ -31,6 +31,7 @@ describe('popup.html', () => {
     const items = [...document.querySelectorAll('#ready #disclosure > li')].map((li) => li.textContent.trim());
     expect(items).toEqual([...MESSAGES.disclosureItems]);
     expect(text('#ready #noUpload')).toBe(MESSAGES.noUpload);
+    expect(text('#ready #consentNotice')).toBe(MESSAGES.consentNotice);
     expect(text('#ready #reloadNotice')).toBe(MESSAGES.reloadNotice);
     expect(text('#recording #hint')).toBe(MESSAGES.recordingHint);
   });
@@ -39,6 +40,14 @@ describe('popup.html', () => {
     const disclosure = document.getElementById('disclosure');
     const record = document.getElementById('record');
     expect(disclosure.compareDocumentPosition(record) & 4).toBe(4); // DOCUMENT_POSITION_FOLLOWING
+  });
+
+  it('consent notice sits below the no-upload sentence and above the record button', () => {
+    const noUpload = document.getElementById('noUpload');
+    const consent = document.getElementById('consentNotice');
+    const record = document.getElementById('record');
+    expect(noUpload.compareDocumentPosition(consent) & 4).toBe(4); // DOCUMENT_POSITION_FOLLOWING
+    expect(consent.compareDocumentPosition(record) & 4).toBe(4);
   });
 
   it('loads popup.js as a module and has no inline scripts or handlers (CSP)', () => {

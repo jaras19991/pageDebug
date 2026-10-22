@@ -152,6 +152,34 @@ describe('assemblePackage', () => {
     expect(pkg.consoleLogs[0].doc).toBe(1);
   });
 
+  it('known document marked not recorded or with bridgeError → recorded false and a note, also for the current one', () => {
+    const pkg = assemblePackage({
+      meta: meta(),
+      current: current(),
+      priorDocs: [prior()],
+      docs: [
+        { id: 0, url: 'http://127.0.0.1:8080/unbound.html', flushed: false, recorded: false, bridgeError: 'unbound' },
+        { id: 1, flushed: true, recorded: false },
+        { id: 2, flushed: false, bridgeError: 'unbound' },
+      ],
+    });
+    expect(pkg.documents.map((d) => [d.recorded, d.current])).toEqual([
+      [false, false],
+      [false, false],
+      [false, true],
+    ]);
+    const bridgeNotes = pkg.notes.filter((n) => /was not recorded/.test(n) && /unbound/.test(n));
+    expect(bridgeNotes).toHaveLength(2);
+    expect(bridgeNotes[0]).toMatch(/Document 0 \(http:\/\/127\.0\.0\.1:8080\/unbound\.html\)/);
+    expect(bridgeNotes[1]).toMatch(/Document 2/);
+  });
+
+  it('known documents without recorded:false or bridgeError stay recorded', () => {
+    const pkg = assemblePackage({ meta: meta(), current: current(), priorDocs: [prior()], docs: [{ id: 1, flushed: true }, { id: 2 }] });
+    expect(pkg.documents.map((d) => d.recorded)).toEqual([true, true]);
+    expect(pkg.notes.some((n) => /was not recorded/.test(n))).toBe(false);
+  });
+
   it('global limit keeps newest and sets truncated; no limit hit → truncated false', () => {
     // AC-4.8
     const many = Array.from({ length: 6 }, (_, i) => log(i, `p${i}`));
@@ -210,6 +238,15 @@ describe('assemblePackage', () => {
     expect(pkg.notes.some((n) => /current page/i.test(n) && /null/.test(n))).toBe(true);
     expect(pkg.timeOrigin).toBe(STARTED + 100.25);
     expect(pkg.documents.every((d) => d.current === false)).toBe(true);
+    expect(pkg.consoleLogs).toHaveLength(2);
+  });
+
+  it('current null after the time limit (page loaded after stop) → specific note instead of left/no answer', () => {
+    const pkg = assemblePackage({ meta: meta({ stopReason: 'time-limit', currentMissingReason: 'loadedAfterStop' }), current: null, priorDocs: [prior()] });
+    expect(pkg.notes).toContain(
+      'The current page was not available: page was loaded after the recording stopped (time limit); package contains documents recorded before the limit. environment, dom, performance and storage are null.',
+    );
+    expect(pkg.notes.some((n) => /left the recorded origin/.test(n))).toBe(false);
     expect(pkg.consoleLogs).toHaveLength(2);
   });
 

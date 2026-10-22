@@ -189,6 +189,7 @@ export function createSaveHandlers(api) {
 
       const version = runtime.getManifest().version;
       let current = null;
+      let currentMissingReason;
       if (tab && isSameOrigin(tab.url, rec.origin)) {
         let raw;
         let noReceiver = false;
@@ -204,6 +205,7 @@ export function createSaveHandlers(api) {
             await failSave(sameAttempt);
             return { ok: false, reason: 'failed' };
           }
+          currentMissingReason = 'loadedAfterStop';
         } else if (raw === TIMEOUT) {
           await failSave(sameAttempt);
           return { ok: false, reason: 'pageBusy' };
@@ -221,7 +223,7 @@ export function createSaveHandlers(api) {
       const deadline = typeof rec.deadline === 'number' ? rec.deadline : undefined;
       const stopReason = rec.stopReason ?? (deadline !== undefined && collectedAt >= deadline ? 'time-limit' : null);
       const pkg = assemblePackage({
-        meta: { extensionVersion: version, source: 'extension', startedAt: rec.startedAt, collectedAt, stopReason, deadline },
+        meta: { extensionVersion: version, source: 'extension', startedAt: rec.startedAt, collectedAt, stopReason, deadline, currentMissingReason },
         current,
         priorDocs,
         docs: Array.isArray(rec.docs) ? rec.docs : [],

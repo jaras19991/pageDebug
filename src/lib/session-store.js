@@ -119,15 +119,16 @@ export function createStore(area, { docBudgetBytes = DEFAULT_DOC_BUDGET, totalBu
       .sort((a, b) => compareIds(a.id, b.id));
   }
 
-  // Replaces the oldest other documents with counts until all documents fit the total budget.
-  async function enforceTotalBudget(currentId) {
-    const docs = await getAllDocs();
-    let total = docs.reduce((sum, d) => sum + byteSize(d.data), 0);
+  // Replaces the oldest other documents with counts until they, plus `reserve` bytes for the document about to be
+  // written under `currentId`, fit the total budget. Runs before the write, so a full quota never costs the newest.
+  async function enforceTotalBudget(currentId, reserve = 0) {
+    const docs = (await getAllDocs()).filter((d) => d.id !== currentId);
+    let total = docs.reduce((sum, d) => sum + byteSize(d.data), 0) + reserve;
     if (total <= totalBudgetBytes) return;
     const replacements = {};
     for (const doc of docs) {
       if (total <= totalBudgetBytes) break;
-      if (doc.id === currentId || doc.data?.dropped) continue;
+      if (doc.data?.dropped) continue;
       const slim = countsOnly(doc.data);
       total -= byteSize(doc.data) - byteSize(slim);
       replacements[docKey(doc.id)] = slim;
@@ -168,6 +169,11 @@ export function createStore(area, { docBudgetBytes = DEFAULT_DOC_BUDGET, totalBu
         let value = fitted ? fitted.data : countsOnly(data);
         let stored = !fitted ? 'dropped' : fitted.truncated ? 'truncated' : 'full';
         try {
+          await enforceTotalBudget(id, byteSize(value));
+        } catch {
+          // Slimming failed: the write below still falls back to counts on quota.
+        }
+        try {
           await area.set({ [docKey(id)]: value });
         } catch {
           // Quota (or any write error): keep only how much was lost.
@@ -179,7 +185,6 @@ export function createStore(area, { docBudgetBytes = DEFAULT_DOC_BUDGET, totalBu
             return { stored: 'lost' };
           }
         }
-        await enforceTotalBudget(id);
         return { stored };
       }),
 

@@ -32,6 +32,11 @@ function finite(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+// Reason the background stored when the ISOLATED bridge could not bind to MAIN (D3), or null.
+function bridgeErrorOf(known) {
+  return typeof known?.bridgeError === 'string' && known.bridgeError !== '' ? known.bridgeError : null;
+}
+
 function compareIds(a, b) {
   if (typeof a === 'number' && typeof b === 'number') return a - b;
   return String(a).localeCompare(String(b), 'en', { numeric: true });
@@ -60,6 +65,7 @@ function normalizeDoc(raw, isCurrent) {
     timeOrigin: finite(raw.timeOrigin),
     navigationType: typeof raw.navigationType === 'string' ? raw.navigationType : null,
     recorded: raw.recorded !== false,
+    bridgeError: null,
     flushed: true,
     dropped: raw.dropped === true,
     current: isCurrent,
@@ -75,7 +81,8 @@ function placeholderDoc(known) {
     url: typeof known.url === 'string' ? known.url : null,
     timeOrigin: null,
     navigationType: null,
-    recorded: known.recorded !== false,
+    recorded: known.recorded !== false && bridgeErrorOf(known) === null,
+    bridgeError: bridgeErrorOf(known),
     flushed: false,
     dropped: false,
     current: false,
@@ -92,10 +99,12 @@ function describeCounts(counts) {
 /**
  * @param {object} input
  * @param {{ extensionVersion: string, source: 'extension'|'console', startedAt: number|string, collectedAt: number|string,
- *           stopReason?: string|null, limits?: object, deadline?: number }} input.meta
+ *           stopReason?: string|null, limits?: object, deadline?: number,
+ *           currentMissingReason?: 'loadedAfterStop' }} input.meta  `currentMissingReason`: why `current` is null, when known
+ *           (`loadedAfterStop`: the tab has no recorder because it was loaded after the time limit stopped the recording)
  * @param {object|null} input.current  parsed `collect` result of the current document, or null when unavailable
  * @param {object[]} [input.priorDocs] snapshots from `pds:doc:*` (without the current docId)
- * @param {{ id, url?, flushed? }[]} [input.docs] documents known to the background (`pds:rec.docs`), in opening order
+ * @param {{ id, url?, flushed?, recorded?, bridgeError? }[]} [input.docs] documents known to the background (`pds:rec.docs`), in opening order
  */
 export function assemblePackage({ meta, current, priorDocs = [], docs = [] }) {
   const limits = { ...DEFAULT_LIMITS, ...(meta.limits ?? {}) };
@@ -118,6 +127,8 @@ export function assemblePackage({ meta, current, priorDocs = [], docs = [] }) {
     const doc = byId.get(known.id);
     if (doc) {
       if (doc.url === null && typeof known.url === 'string') doc.url = known.url;
+      doc.bridgeError = bridgeErrorOf(known);
+      doc.recorded = doc.recorded && known.recorded !== false && doc.bridgeError === null;
       byId.delete(known.id);
       if (!doc.current) ordered.push(doc);
       else byId.set(known.id, doc);
@@ -175,12 +186,16 @@ export function assemblePackage({ meta, current, priorDocs = [], docs = [] }) {
     const where = doc.url ? ` (${cap(doc.url, NOTE_URL_MAX)})` : '';
     if (doc.dropped) {
       notes.push(`Data of document ${index}${where} was dropped to fit the storage budget: ${describeCounts(doc.counts)} omitted.`);
+    } else if (doc.bridgeError !== null) {
+      notes.push(`Document ${index}${where} was not recorded: the recorder could not connect to the page (${cap(doc.bridgeError, NOTE_TEXT_MAX)}).`);
     } else if (!doc.flushed) {
       notes.push(`The data of document ${index} was not received${where}; its entries are missing.`);
     }
   });
 
-  if (!current) {
+  if (!current && meta.currentMissingReason === 'loadedAfterStop') {
+    notes.push('The current page was not available: page was loaded after the recording stopped (time limit); package contains documents recorded before the limit. environment, dom, performance and storage are null.');
+  } else if (!current) {
     notes.push('The current page was not available (it left the recorded origin or did not answer); environment, dom, performance and storage are null.');
   } else if (Array.isArray(current.errors)) {
     for (const err of current.errors.slice(0, PAGE_SECTIONS.length)) {

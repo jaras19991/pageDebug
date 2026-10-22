@@ -50,6 +50,9 @@ function dispatchError(win, props) {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  // Wall clock = page timeOrigin at window creation, so `deadline` (epoch from the background) and the fake
+  // `performance.now()` share one base.
+  vi.setSystemTime(TIME_ORIGIN);
 });
 
 afterEach(() => {
@@ -296,6 +299,26 @@ describe('createRecorder', () => {
     vi.runOnlyPendingTimers();
     expect(rec.isActive).toBe(false);
     expect(rec.stopReason).toBe('time-limit');
+  });
+
+  it('wall clock jumps 11 min while performance.now() stands (sleep) → later records dropped, stop(time-limit)', () => {
+    const win = makeWin();
+    const onStopped = vi.fn();
+    let perfNow = 0;
+    win.performance.now = () => perfNow;
+    const rec = createRecorder({ win, options: { onStopped } });
+    rec.install();
+    rec.setConfig({ record: true, docId: 0, deadline: Date.now() + 600_000 });
+    perfNow = 1000;
+    win.console.log('before sleep');
+    // Laptop asleep: wall clock moves 11 min, the monotonic clock does not.
+    vi.setSystemTime(Date.now() + 11 * 60_000);
+    win.console.log('after wake');
+    expect(rec.exportBuffers().consoleLogs.map((l) => l.args[0])).toEqual(['before sleep']);
+    vi.advanceTimersByTime(600_000);
+    expect(rec.isActive).toBe(false);
+    expect(rec.stopReason).toBe('time-limit');
+    expect(onStopped).toHaveBeenCalledWith('time-limit');
   });
 
   it('deadline already passed at config → stops at once without recording', () => {

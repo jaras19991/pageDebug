@@ -220,7 +220,8 @@ describe('collect', () => {
     const pkg = JSON.parse(res.json);
     expect(pkg.environment).toBeNull();
     expect(pkg.consoleLogs.map((l) => l.args[0])).toEqual(['before navigation']);
-    expect(pkg.notes.some((n) => /current page was not available/.test(n))).toBe(true);
+    expect(pkg.notes.some((n) => /current page was not available/.test(n) && /left the recorded origin/.test(n))).toBe(true);
+    expect(pkg.notes.some((n) => /loaded after the recording stopped/.test(n))).toBe(false);
   });
 
   it('tab closed after recording (tabs.get fails) → package without current document', async () => {
@@ -251,7 +252,8 @@ describe('collect', () => {
     const pkg = JSON.parse(res.json);
     expect(pkg.recordingStoppedReason).toBe('time-limit');
     expect(pkg.consoleLogs.map((l) => l.args[0])).toEqual(['before navigation']);
-    expect(pkg.notes.some((n) => /current page was not available/.test(n))).toBe(true);
+    expect(pkg.notes.some((n) => /page was loaded after the recording stopped \(time limit\)/.test(n))).toBe(true);
+    expect(pkg.notes.some((n) => /left the recorded origin/.test(n))).toBe(false);
   });
 
   it('deadline passed but state not yet marked stopped → still time-limit in the package (AC-4.9)', async () => {

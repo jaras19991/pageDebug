@@ -5,13 +5,16 @@ export const MESSAGES = Object.freeze({
   // Ready state: what lands in the file, shown above the "Nagrywaj" button (AC-1.1).
   disclosureTitle: 'Do pliku trafią:',
   disclosureItems: Object.freeze([
-    'adres strony i dane przeglądarki',
+    'adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu',
     'logi konsoli i błędy',
-    'zapytania sieciowe (adresy i nagłówki)',
-    'treść i struktura strony, w tym wartości wpisane w formularze',
-    'ciasteczka i dane zapisane przez stronę',
+    'zapytania sieciowe strony: adresy, nagłówki i wysyłana treść (mogą zawierać dane logowania) oraz adresy wczytanych plików',
+    'treść i struktura strony, w tym wartości wpisane w formularze (bez haseł i pól ukrytych)',
+    'ciasteczka i dane zapisane przez stronę (mogą zawierać dane logowania)',
   ]),
   noUpload: 'Plik zostaje na Twoim dysku, rozszerzenie niczego nie wysyła.',
+  // Store review F2: clicking "Nagrywaj" is the consent; the file may hold personal data.
+  consentNotice:
+    'Plik może zawierać Twoje dane osobowe i dane logowania — wyślij go tylko developerowi. Klikając „Nagrywaj”, zgadzasz się na zapisanie tych danych w pliku.',
   reloadNotice:
     'Po kliknięciu „Nagrywaj” strona odświeży się, a nagrywanie zacznie się od jej początku.',
   otherTabRecording:

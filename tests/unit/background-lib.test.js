@@ -271,6 +271,23 @@ describe('session store: documents', () => {
     expect(total).toBeLessThanOrEqual(6_000);
   });
 
+  it('putDoc makes room within the total budget before writing: newest document kept whole, oldest reduced', async () => {
+    const MB = 1024 * 1024;
+    const { chrome } = createFakeChrome({ quotaBytes: 10 * MB });
+    const store = createStore(chrome.storage.session);
+    const big = (docId, mb) => docData(1, { docId, chars: Math.floor(mb * MB) });
+    expect(await store.putDoc(0, big(0, 2.9))).toEqual({ stored: 'full' }); // A
+    expect(await store.putDoc(1, big(1, 2.9))).toEqual({ stored: 'full' }); // B
+    expect(await store.putDoc(2, big(2, 2.1))).toEqual({ stored: 'full' }); // C
+    expect(await store.putDoc(3, big(3, 2.9))).toEqual({ stored: 'full' }); // D
+    const docs = await store.listDocs();
+    expect(docs.map((d) => d.id)).toEqual([0, 1, 2, 3]);
+    expect(docs[0].data).toEqual({ counts: { consoleLogs: 1, runtimeErrors: 0, network: 0 }, dropped: true });
+    for (const doc of docs.slice(1)) expect(doc.data.consoleLogs).toHaveLength(1);
+    const total = docs.reduce((sum, d) => sum + JSON.stringify(d.data).length, 0);
+    expect(total).toBeLessThanOrEqual(8 * MB);
+  });
+
   it('putDoc on quota error stores counts only', async () => {
     const { chrome, fake } = createFakeChrome();
     const store = createStore(chrome.storage.session);

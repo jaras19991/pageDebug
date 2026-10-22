@@ -61,7 +61,7 @@ async function recordEarlyError(page) {
 // Arguments are stored as JSON values (strings stay strings, objects stay objects).
 const argsText = (entry) => JSON.stringify(entry.args);
 
-test('ready popup shows disclosure, no-upload sentence and reload notice', async () => {
+test('ready popup shows disclosure, no-upload sentence, consent notice and reload notice', async () => {
   await withPage(async (page) => {
     await openEarlyError(page);
     const popup = await openPopupFor(page);
@@ -74,18 +74,22 @@ test('ready popup shows disclosure, no-upload sentence and reload notice', async
           title: shown(byId('disclosureTitle')) ? byId('disclosureTitle').textContent.trim() : null,
           items: [...document.querySelectorAll('#disclosure li')].filter(shown).map((li) => li.textContent.trim()),
           noUpload: shown(byId('noUpload')) ? byId('noUpload').textContent.trim() : null,
+          consentNotice: shown(byId('consentNotice')) ? byId('consentNotice').textContent.trim() : null,
           reloadNotice: shown(byId('reloadNotice')) ? byId('reloadNotice').textContent.trim() : null,
           recordShown: shown(byId('record')),
           disclosureBeforeRecord: !!(byId('disclosure').compareDocumentPosition(byId('record')) & Node.DOCUMENT_POSITION_FOLLOWING),
+          consentBeforeRecord: !!(byId('consentNotice').compareDocumentPosition(byId('record')) & Node.DOCUMENT_POSITION_FOLLOWING),
         };
       })()`);
       expect(visible).toEqual({
         title: MESSAGES.disclosureTitle,
         items: [...MESSAGES.disclosureItems],
         noUpload: MESSAGES.noUpload,
+        consentNotice: MESSAGES.consentNotice,
         reloadNotice: MESSAGES.reloadNotice,
         recordShown: true,
         disclosureBeforeRecord: true,
+        consentBeforeRecord: true,
       });
     } finally {
       await popup.close();

@@ -187,6 +187,7 @@ Design
       — pozwala porównać dwa zrzuty bez ujawniania wartości.
 
 Implementacja
+- [ ] E3-T0 (review E1) Serializacja z budżetem: `serializeCapped` przerywa po `maxChars` (replacer z licznikiem + sentinel), `outerHTML` cięty przed odczytem; przechwycić `JSON.stringify/parse` na `document_start` (strony z polyfillem JSON psują zapis args); test perf `console.log(obiekt 5 MB)` ≤ 5 ms. Przy okazji: przycinanie `rec.docs` do 100 ma usuwać odpowiadające `pds:doc:*` (kolejność `documents[]`).
 - [ ] E3-T1 `redact.js` z regułami: wzorce (JWT, `Bearer`, e-mail, karta, IBAN, PESEL), klucze
       (`token|secret|session|auth|password|key|csrf`), nagłówki (`Authorization`, `Cookie`, `Set-Cookie`).
 - [ ] E3-T2 Zastosowanie redakcji do: storage, cookies, nagłówków request/response, body odpowiedzi,
@@ -276,6 +277,7 @@ Implementacja
 - [ ] E5-T3 Materiały do sklepów: opis, zrzuty ekranu (1280×800), polityka prywatności, teksty PL/EN.
       **Small promo 440×280** (obowiązkowe w CWS) i zrzuty — ikony są generowane skryptem `scripts/icons.mjs` (neutralne, bez brandingu; E0 grupa F).
 - [ ] E5-T4 Telemetria **zero** — jawnie w README i polityce.
+- [ ] E5-T7 (store review E1, F6) AMO: zip źródeł + package-lock + instrukcja builda (`npm ci && npm run gen && npm run build`, Node) — bundle `content/*.js` są generowane; notatka dla reviewera o `optional_host_permissions` per origin (F7) i `file:///*` (F9).
 - [ ] E5-T5 Podpis Firefox: `web-ext sign` (kanał wg E5-S1) z kluczami AMO poza repo; artefakt `.xpi` w `dist/`.
 - [ ] E5-T6 Automatyczny smoke Firefox: Selenium + geckodriver, `installAddon(zip, temporary)`, 3 scenariusze z AC-1.x.
 

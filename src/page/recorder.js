@@ -103,7 +103,9 @@ export function createRecorder({ win, options = {} }) {
     return res.value;
   };
 
-  const pastDeadline = (t) => deadline !== null && (timeOrigin + t >= deadline || timeOrigin + now() >= deadline);
+  // `deadline` is wall-clock epoch (background Date.now()); the monotonic clock stands still while the device
+  // sleeps, so the time limit is checked against Date.now() too.
+  const pastDeadline = (t) => deadline !== null && (timeOrigin + t >= deadline || dateNow() >= deadline);
 
   function record(section, entry) {
     const chars = pendingChars;
@@ -154,7 +156,7 @@ export function createRecorder({ win, options = {} }) {
   function onLimit() {
     limitTimer = null;
     if (state !== 'recording') return;
-    const left = deadline - (timeOrigin + now());
+    const left = deadline - dateNow();
     // Timers may fire a little early; re-arm instead of stopping before the deadline.
     if (left > 0) limitTimer = later(onLimit, left);
     else stop('time-limit');

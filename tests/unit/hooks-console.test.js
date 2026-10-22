@@ -129,6 +129,48 @@ describe('installConsoleHook', () => {
     expect(records).toHaveLength(0);
   });
 
+  it('page wrapped console after us → restore keeps page wrapper, our wrapper is passthrough', () => {
+    const originals = Object.fromEntries(LEVELS.map((l) => [l, vi.fn(function () { return 'ret-' + l; })]));
+    const win = { console: { ...originals } };
+    const records = [];
+    const json = vi.fn((v) => v);
+    let errorsCreated = 0;
+    const CountingError = function () {
+      errorsCreated += 1;
+      return new Error();
+    };
+    const restore = installConsoleHook({
+      win,
+      now: () => 1,
+      record: (kind, entry) => records.push({ kind, entry }),
+      json,
+      levels: LEVELS,
+      intrinsics: { Error: CountingError },
+    });
+    const ours = win.console.error;
+    const pageCalls = [];
+    const pageWrapper = function (...args) {
+      pageCalls.push(args);
+      return ours.apply(this, args);
+    };
+    win.console.error = pageWrapper;
+    restore();
+    expect(win.console.error).toBe(pageWrapper);
+    expect(win.console.log).toBe(originals.log);
+
+    json.mockClear();
+    errorsCreated = 0;
+    const ret = win.console.error('after', 1);
+    expect(ret).toBe('ret-error');
+    expect(pageCalls).toEqual([['after', 1]]);
+    expect(originals.error).toHaveBeenCalledTimes(1);
+    expect(originals.error.mock.calls[0]).toEqual(['after', 1]);
+    expect(originals.error.mock.contexts[0]).toBe(win.console);
+    expect(records).toHaveLength(0);
+    expect(json).not.toHaveBeenCalled();
+    expect(errorsCreated).toBe(0);
+  });
+
   it('second install while active is a no-op and does not double records', () => {
     const { win, originals, records, restore } = setup();
     const wrapped = win.console.log;

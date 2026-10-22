@@ -504,6 +504,8 @@ const __pds_m3 = (function () {
 // console.* hooks for the MAIN-world recorder (design D5, E1-T5).
 // Each level gets a wrapper that records { t, level, args, stack? } and then calls the original exactly once
 // via Reflect.apply with the page's arguments. Recorder failures are swallowed; page exceptions propagate.
+// restore() puts back only the levels that still hold our wrapper; a wrapper the page installed on top of ours
+// (Sentry, Datadog, …) stays, and ours becomes a plain passthrough to the original.
 
 const STACK_MAX_CHARS = 4000;
 
@@ -559,15 +561,17 @@ function installConsoleHook({ win, now, record, json, levels, intrinsics = {} })
   const ReflectRef = intrinsics.Reflect || Reflect;
   const ErrorCtor = intrinsics.Error || Error;
   const originals = new Map();
+  const wrappers = new Map();
   let busy = false;
+  let active = true;
 
   for (const level of levels) {
     const orig = target[level];
     if (typeof orig !== 'function') continue;
     originals.set(level, orig);
 
-    target[level] = function (...args) {
-      if (!busy) {
+    const wrapper = function (...args) {
+      if (active && !busy) {
         busy = true;
         try {
           const entry = { t: now(), level, args: serializeArgs(json, args) };
@@ -582,6 +586,8 @@ function installConsoleHook({ win, now, record, json, levels, intrinsics = {} })
       }
       return ReflectRef.apply(orig, target, args);
     };
+    wrappers.set(level, wrapper);
+    target[level] = wrapper;
   }
 
   consoleHookActive.set(win, true);
@@ -590,8 +596,12 @@ function installConsoleHook({ win, now, record, json, levels, intrinsics = {} })
   return function restore() {
     if (restored) return;
     restored = true;
-    for (const [level, orig] of originals) target[level] = orig;
+    active = false;
+    for (const [level, orig] of originals) {
+      if (target[level] === wrappers.get(level)) target[level] = orig;
+    }
     originals.clear();
+    wrappers.clear();
     consoleHookActive.delete(win);
   };
 }
@@ -844,7 +854,9 @@ function createRecorder({ win, options = {} }) {
     return res.value;
   };
 
-  const pastDeadline = (t) => deadline !== null && (timeOrigin + t >= deadline || timeOrigin + now() >= deadline);
+  // `deadline` is wall-clock epoch (background Date.now()); the monotonic clock stands still while the device
+  // sleeps, so the time limit is checked against Date.now() too.
+  const pastDeadline = (t) => deadline !== null && (timeOrigin + t >= deadline || dateNow() >= deadline);
 
   function record(section, entry) {
     const chars = pendingChars;
@@ -895,7 +907,7 @@ function createRecorder({ win, options = {} }) {
   function onLimit() {
     limitTimer = null;
     if (state !== 'recording') return;
-    const left = deadline - (timeOrigin + now());
+    const left = deadline - dateNow();
     // Timers may fire a little early; re-arm instead of stopping before the deadline.
     if (left > 0) limitTimer = later(onLimit, left);
     else stop('time-limit');
