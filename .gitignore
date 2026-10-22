@@ -24,3 +24,7 @@ Thumbs.db
 
 # source logos live outside the extension dir (E0-T6); never in dist/
 src/icons/logo*.png
+
+# Firefox signed artifacts
+*.xpi
+web-ext-artifacts/

@@ -1,0 +1,29 @@
+extension peifcadooakhannlhfgdjiedlahijbon {"id":"peifcadooakhannlhfgdjiedlahijbon","name":"Page Debug Snapshot","version":"1.0.0","path":"C:\\Agora\\pluginDebbuging\\dist\\chrome"}
+basic idle text: "Page Debug Snapshot\n\nUruchom snapshot debugowy dla aktualnej karty.\n\nDebug snapshot"
+basic status@15ms: "Gotowe. Zapisano plik page-debug-snapshot-1792655479539.json — znajdziesz go w pobranych plikach." btn disabled: false
+basic RESULT status="Gotowe. Zapisano plik page-debug-snapshot-1792655479539.json — znajdziesz go w pobranych plikach." error=false afterMs=23 downloads=["page-debug-snapshot-1792655479539.json"]
+throw idle text: "Page Debug Snapshot\n\nUruchom snapshot debugowy dla aktualnej karty.\n\nDebug snapshot"
+throw status@15ms: "Nie udało się zapisać paczki. Odśwież stronę i spróbuj ponownie. Jeśli to się powtarza, opisz problem developerowi bez paczki." btn disabled: false
+throw RESULT status="Nie udało się zapisać paczki. Odśwież stronę i spróbuj ponownie. Jeśli to się powtarza, opisz problem developerowi bez paczki." error=true afterMs=27 downloads=[]
+csp idle text: "Page Debug Snapshot\n\nUruchom snapshot debugowy dla aktualnej karty.\n\nDebug snapshot"
+csp status@15ms: "Gotowe. Zapisano plik page-debug-snapshot-1792655480726.json — znajdziesz go w pobranych plikach." btn disabled: false
+csp RESULT status="Gotowe. Zapisano plik page-debug-snapshot-1792655480726.json — znajdziesz go w pobranych plikach." error=false afterMs=30 downloads=["page-debug-snapshot-1792655480726.json"]
+privacy idle text: "Page Debug Snapshot\n\nUruchom snapshot debugowy dla aktualnej karty.\n\nDebug snapshot"
+privacy status@15ms: "Gotowe. Zapisano plik page-debug-snapshot-1792655481391.json — znajdziesz go w pobranych plikach." btn disabled: false
+privacy RESULT status="Gotowe. Zapisano plik page-debug-snapshot-1792655481391.json — znajdziesz go w pobranych plikach." error=false afterMs=22 downloads=["page-debug-snapshot-1792655481391.json"]
+chrome-version idle text: "Page Debug Snapshot\n\nUruchom snapshot debugowy dla aktualnej karty.\n\nDebug snapshot"
+chrome-version status@15ms: "Na tej stronie nie da się zapisać paczki. Otwórz stronę, na której widzisz problem, i kliknij ponownie." btn disabled: false
+chrome-version RESULT status="Na tej stronie nie da się zapisać paczki. Otwórz stronę, na której widzisz problem, i kliknij ponownie." error=true afterMs=27 downloads=[]
+about-blank idle text: "Page Debug Snapshot\n\nUruchom snapshot debugowy dla aktualnej karty.\n\nDebug snapshot"
+about-blank status@15ms: "Na tej stronie nie da się zapisać paczki. Otwórz stronę, na której widzisz problem, i kliknij ponownie." btn disabled: false
+about-blank RESULT status="Na tej stronie nie da się zapisać paczki. Otwórz stronę, na której widzisz problem, i kliknij ponownie." error=true afterMs=29 downloads=[]
+cws idle text: "Page Debug Snapshot\n\nUruchom snapshot debugowy dla aktualnej karty.\n\nDebug snapshot"
+cws status@15ms: "Gotowe. Zapisano plik page-debug-snapshot-1792655484195.json — znajdziesz go w pobranych plikach." btn disabled: false
+cws RESULT status="Gotowe. Zapisano plik page-debug-snapshot-1792655484195.json — znajdziesz go w pobranych plikach." error=false afterMs=19 downloads=["page-debug-snapshot-1792655484195.json"]
+file-noconsent idle text: "Page Debug Snapshot\n\nUruchom snapshot debugowy dla aktualnej karty.\n\nDebug snapshot"
+file-noconsent status@15ms: "Gotowe. Zapisano plik page-debug-snapshot-1792655484782.json — znajdziesz go w pobranych plikach." btn disabled: false
+file-noconsent RESULT status="Gotowe. Zapisano plik page-debug-snapshot-1792655484782.json — znajdziesz go w pobranych plikach." error=false afterMs=29 downloads=["page-debug-snapshot-1792655484782.json"]
+developerPrivate before: {"fileAccess":{"isActive":true,"isEnabled":true},"hostAccess":{"hasAllHosts":false,"hostAccess":"ON_ALL_SITES","hosts":[]},"simple":[]}
+file-consent idle text: "Page Debug Snapshot\n\nUruchom snapshot debugowy dla aktualnej karty.\n\nDebug snapshot"
+file-consent status@15ms: "Gotowe. Zapisano plik page-debug-snapshot-1792655485541.json — znajdziesz go w pobranych plikach." btn disabled: false
+file-consent RESULT status="Gotowe. Zapisano plik page-debug-snapshot-1792655485541.json — znajdziesz go w pobranych plikach." error=false afterMs=20 downloads=["page-debug-snapshot-1792655485541.json"]

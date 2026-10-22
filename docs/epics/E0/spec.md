@@ -100,8 +100,9 @@ Celem E0 jest też jedna baza kodu budowana do dwóch targetów MV3: Chrome i Fi
   przechodzi smoke e2e; zip Firefox przechodzi `web-ext lint` bez errors.
 - **AC-4.6** `package.json` nie ma sekcji `dependencies`; `web-ext` jest w `devDependencies`; `sharp`
   usunięty całkowicie (brak skryptu ikon — decyzja 2).
-- **AC-4.7** Ikony 16/48/128 w repo są jedynym źródłem (bez pliku logo i bez generowania). Test na
-  `dist/*/icons`: dokładnie 16×16, 48×48, 128×128 px, PNG, łącznie ≤ 50 KB (dziś 37 KB).
+- **AC-4.7** Ikony 16/48/128 generuje deterministycznie `npm run icons` (`scripts/icons.mjs`, bez zależności
+  natywnych, bez pliku logo); PNG w repo = wynik skryptu (test). Neutralne, bez tekstu i logo (decyzja
+  2026-10-22: plugin niezależny). Test na `dist/*/icons`: dokładnie 16×16, 48×48, 128×128 px, PNG, łącznie ≤ 50 KB.
 - **AC-4.8** Oba manifesty mają identyczne `version`, `name`, `description`, `permissions`, `action`,
   `icons`; różnią się wyłącznie kluczami specyficznymi dla targetu (`browser_specific_settings`,
   `minimum_chrome_version`, w przyszłości `background.*`). Test automatyczny porównuje manifesty

@@ -1,0 +1,11 @@
+INFO {"fileAccess":{"isActive":true,"isEnabled":true},"permissions":{"runtimeHostPermissions":{"hasAllHosts":false,"hostAccess":"ON_ALL_SITES","hosts":[]},"simplePermissions":[]},"state":"ENABLED"}
+after setFile(false): {"fileAccess":{"isActive":false,"isEnabled":true},"permissions":{"runtimeHostPermissions":{"hasAllHosts":false,"hostAccess":"ON_ALL_SITES","hosts":[]},"simplePermissions":[]},"state":"ENABLED"}
+file-noconsent page.url = file:///C:/Agora/pluginDebbuging/tests/fixtures/pages/basic.html
+file-noconsent RESULT status="Na tej stronie nie da się zapisać paczki. Otwórz stronę, na której widzisz problem, i kliknij ponownie." error=true downloads=[]
+file-consent page.url = file:///C:/Agora/pluginDebbuging/tests/fixtures/pages/basic.html
+file-consent RESULT status="Gotowe. Zapisano plik page-debug-snapshot-1792655554222.json — znajdziesz go w pobranych plikach." error=false downloads=["page-debug-snapshot-1792655554222.json"]
+cws page.url = https://consent.google.com/m?continue=https://chromewebstore.google.com/detail/ublock-origin/cjpalhdlnbpafiamejdnhcphjbkeiagm&gl=PL&m=0&pc=cws&cm=2&hl=pl&src=1
+cws RESULT status="Gotowe. Zapisano plik page-debug-snapshot-1792655556166.json — znajdziesz go w pobranych plikach." error=false downloads=["page-debug-snapshot-1792655556166.json"]
+cws-legacy page.url = https://consent.google.com/m?continue=https://chromewebstore.google.com/category/extensions&gl=PL&m=0&pc=cws&cm=2&hl=pl&src=1
+cws-legacy RESULT status="Gotowe. Zapisano plik page-debug-snapshot-1792655557423.json — znajdziesz go w pobranych plikach." error=false downloads=["page-debug-snapshot-1792655557423.json"]
+DETAILS TEXT: 

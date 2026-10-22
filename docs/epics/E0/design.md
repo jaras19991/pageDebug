@@ -118,7 +118,7 @@ Wartości:
   Chrome < 121 odrzuca taki manifest, a ≥ 121 ignoruje `scripts`. Ustawiamy 121 już teraz, żeby nie zmieniać
   semantyki w połowie drogi. Chrome 121 to styczeń 2024, a Chrome aktualizuje się automatycznie, więc praktycznie
   nikogo nie odcinamy. Ostateczna polityka należy do E5-S2.
-- `gecko.id: "page-debug-snapshot@agora.pl"` (format e-mail-like, AC-ST.4). **Do potwierdzenia przez użytkownika
+- `gecko.id: "{799eb178-df9a-41bb-9775-8fc8aff45926}"` (GUID, AC-ST.4; decyzja użytkownika 2026-10-22: plugin niezależny, bez domeny organizacji). **Do potwierdzenia przez użytkownika
   przy bramce Design:** po pierwszej publikacji w AMO (E5) zmiana ID oznacza nowy dodatek. Do tego czasu zmiana nic nie kosztuje.
 - `strict_min_version: "128.0"`, czyli pierwsza wersja z `world: "MAIN"` w `scripting`.
 - `data_collection_permissions: { "required": ["none"] }`. AMO wymaga tego klucza od nowych rozszerzeń, a rozszerzenie
@@ -380,7 +380,7 @@ Zostają: `messages.js`, `target.js` (używane też przez tło), build, walker, 
 {
   "browser_specific_settings": {
     "gecko": {
-      "id": "page-debug-snapshot@agora.pl",
+      "id": "{799eb178-df9a-41bb-9775-8fc8aff45926}",
       "strict_min_version": "128.0",
       "data_collection_permissions": {
         "required": ["none"]

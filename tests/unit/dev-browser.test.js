@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs, runOptions, UsageError, BROWSERS, DEFAULT_URL } from '../../scripts/dev-browser.mjs';
@@ -61,5 +61,24 @@ describe('dev-browser cli', () => {
     expect(r.stdout).not.toMatch(/dist\//);
     const after = existsSync(manifest) ? statSync(manifest).mtimeMs : null;
     expect(after).toBe(before);
+  });
+});
+
+describe('dev-browser.ps1 -Pack', () => {
+  // E0-F1: -Pack delegates to `npm run pack` instead of its own file filter + Compress-Archive
+  // (an invalid `-notmatch` regex made it throw; PS 5.1 Compress-Archive writes `\` entry names).
+  const ps1 = readFileSync(join(ROOT, 'scripts', 'dev-browser.ps1'), 'utf8');
+
+  it('delegates packing to npm run pack and keeps ValidateSet', () => {
+    expect(ps1).toMatch(/npm run pack/);
+    expect(ps1).toMatch(/ValidateSet\("chrome", "firefox"\)/);
+    expect(ps1).not.toMatch(/Compress-Archive/);
+    expect(ps1).not.toMatch(/-notmatch/);
+  });
+
+  it('prints recipient instructions for both browsers', () => {
+    expect(ps1).toMatch(/chrome:\/\/extensions/);
+    expect(ps1).toMatch(/about:debugging/);
+    expect(ps1).toMatch(/page-debug-snapshot-\$Browser-/);
   });
 });

@@ -1,6 +1,6 @@
 # E0 — Fundament: repo, build, testy, higiena MV3 — stan
 
-faza: implement
+faza: review-qa
 rozpoczęto: 2026-10-21
 ostatnia aktualizacja: 2026-10-21 23:50
 
@@ -48,11 +48,24 @@ Grupa E (po T16b)
 - [x] E0-T7a tests/e2e/{smoke,failure,restricted}.spec.js + helpers/download.js — 6 e2e ✓ (AC-1.1, 1.2, 1.3, 1.4e2e, 2.3, 6.5);
   mediana klik→download ≈ 48–67 ms (baseline 411f60e niezmierzony → QA porównuje); restricted w ~1,1 s
   Uwaga dla T7b/T9: `tests/e2e/csp.spec.js` ma `no-undef window` (l. 28) — lint czerwony do poprawki.
-- [ ] E0-T7b e2e: podwójne kliknięcie, CSP, paczka z zipa
+- [x] E0-T7b tests/e2e/{double-click,csp,packed-zip}.spec.js + helpers/unzip.js — 4 e2e ✓ (AC-1.5, 2.4, 4.5); pack() do tmp, nie do dist/
+- **Implementacja zakończona 2026-10-22: 20/20, 195 unit, 13 e2e, lint zielony. Commity: 8a13cc2, 93c809b, 23f1a1b, +grupa E.**
 
 Fazy po implementacji
-- [ ] E0-TEST pds-tester: pełny przebieg + pokrycie planu testów
-- [ ] E0-R1 pds-reviewer; E0-R2 pds-store-reviewer; E0-Q1/Q2 pds-qa (Chrome e2e, Firefox web-ext run)
+- [x] E0-TEST pds-tester: lint ✓, unit 195/195 (1,5 s — AC-3.2 ✓; 46 s nieodtworzone, prawdopodobnie cold cache), e2e 13/13 ×3, 43/43 AC → docs/epics/E0/test-coverage.md. Werdykt: zielone.
+- [~] E0-R1 pds-reviewer ✓ (approve-with-fixes) ∥ E0-R2 pds-store-reviewer ✓ (would-be-rejected dla dziś; E0 nie blokuje — blokery w E1/E3/E5, docs/epics/E0/store-review.md) ∥ E0-Q1/Q2 pds-qa (w toku)
+
+### Findings R1 (pds-reviewer, 2026-10-22) — do poprawki w E0 (grupa F)
+- [ ] F1 [medium] scripts/dev-browser.ps1:44 — regex `'
+ode_modules'` zepsuty w T11 → `-Pack` zawsze pada. Poprawka: `-Pack` deleguje do `npm run pack` (dist ma już tylko osiągalne pliki), usunąć własny filtr i Compress-Archive.
+- [x] F2 [low] .gitignore — `*.xpi`, `web-ext-artifacts/` dodane.
+- [ ] F4 [medium, store] README: dopisać sklepowe (PL+EN) wersje uzasadnień uprawnień z store-review.md — faza Docs.
+- [ ] F5 [low, store] Release: manifest version = wersja release (0.2.0); nic nie było wysłane do sklepów.
+- [x] F6 [high, store + decyzja użytkownika 2026-10-22] ✓ scripts/icons.mjs + icons-script.test.js (3), PNG 139/311/927 B, 200/200 — **Plugin niezależny, bez brandingu Agory**: `gecko.id` → GUID `{799eb178-df9a-41bb-9775-8fc8aff45926}`
+  (zrobione), ikony 16/48/128 → generowane skryptem `scripts/icons.mjs` (neutralne, bez tekstu/logo, margines wg CWS), README/docs bez odniesień do organizacji.
+- [ ] F3 [medium→QA] fałszywy sukces przy zablokowanych automatycznych pobraniach w Chrome („Blokuj” w „Ta strona chce pobrać wiele plików”) — QA ręczne: dwa kliknięcia bez interakcji ze stroną w zwykłym Chrome; naprawa w E1 (patrz backlog).
+Poza E0 (dopisane do backlogu): E1 — `downloads` permission + sukces po `onChanged state=complete`; sprawdzanie `pds.version` w `runInPage` (strona może podstawić obiekt → fałszywy sukces); timeout `executeScript` (~15 s) z komunikatem; walker fail-safe na `url(`/`getURL(`. E3 — usunąć global `window.__PAGE_DEBUG_SNAPSHOT__` (pełna paczka dostępna skryptom strony).
+Do decyzji użytkownika: mechanizm pobierania w E1 (`downloads` permission = jedno uprawnienie więcej, ale prawdziwy wynik).
 - [ ] E0-DOC1 README, instrukcja, CHANGELOG; aktualizacja ścieżek w CLAUDE.md i skillach (page-debug-extension → src/)
 - [ ] E0-REL release 0.2.0
 

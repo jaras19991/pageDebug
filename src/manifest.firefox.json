@@ -1,7 +1,7 @@
 {
   "browser_specific_settings": {
     "gecko": {
-      "id": "page-debug-snapshot@agora.pl",
+      "id": "{799eb178-df9a-41bb-9775-8fc8aff45926}",
       "strict_min_version": "128.0",
       "data_collection_permissions": {
         "required": ["none"]

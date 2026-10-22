@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   Build the extension and launch Chrome or Firefox with it on a temporary profile (via scripts/dev-browser.mjs),
-  or pack dist\<browser> into a dev zip for a tester.
+  or run npm run pack and print the dist zip for <browser> with tester instructions.
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts/dev-browser.ps1 -Browser chrome
@@ -19,41 +19,26 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
+# -Pack: npm run pack builds every target and writes dist\page-debug-snapshot-<target>-<version>.zip
+# (sorted entries, "/" separators); otherwise just build before handing over to dev-browser.mjs.
 Push-Location $repoRoot
 try {
-  & npm run build
+  if ($Pack) { & npm run pack } else { & npm run build }
   if ($LASTEXITCODE) { exit $LASTEXITCODE }
 } finally {
   Pop-Location
 }
 
 $extDir = Join-Path $repoRoot "dist\$Browser"
-if (-not (Test-Path (Join-Path $extDir "manifest.json"))) {
+$manifestPath = Join-Path $extDir "manifest.json"
+if (-not (Test-Path $manifestPath)) {
   throw "No manifest.json found in dist\$Browser after build"
 }
 
 if ($Pack) {
-  Write-Host "Target: $Browser  |  Extension directory: $extDir"
-  $stamp = Get-Date -Format "yyyyMMdd-HHmm"
-  $zip = Join-Path $repoRoot "page-debug-snapshot-dev-$Browser-$stamp.zip"
-  $staging = Join-Path $env:TEMP "pds-pack-$stamp"
-  New-Item -ItemType Directory -Path $staging | Out-Null
-
-  # copy everything except dev-only and oversized files
-  Get-ChildItem -Path $extDir -Recurse -File | Where-Object {
-    $_.FullName -notmatch '\node_modules\' -and
-    $_.Extension -notin @('.zip', '.pem', '.crx') -and
-    $_.Name -notlike 'logo*.png' -and
-    $_.Name -notlike 'package*.json'
-  } | ForEach-Object {
-    $rel = $_.FullName.Substring($extDir.Length).TrimStart('\')
-    $dest = Join-Path $staging $rel
-    New-Item -ItemType Directory -Path (Split-Path $dest) -Force | Out-Null
-    Copy-Item $_.FullName $dest
-  }
-
-  Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $zip -Force
-  Remove-Item $staging -Recurse -Force
+  $version = (Get-Content $manifestPath -Raw | ConvertFrom-Json).version
+  $zip = Join-Path $repoRoot "dist\page-debug-snapshot-$Browser-$version.zip"
+  if (-not (Test-Path $zip)) { throw "Zip not found after npm run pack: $zip" }
   $sizeKb = [math]::Round((Get-Item $zip).Length / 1KB)
   Write-Host "Packed: $zip ($sizeKb KB)"
   if ($Browser -eq "firefox") {

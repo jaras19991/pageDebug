@@ -77,6 +77,9 @@ Design
 - [ ] E1-D1 Mechanizm: `chrome.scripting.registerContentScripts` z `world: 'MAIN'`, `runAt: 'document_start'`,
       scope ograniczony do origin aktywnej karty na czas nagrywania; po *Zapisz* wyrejestrowanie.
 - [ ] E1-D2 Stan nagrywania w `chrome.storage.session` (per tabId): start, origin, status.
+- [ ] E1-D7 (store review E0) Uprawnienia: **bez `tabs`** (`activeTab` daje `tab.url`, `tabs.reload` nie wymaga `tabs`,
+      a `tabs` dodaje ostrzeżenie „Read your browsing history”); `permissions.request` tylko o origin bieżącej karty;
+      jedno zdanie uzasadnienia EN per nowe uprawnienie (szkice w docs/epics/E0/store-review.md).
 - [ ] E1-D3 Most MAIN ↔ ISOLATED: `window.postMessage` z nonce; ISOLATED przekazuje do popupu/SW.
 - [ ] E1-D4 Bufor między nawigacjami w obrębie karty (SPA i pełne przeładowania) — co trzymamy, co gubimy, limity.
 - [ ] E1-D5 Hooki: `Proxy` na `XMLHttpRequest` i `fetch` zamiast podmiany konstruktora; `console` hook
@@ -91,9 +94,20 @@ Implementacja
 - [ ] E1-T3 Refaktor `page-debug-snapshot.js` → `recorder.js` (hooki, bufor) + `collector.js` (zrzut DOM/perf/storage).
 - [ ] E1-T4 Proxy-hooki XHR/fetch zachowujące `instanceof`, stałe statyczne, `withCredentials`, `responseType`.
 - [ ] E1-T5 Hooki `error`/`unhandledrejection` z `destroy()` zdejmującym listenery.
-- [ ] E1-T6 Popup z trzema stanami i czasem nagrywania; komunikaty po polsku.
+- [ ] E1-T6 Popup z trzema stanami i czasem nagrywania; komunikaty po polsku. **(store review E0 — blocker CWS)**
+      Ujawnienie w UI przed zbieraniem: krótka lista PL, co trafia do pliku (cookies, dane stron, treść strony, zapytania,
+      pola formularzy) + „Plik zostaje na Twoim dysku, rozszerzenie niczego nie wysyła”; klik pod tekstem = zgoda; test na tekst.
+      Przy każdym poszerzeniu zakresu danych (E2) — ponowne ujawnienie po aktualizacji (wymóg CWS 2026).
 - [ ] E1-T7 `console-snapshot.js` (fallback bez instalacji) ma działać na tym samym `recorder.js`
       i jasno mówić: „zbieram od teraz; odtwórz problem i wywołaj `PageDebugSnapshot.download()`”.
+- [ ] E1-T8 (z review E0) Prawdziwy wynik zapisu: pobieranie przez `chrome.downloads.download` w tle (permission `downloads`,
+      decyzja użytkownika) i sukces dopiero po `onChanged.state === 'complete'`; dziś `<a download>` w stronie daje fałszywy
+      sukces przy zablokowanych automatycznych pobraniach.
+- [ ] E1-T9 (z review E0) `runInPage` weryfikuje `pds.version` (z `args`) zamiast ufać dowolnemu `window.PageDebugSnapshot`;
+      marker instalacji pod `Symbol.for('pds.installed')`.
+- [ ] E1-T10 (z review E0) Timeout na `executeScript` (~15 s) → `failed` z komunikatem „strona jeszcze się ładuje”.
+- [ ] E1-T11 (z review E0) Walker builda: rzucać na `url(`/`chrome.runtime.getURL(`/import z template literal, których nie
+      umie rozwiązać (fail-safe), gdy pojawi się pierwszy CSS lub tło.
 
 Testy / Review / QA / Docs / Release
 - [ ] E1-TEST1 Unit: proxy XHR przechodzi `instanceof`, `XMLHttpRequest.DONE === 4`, axios-like użycie.
@@ -180,6 +194,8 @@ Implementacja
 - [ ] E3-T3 Strukturalny zrzut DOM zamiast `outerHTML`.
 - [ ] E3-T4 Pakowanie do `.zip` + nazwa pliku `snapshot-<host>-<YYYYMMDD-HHMMSS>.zip`.
 - [ ] E3-T5 Raport redakcji w `summary.md` („zamaskowano 14 wartości w 3 sekcjach”).
+- [ ] E3-T6 (z review E0) Usunąć global `window.__PAGE_DEBUG_SNAPSHOT__` — pełna paczka (cookies, storage, DOM) nie może
+      być dostępna skryptom firm trzecich na stronie ani zalegać w pamięci.
 
 Testy / Review / QA / Docs / Release
 - [ ] E3-TEST1 Unit: korpus 50 przykładów wrażliwych/niewrażliwych → 0 wycieków, ≤ 2 fałszywie dodatnie.
@@ -202,6 +218,8 @@ Spec
       najwolniejsze zasoby → ciasteczka/rozmiar → raport redakcji).
 - [ ] E4-S2 Flow „Wyślij”: konfigurowalny przez developera adres/kanał (mailto, link do formularza, Jira
       Service Desk URL) pokazany zgłaszającemu po zapisie. Bez własnego backendu w tym epiku.
+      **Ograniczenie (store review E0):** wysyłkę wykonuje użytkownik (mailto/link), nigdy rozszerzenie — inaczej
+      deklaracje AMO `data_collection_permissions: none` i CWS „no transfer” przestają być prawdziwe.
 - [ ] E4-S3 Viewer: pojedynczy `viewer.html` (offline, drag&drop zip) z zakładkami i filtrem.
 - [ ] E4-S4 MCP: narzędzia `list_snapshots`, `get_summary`, `get_errors`, `get_network(filter)`,
       `get_vitals`, `get_steps`, `diff_snapshots(a, b)`.
@@ -243,6 +261,9 @@ Spec
 - [ ] E5-S2 Wersjonowanie (semver), CHANGELOG, min. wersje: Chrome (`minimum_chrome_version`), Firefox (`strict_min_version`).
 - [ ] E5-S3 Materiały sklepowe: polityka prywatności (publiczny URL), deklaracja danych CWS „Privacy practices”
       i AMO (deklaracja zbieranych danych w manifeście/na AMO — zweryfikować aktualny wymóg), uzasadnienia uprawnień.
+      **Checklista 10 punktów i gotowe teksty: docs/epics/E0/store-review.md.** Bramka twarda: E1-T6 (ujawnienie) i E3 (redakcja).
+- [ ] E5-S4 (store review E0) Decyzje użytkownika: URL polityki prywatności; konto wydawcy (niezależne — plugin bez brandingu organizacji);
+      ID Chrome z `.pem` czy nowe; `strict_min_version` 140 (usuwa warnings, ESR 140) czy 128; ostateczne `gecko.id`.
 
 Design
 - [ ] E5-D1 Pipeline: lint → test → e2e → build → pack → (opcjonalnie) upload. GitHub Actions lub lokalny skrypt.
@@ -253,6 +274,7 @@ Implementacja
 - [ ] E5-T1 Skrypt release: podbicie wersji w `manifest.json` i `package.json`, tag, zip w `dist/`.
 - [ ] E5-T2 CI (jeśli repo zdalne) — pipeline z E5-D1.
 - [ ] E5-T3 Materiały do sklepów: opis, zrzuty ekranu (1280×800), polityka prywatności, teksty PL/EN.
+      **Small promo 440×280** (obowiązkowe w CWS) i zrzuty — ikony są generowane skryptem `scripts/icons.mjs` (neutralne, bez brandingu; E0 grupa F).
 - [ ] E5-T4 Telemetria **zero** — jawnie w README i polityce.
 - [ ] E5-T5 Podpis Firefox: `web-ext sign` (kanał wg E5-S1) z kluczami AMO poza repo; artefakt `.xpi` w `dist/`.
 - [ ] E5-T6 Automatyczny smoke Firefox: Selenium + geckodriver, `installAddon(zip, temporary)`, 3 scenariusze z AC-1.x.
