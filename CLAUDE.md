@@ -14,16 +14,24 @@ i wysłać ją developerowi. Developer otwiera paczkę i w minutę rozumie konte
 ## Struktura
 
 ```
-page-debug-extension/      kod rozszerzenia (manifest.json, popup, page-debug-snapshot.js)
-  console-snapshot.js      wersja jednoplikowa do wklejenia w konsolę (fallback bez instalacji)
-scripts/dev-browser.ps1    Chrome/Firefox z rozszerzeniem na osobnym profilu / dev-zip dla testera
-dist/chrome, dist/firefox  wynik `npm run build` (po E0); manifesty składane z src/manifest.*.json
+src/                       kod rozszerzenia
+  manifest.base.json, manifest.chrome.json, manifest.firefox.json
+  popup/                   popup.html, popup.js, snapshot-tab.js, target.js, run-in-page.js, messages.js
+  page/                    page-debug-snapshot.js (wstrzykiwany na stronę)
+  icons/                   icon16/48/128.png (generuje `npm run icons`)
+  standalone/              console-snapshot.js — wersja jednoplikowa do wklejenia w konsolę (poza dist)
+scripts/                   build.mjs, pack.mjs, icons.mjs, dev-browser.mjs/.ps1, check-repo.mjs, lib/
+tests/                     unit/ (vitest), e2e/ (Playwright), fixtures/pages/
+dist/chrome, dist/firefox  wynik `npm run build` (ignorowany); zipy z `npm run pack` w dist/
 docs/BACKLOG.md            epiki E0–E5 i zadania; źródło prawdy o zakresie
 docs/epics/E*/             spec.md, design.md, state.md, qa-report.md per epik
 .claude/agents/            subagenci pds-* (analyst, architect, implementer, tester, reviewer, qa, store-reviewer, docs, release)
-.claude/skills/            /pds-deliver (orkiestrator), /pds-status, /pds-browser (pętla dev w Chrome),
+.claude/skills/            /pds-deliver (orkiestrator), /pds-status, /pds-browser (pętla dev w Chrome/Firefox),
                            skille wiedzy (mv3, schema, redaction, cwv, testing)
 ```
+
+Komendy: `npm ci`, `npm run lint`, `npm test`, `npm run test:e2e`, `npm run build`, `npm run pack`,
+`npm run icons`, `npm run dev:chrome|dev:firefox`, `npm run check:history`.
 
 ## Konwencje
 

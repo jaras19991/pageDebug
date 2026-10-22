@@ -10,7 +10,7 @@ description: Jak testować Page Debug Snapshot — vitest+jsdom dla logiki recor
 | Poziom | Narzędzie | Co testuje | Czego nie |
 |---|---|---|---|
 | **Unit** | vitest + jsdom (`npm test`) | `recorder.js` (hooki na fake fetch/XHR), `redact.js`, `summarize.js`, `collector.js` na syntetycznym DOM, `vitals` mapowanie | niczego, co wymaga `chrome.*` lub prawdziwego renderowania |
-| **E2E** | Playwright + Chromium z `--load-extension` (`npm run test:e2e`) | popup, service worker, `registerContentScripts`, prawdziwe `document_start`, pobranie paczki, zawartość zipa | wydajności (osobne testy syntetyczne), wizualnej poprawności (zrzuty tylko jako dowód QA) |
+| **E2E** | Playwright + Chromium z `dist/chrome` (`npm run test:e2e`) | popup, service worker, `registerContentScripts`, prawdziwe `document_start`, pobranie paczki, zawartość zipa | wydajności (osobne testy syntetyczne), wizualnej poprawności (zrzuty tylko jako dowód QA) |
 
 ## Układ
 
@@ -18,7 +18,7 @@ description: Jak testować Page Debug Snapshot — vitest+jsdom dla logiki recor
 tests/
   unit/            *.test.js — jeden plik na moduł
   e2e/
-    helpers/launch.js   uruchamia Chromium z rozszerzeniem, zwraca { context, extensionId, serviceWorker }
+    helpers/launch.js   launchWithExtension, openPopupFor, expectDownload (patrz niżej)
     helpers/fixtures-server.js   serwuje tests/fixtures/pages na localhost:0
     *.spec.js
   fixtures/
@@ -43,40 +43,31 @@ tests/
 - jsdom nie ma `PerformanceObserver`, `CompressionStream`, `crypto.subtle` w starszych wersjach —
   dla tych modułów używaj `// @vitest-environment node` z polyfillem lub testuj przez e2e.
 
-## E2E — uruchomienie rozszerzenia MV3
+## E2E — uruchomienie rozszerzenia MV3 (stan po E0)
 
-```js
-// tests/e2e/helpers/launch.js
-import { chromium } from '@playwright/test';
-import path from 'node:path';
+Harness: `tests/e2e/helpers/launch.js`. Rozszerzenie jest ładowane z `dist/chrome` (wynik `npm run build`,
+nigdy z `src/`); `globalSetup` buduje projekt.
 
-export async function launchWithExtension(extPath = path.resolve('page-debug-extension')) {
-  const context = await chromium.launchPersistentContext('', {
-    headless: false,                      // MV3 SW w headless wymaga '--headless=new'; headed jest stabilniejsze
-    args: [`--disable-extensions-except=${extPath}`, `--load-extension=${extPath}`],
-    acceptDownloads: true,
-  });
-  let [sw] = context.serviceWorkers();
-  if (!sw) sw = await context.waitForEvent('serviceworker');
-  const extensionId = sw.url().split('/')[2];
-  return { context, extensionId, serviceWorker: sw };
-}
-```
-
-- **Popup**: `await context.newPage()` → `page.goto(`chrome-extension://${extensionId}/popup.html`)`.
-  Popup otwarty jako karta nie ma „aktywnej karty” w sensie `tabs.query({active: true, currentWindow})`
-  tak samo jak prawdziwy popup — w testach wysyłaj komendy do SW bezpośrednio
-  (`serviceWorker.evaluate(() => globalThis.startRecording(tabId))`) **albo** przekazuj `tabId` jawnie.
-  Rozważ wystawienie w SW `chrome.runtime.onMessage` z komendami, a test używa `page.evaluate` w popupie.
-- **Pobranie paczki**: `const dl = await page.waitForEvent('download'); const file = await dl.path();`
-  Następnie `unzip`/`JSZip` lub `DecompressionStream` w Node ≥ 18 → parsuj `snapshot.json` → asercje na polach.
-- **`document_start`**: strona fixture rzuca `throw new Error('early')` w pierwszym `<script>` w `<head>`
-  i robi `fetch('/api/fail')` → 500 przed DCL. Test: oba w paczce. To jest **test akceptacyjny E1**.
-- **Stabilność**: `context.waitForEvent('serviceworker')` może nie wystrzelić, jeśli SW już działa —
-  stąd sprawdzenie `context.serviceWorkers()` najpierw. SW bywa ubijany — przed `evaluate` wybudź go
-  przez `chrome.runtime.sendMessage` z popupu lub `serviceWorker.evaluate(() => 1)`.
-- **Headless**: jeśli CI wymaga, `headless: true` + `args: ['--headless=new']`; przetestuj lokalnie,
-  bo zachowanie `captureVisibleTab` w headless bywa różne.
+- `launchWithExtension({ distDir?, headless? })` — `chromium.launchPersistentContext('', { channel: 'chromium', ... })`:
+  pełny Chromium w nowym headless (domyślnie headless; `PDS_E2E_HEADED=1` pokazuje okno). Argumenty:
+  `--disable-extensions-except`, `--load-extension` oraz `--enable-unsafe-extension-debugging` (odsłania domenę CDP
+  `Extensions`). Zwraca `{ context, extensionId, extensionInfo, browserCdp, close }`. ID rozszerzenia z
+  `chrome.developerPrivate.getExtensionsInfo()` na `chrome://extensions` (E0 nie ma service workera, więc nie ma `serviceWorker`).
+- `openPopupFor(page)` — otwiera prawdziwy popup jak klik ikony: CDP `Extensions.triggerAction` na celu `tab` danej strony.
+  Zwraca `{ evaluate, click, textOf, waitForText, close }`.
+  - **Popup nie jest `Page` w Playwright** — nie ma `page.goto('chrome-extension://…/popup.html')` z aktywną kartą;
+    popupem steruje się przez CDP (`Target.sendMessageToTarget` + `Runtime.evaluate`), stąd API powyżej.
+  - **`activeTab` działa do nawigacji**: po `page.goto` trzeba wywołać `openPopupFor` ponownie.
+- `expectDownload(page, action)` — `waitForEvent('download')` + akcja; zwraca `{ suggestedFilename, path }`.
+  Pliki zostają w katalogu tymczasowym Playwright (bez `downloadsPath`, nic w Pobranych).
+- `globalTeardown` porównuje `git status` ze stanem z `globalSetup` i failuje, gdy e2e zmieniło drzewo robocze (AC-3.4).
+- Inne helpery: `helpers/download.js`, `helpers/unzip.js` (test zipa z `npm run pack`), `helpers/fixtures-server.js`.
+- Stabilność: `retries: 0`, `workers: 2`; nie dodawaj `retries` bez komentarza z przyczyną.
+- Gdy dojdzie tło (E1): `context.serviceWorkers()` najpierw, potem `waitForEvent('serviceworker')`; SW bywa ubijany — wybudź go przed `evaluate`.
+- Pobranie paczki: `const { suggestedFilename, path } = await expectDownload(page, () => popup.click('#runSnapshot'))`,
+  potem `JSON.parse(readFileSync(path))` (JSON w E0; zip od E3).
+- `document_start` (E1): fixture rzuca błąd w pierwszym `<script>` w `<head>` i robi `fetch('/api/fail')` przed DCL —
+  test akceptacyjny E1.
 
 ## Firefox — czego Playwright nie zrobi i co zamiast tego
 

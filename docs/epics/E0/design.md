@@ -266,7 +266,7 @@ Minimalne zmiany w istniejącym `scripts/dev-browser.ps1`:
 3. `$extDir = dist\$Browser`. **Usunąć fallback na `page-debug-extension/`** (katalog znika w D1). Brak manifestu po buildzie oznacza `throw`.
 4. Gałęzie uruchamiania Chrome i Firefox zastąpić jednym wywołaniem `& node scripts/dev-browser.mjs $Browser --url $Url`
    z propagacją `$LASTEXITCODE`.
-5. Tryb `-Pack` bez zmian logiki. Działa na `dist\$Browser` po buildzie (zip testera; `npm run pack` to zip wydania).
+5. Tryb `-Pack` bez zmian logiki. Działa na `dist\$Browser` po buildzie (zip testera; `npm run pack` to zip wydania). (nieaktualne po F1: `-Pack` deleguje do `npm run pack`)
 `dev-browser.mjs` przy nieznanym argumencie wypisuje `Unknown browser "<x>". Allowed: chrome, firefox` i kończy się kodem 2.
 Konsekwencje: profil `%LOCALAPPDATA%\pds-dev-profile-*` przestaje być używany, co trzeba odnotować w skillu `pds-browser` (Docs).
 

@@ -1,6 +1,6 @@
 # E0 — Fundament: repo, build, testy, higiena MV3 — stan
 
-faza: review-qa
+faza: docs (re-QA F7/F8/F3 równolegle)
 rozpoczęto: 2026-10-21
 ostatnia aktualizacja: 2026-10-21 23:50
 
@@ -63,9 +63,9 @@ ode_modules'` zepsuty w T11 → `-Pack` zawsze pada. Poprawka: `-Pack` deleguje 
 - [ ] F5 [low, store] Release: manifest version = wersja release (0.2.0); nic nie było wysłane do sklepów.
 - [x] F6 [high, store + decyzja użytkownika 2026-10-22] ✓ scripts/icons.mjs + icons-script.test.js (3), PNG 139/311/927 B, 200/200 — **Plugin niezależny, bez brandingu Agory**: `gecko.id` → GUID `{799eb178-df9a-41bb-9775-8fc8aff45926}`
   (zrobione), ikony 16/48/128 → generowane skryptem `scripts/icons.mjs` (neutralne, bez tekstu/logo, margines wg CWS), README/docs bez odniesień do organizacji.
-- [~] F7 [critical, QA Firefox] `files: ['page/page-debug-snapshot.js']` — Firefox rozwiązuje względem popupu → zrzut nie działa na żadnej stronie.
+- [x] F7 ✓ (215/215, e2e 13/13, Firefox ręcznie OK) [critical, QA Firefox] `files: ['page/page-debug-snapshot.js']` — Firefox rozwiązuje względem popupu → zrzut nie działa na żadnej stronie.
   Poprawka: wiodący `/` + walker akceptuje root-relative. Luka testów: unit mockują executeScript, e2e tylko Chromium.
-- [~] F8 [high, QA Chrome] `file://` bez zgody: `tab.url` undefined → `unknown` → sonda pominięta → `restricted` zamiast `fileAccess`.
+- [x] F8 ✓ (unit; re-QA w przeglądarce w toku) [high, QA Chrome] `file://` bez zgody: `tab.url` undefined → `unknown` → sonda pominięta → `restricted` zamiast `fileAccess`.
   Poprawka: URL z treści błędu Chrome + sonda przy `unknown`.
 - QA pozostałe: czysty klon zielony (200 unit, 13 e2e), dev:chrome ~1 s, dev:firefox ~2,7 s, AC-2.2 OK w obu, zrzut 9 ms;
   baseline 411f60e niemierzalny (stara wersja nie tworzy pliku — inject.js w ISOLATED; fałszywy sukces). AC-5.5 BLOCKED do DOC1.

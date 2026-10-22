@@ -1,0 +1,5 @@
+basic-click1 | status: "Gotowe. Zapisano plik page-debug-snapshot-1792657987137.json — znajdziesz go w pobranych plikach." | error: false | new files: []
+basic-click2 | status: "Gotowe. Zapisano plik page-debug-snapshot-1792657989715.json — znajdziesz go w pobranych plikach." | error: false | new files: []
+csp-strict | status: "Gotowe. Zapisano plik page-debug-snapshot-1792657992453.json — znajdziesz go w pobranych plikach." | error: false | new files: []
+about-blank | status: "Na tej stronie nie da się zapisać paczki. Otwórz stronę, na której widzisz problem, i kliknij ponownie." | error: true | new files: []
+all files: []
