@@ -4,7 +4,7 @@ faza: done
 wersja: 0.2.0
 zipy: dist/page-debug-snapshot-chrome-0.2.0.zip (14 176 B), dist/page-debug-snapshot-firefox-0.2.0.zip (14 279 B)
 tag: v0.2.0
-commit: HASH_PLACEHOLDER
+commit: 4cb17f5 (release commit; ten zapis hasha w osobnym commicie docs)
 rozpoczęto: 2026-10-21
 ostatnia aktualizacja: 2026-10-22
 
