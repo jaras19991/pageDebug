@@ -146,15 +146,14 @@ describe('build', () => {
     }
   });
 
-  it('dist manifests have no broad host permissions nor WAR', async () => {
-    const broad = ['<all_urls>', '*://*/*', 'http://*/*', 'https://*/*'];
+  it('dist manifests: same permission rules', async () => {
+    // AC-3.1: no (broad) host_permissions, no WAR; host access only via the exact optional set.
     for (const t of TARGETS) {
       const m = await readManifest(targetDir(t));
       expect(m).not.toHaveProperty('web_accessible_resources');
-      for (const p of [...(m.host_permissions ?? []), ...(m.optional_host_permissions ?? [])]) {
-        expect(broad).not.toContain(p);
-      }
-      for (const p of m.permissions ?? []) expect(['activeTab', 'scripting']).toContain(p);
+      expect(m.host_permissions ?? [], t).toEqual([]);
+      expect([...(m.optional_host_permissions ?? [])].sort(), t).toEqual(['file:///*', 'http://*/*', 'https://*/*']);
+      for (const p of m.permissions ?? []) expect(['activeTab', 'scripting', 'storage', 'downloads']).toContain(p);
     }
   });
 

@@ -7,9 +7,15 @@
 //   manifest  icons, action.default_icon/default_popup, background.*, content_scripts[].js/css,
 //             web_accessible_resources, options/devtools/side panel pages   (relative to root)
 //   HTML      <script src="…">, <link href="…">  (comments ignored)          (relative to the HTML file)
+//             url(…) in <style> / style=""                                    (relative to the HTML file)
+//   CSS       url(…), @import '…'  (comments ignored)                         (relative to the CSS file)
 //   JS        import/export … from '…', import '…', import('…')             (relative to the JS file)
-//             files: ['…'] in executeScript/registerContentScripts            (relative to root)
+//             files: ['…'] / js: ['…'] in executeScript/registerContentScripts (relative to root)
+//             runtime.getURL('…')                                             (relative to root)
 // Absolute URLs (http:, chrome-extension:, data:, //host) are ignored.
+// Fail-safe (AC-6.3): a reference the walker sees but cannot resolve — url(…) that is not a plain
+// literal or sits in JS, runtime.getURL/import() with a non-literal, importScripts(, files:/js:
+// without a literal array — throws `Unresolvable reference in <file>: <match>`.
 
 import { readFile, readdir } from 'node:fs/promises';
 import { join, posix } from 'node:path';
@@ -25,8 +31,21 @@ const HTML_SCRIPT_SRC = /<script\b[^>]*?\ssrc\s*=\s*(["'])(.*?)\1/gi;
 const HTML_LINK_HREF = /<link\b[^>]*?\shref\s*=\s*(["'])(.*?)\1/gi;
 const JS_STATIC_IMPORT = /\b(?:import|export)\s*(?:[\w$*{}\s,]+?\s*from\s*)?(["'])([^"'\r\n]+)\1/g;
 const JS_DYNAMIC_IMPORT = /\bimport\s*\(\s*(["'])([^"'\r\n]+)\1\s*\)/g;
-const JS_FILES_ARRAY = /\bfiles\s*:\s*\[([^\]]*)\]/g;
 const STRING_LITERAL = /(["'])([^"'\r\n]*)\1/g;
+const JS_FILES_KEY = /(?<![\w$.])(?:files|js)\s*:/g;
+const JS_LITERAL_ARRAY = /(?:files|js)\s*:\s*\[([^\]]*)\]/y;
+const JS_ANY_DYNAMIC_IMPORT = /\bimport\s*\(/g;
+const JS_DYNAMIC_IMPORT_AT = /import\s*\(\s*(["'])[^"'\r\n]+\1\s*\)/y;
+const JS_GET_URL = /\bruntime\s*\.\s*getURL\s*\(/g;
+const JS_GET_URL_ARG = /\s*(["'])([^"'\r\n]+)\1\s*\)/y;
+const JS_IMPORT_SCRIPTS = /\bimportScripts\s*\(/;
+const JS_CSS_URL = /(?<![\w$.])url\(/;
+const CSS_COMMENT = /\/\*[\s\S]*?(?:\*\/|$)/g;
+const CSS_URL = /(?<![\w-])url\(/gi;
+const CSS_URL_LITERAL = /url\(\s*(?:(["'])([^"'\r\n]*)\1|([^"'()\s\\$]+))\s*\)/iy;
+const CSS_IMPORT_STRING = /@import\s+(["'])([^"'\r\n]+)\1/gi;
+// Length of the source excerpt quoted in an "Unresolvable reference" error.
+const SNIPPET_LENGTH = 60;
 
 /**
  * Collects every file reachable from the manifest.
@@ -57,14 +76,14 @@ export async function collectReachable(dir, { manifest } = {}) {
     const rel = queue.shift();
     if (!(await existsExact(dir, rel))) throw new Error(`Missing referenced file: ${rel}`);
     const ext = posix.extname(rel).toLowerCase();
-    if (ext !== '.html' && ext !== '.js' && ext !== '.mjs') continue;
+    if (ext !== '.html' && ext !== '.css' && ext !== '.js' && ext !== '.mjs') continue;
 
     const buf = await readFile(join(dir, ...rel.split('/')));
     if (buf.length > MAX_PARSE_BYTES) throw new Error(`File too large to scan: ${rel}`);
     const text = buf.toString('utf8');
     const fromDir = posix.dirname(rel) === '.' ? '' : posix.dirname(rel);
 
-    const refs = ext === '.html' ? htmlRefs(text) : jsRefs(text, rel);
+    const refs = ext === '.html' ? htmlRefs(text, rel) : ext === '.css' ? cssRefs(text, rel) : jsRefs(text, rel);
     for (const { ref, rootRelative } of refs) {
       const target = resolveRef(ref, rootRelative ? '' : fromDir, rel);
       if (target) add(target);
@@ -110,11 +129,32 @@ function manifestRefs(m) {
   return refs;
 }
 
-function htmlRefs(html) {
+function htmlRefs(html, file) {
   const text = html.replace(HTML_COMMENT, '');
   const refs = [];
   for (const re of [HTML_SCRIPT_SRC, HTML_LINK_HREF]) {
     for (const m of text.matchAll(re)) refs.push({ ref: m[2], rootRelative: false });
+  }
+  // <style> blocks and style="" attributes.
+  refs.push(...cssUrlRefs(text, file));
+  return refs;
+}
+
+function cssRefs(css, file) {
+  const text = css.replace(CSS_COMMENT, '');
+  const refs = cssUrlRefs(text, file);
+  for (const m of text.matchAll(CSS_IMPORT_STRING)) refs.push({ ref: m[2], rootRelative: false });
+  return refs;
+}
+
+// url("…"), url('…') or url(plain/path); anything else (var(), ${…}, escapes) is unresolvable.
+function cssUrlRefs(text, file) {
+  const refs = [];
+  for (const m of text.matchAll(CSS_URL)) {
+    CSS_URL_LITERAL.lastIndex = m.index;
+    const lit = CSS_URL_LITERAL.exec(text);
+    if (!lit) throw unresolvable(file, text, m.index);
+    refs.push({ ref: lit[2] ?? lit[3], rootRelative: false });
   }
   return refs;
 }
@@ -130,15 +170,36 @@ function jsRefs(js, file) {
       refs.push({ ref: spec, rootRelative: false });
     }
   }
-  // scripting.executeScript / registerContentScripts resolve `files` against the extension root.
-  for (const m of js.matchAll(JS_FILES_ARRAY)) {
-    const body = m[1];
-    if (body.replace(STRING_LITERAL, '').replace(/[\s,]/g, '') !== '') {
-      throw new Error(`Non-literal entry in files: [...] in ${file}; only string literals can be walked`);
+  for (const m of js.matchAll(JS_ANY_DYNAMIC_IMPORT)) {
+    JS_DYNAMIC_IMPORT_AT.lastIndex = m.index;
+    if (!JS_DYNAMIC_IMPORT_AT.test(js)) throw unresolvable(file, js, m.index);
+  }
+  // executeScript `files` and registerContentScripts `js` resolve against the extension root.
+  for (const m of js.matchAll(JS_FILES_KEY)) {
+    JS_LITERAL_ARRAY.lastIndex = m.index;
+    const arr = JS_LITERAL_ARRAY.exec(js);
+    if (!arr || arr[1].replace(STRING_LITERAL, '').replace(/[\s,]/g, '') !== '') {
+      throw unresolvable(file, js, m.index);
     }
-    for (const s of body.matchAll(STRING_LITERAL)) refs.push({ ref: s[2], rootRelative: true });
+    for (const s of arr[1].matchAll(STRING_LITERAL)) refs.push({ ref: s[2], rootRelative: true });
+  }
+  for (const m of js.matchAll(JS_GET_URL)) {
+    JS_GET_URL_ARG.lastIndex = m.index + m[0].length;
+    const lit = JS_GET_URL_ARG.exec(js);
+    if (!lit) throw unresolvable(file, js, m.index);
+    refs.push({ ref: lit[2], rootRelative: true });
+  }
+  // Classic-worker importScripts() and CSS url() built in JS strings are not walked.
+  for (const re of [JS_IMPORT_SCRIPTS, JS_CSS_URL]) {
+    const m = re.exec(js);
+    if (m) throw unresolvable(file, js, m.index);
   }
   return refs;
+}
+
+function unresolvable(file, text, index) {
+  const snippet = text.slice(index, index + SNIPPET_LENGTH).split(/\r?\n/)[0];
+  return new Error(`Unresolvable reference in ${file}: ${snippet}`);
 }
 
 // Returns a normalized root-relative POSIX path, or null for absolute URLs.

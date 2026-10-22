@@ -26,6 +26,23 @@
       color: #444;
     }
 
+    .lead {
+      font-weight: 600;
+      color: #111;
+    }
+
+    ul {
+      margin: 0 0 12px;
+      padding-left: 18px;
+      font-size: 13px;
+      line-height: 1.4;
+      color: #444;
+    }
+
+    #note:empty {
+      display: none;
+    }
+
     .actions {
       display: flex;
       flex-direction: column;
@@ -48,11 +65,6 @@
       cursor: default;
     }
 
-    .secondary {
-      background: #f3f3f3;
-      color: #111;
-    }
-
     #status {
       margin-top: 12px;
       font-size: 12px;
@@ -69,13 +81,34 @@
 </head>
 <body>
   <h1>Page Debug Snapshot</h1>
-  <p>Uruchom snapshot debugowy dla aktualnej karty.</p>
 
-  <div class="actions">
-    <button id="runSnapshot">Debug snapshot</button>
-  </div>
+  <!-- Section visibility, dynamic texts and handlers live in popup.js (static texts mirror messages.js). -->
+  <section id="ready" hidden>
+    <p id="disclosureTitle" class="lead">Do pliku trafią:</p>
+    <ul id="disclosure">
+      <li>adres strony i dane przeglądarki</li>
+      <li>logi konsoli i błędy</li>
+      <li>zapytania sieciowe (adresy i nagłówki)</li>
+      <li>treść i struktura strony, w tym wartości wpisane w formularze</li>
+      <li>ciasteczka i dane zapisane przez stronę</li>
+    </ul>
+    <p id="noUpload">Plik zostaje na Twoim dysku, rozszerzenie niczego nie wysyła.</p>
+    <p id="reloadNotice">Po kliknięciu „Nagrywaj” strona odświeży się, a nagrywanie zacznie się od jej początku.</p>
+    <div class="actions">
+      <button id="record" type="button">Nagrywaj</button>
+    </div>
+  </section>
 
-  <div id="status"></div>
+  <section id="recording" hidden>
+    <p id="since" class="lead"></p>
+    <p id="hint">Odtwórz problem, a potem kliknij „Zapisz paczkę”.</p>
+    <p id="note"></p>
+    <div class="actions">
+      <button id="save" type="button">Zapisz paczkę</button>
+    </div>
+  </section>
+
+  <div id="status" role="status" aria-live="polite"></div>
 
   <script type="module" src="popup.js"></script>
 </body>

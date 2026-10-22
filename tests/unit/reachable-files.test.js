@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
 import { collectReachable } from '../../scripts/lib/reachability.mjs';
+import { mergeManifest } from '../../scripts/lib/manifest.mjs';
 
 let dir;
 
@@ -186,5 +187,148 @@ describe('collectReachable', () => {
   it('rejects wildcard web_accessible_resources (cannot be walked)', async () => {
     const manifest = { manifest_version: 3, web_accessible_resources: [{ resources: ['war/*'], matches: ['<all_urls>'] }] };
     await expect(collectReachable(dir, { manifest })).rejects.toThrow(/war\/\*/);
+  });
+
+  // E1-T11: registerContentScripts uses js: [...] (root-relative, like files: [...]).
+  it('follows js: [...] in registerContentScripts as root-relative', async () => {
+    writeTree({
+      'manifest.json': { manifest_version: 3, background: { service_worker: 'bg/background.js', type: 'module' } },
+      'bg/background.js': "chrome.scripting.registerContentScripts([{ id: 'a', js: ['/page/a.js', 'page/b.js'], world: 'MAIN' }]);",
+      'page/a.js': '',
+      'page/b.js': '',
+    });
+    expect(await collectReachable(dir)).toEqual(['bg/background.js', 'page/a.js', 'page/b.js']);
+  });
+
+  it('rejects non-literal entry in js: [...]', async () => {
+    writeTree({
+      'manifest.json': { manifest_version: 3, background: { service_worker: 'bg.js' } },
+      'bg.js': "registerContentScripts([{ id: 'a', js: [PAGE_FILE] }]);",
+    });
+    await expect(collectReachable(dir)).rejects.toThrow(/Unresolvable reference in bg\.js: js: \[PAGE_FILE\]/);
+  });
+
+  it('rejects files: given as a variable instead of an array literal', async () => {
+    writeTree({
+      'manifest.json': { manifest_version: 3, background: { service_worker: 'bg.js' } },
+      'bg.js': 'executeScript({ files: list });',
+    });
+    await expect(collectReachable(dir)).rejects.toThrow(/Unresolvable reference in bg\.js: files: list/);
+  });
+
+  it('follows module imports from a module background script', async () => {
+    writeTree({
+      'manifest.json': { manifest_version: 3, background: { scripts: ['bg.js'], type: 'module' } },
+      'bg.js': "import { s } from './lib/store.js';",
+      'lib/store.js': "export * from './origin.js';",
+      'lib/origin.js': '',
+    });
+    expect(await collectReachable(dir)).toEqual(['bg.js', 'lib/origin.js', 'lib/store.js']);
+  });
+
+  it('resolves literal url(...) in css and html relative to the file and requires it to exist', async () => {
+    writeTree({
+      'manifest.json': {
+        manifest_version: 3,
+        action: { default_popup: 'popup/popup.html' },
+        content_scripts: [{ matches: ['<all_urls>'], css: ['content/c.css'] }],
+      },
+      'popup/popup.html': '<style>body { background: url("./bg.png") }</style><div style="x: url(img/a.svg)"></div>',
+      'popup/bg.png': 'x',
+      'popup/img/a.svg': 'x',
+      'content/c.css': "@import 'base.css';\n.a { background: url('../icons/i.png'), url(data:image/png;base64,AA==); }",
+      'content/base.css': '.b { mask: url( "/icons/m.svg" ) }',
+      'icons/i.png': 'x',
+      'icons/m.svg': 'x',
+    });
+    expect(await collectReachable(dir)).toEqual([
+      'content/base.css',
+      'content/c.css',
+      'icons/i.png',
+      'icons/m.svg',
+      'popup/bg.png',
+      'popup/img/a.svg',
+      'popup/popup.html',
+    ]);
+  });
+
+  it('throws on missing file referenced by css url(...)', async () => {
+    writeTree({
+      'manifest.json': { manifest_version: 3, content_scripts: [{ matches: ['<all_urls>'], css: ['c.css'] }] },
+      'c.css': '.a { background: url("./gone.png") }',
+    });
+    await expect(collectReachable(dir)).rejects.toThrow('Missing referenced file: gone.png');
+  });
+
+  it('throws on url( in html style / css / js that cannot be resolved', async () => {
+    writeTree({
+      'manifest.json': { manifest_version: 3, content_scripts: [{ matches: ['<all_urls>'], css: ['c.css'] }] },
+      'c.css': '.a { background: url(var(--img)) }',
+    });
+    await expect(collectReachable(dir)).rejects.toThrow(/Unresolvable reference in c\.css: url\(var\(--img/);
+
+    writeTree({
+      'manifest.json': { manifest_version: 3, action: { default_popup: 'p.html' } },
+      'p.html': '<style>.a { background: url(${img}) }</style>',
+    });
+    await expect(collectReachable(dir)).rejects.toThrow(/Unresolvable reference in p\.html: url\(\$\{img\}/);
+
+    writeTree({
+      'p.html': '<script src="p.js"></script>',
+      'p.js': "el.style.background = 'url(./a.png)';",
+      'a.png': 'x',
+    });
+    await expect(collectReachable(dir)).rejects.toThrow(/Unresolvable reference in p\.js: url\(/);
+  });
+
+  it('resolves literal chrome.runtime.getURL(...) against the root and requires the file', async () => {
+    writeTree({
+      'manifest.json': { manifest_version: 3, background: { service_worker: 'bg/bg.js' } },
+      'bg/bg.js': "const u = chrome.runtime.getURL('page/x.js');\nconst v = browser.runtime.getURL(\"/page/y.js\");",
+      'page/x.js': '',
+      'page/y.js': '',
+    });
+    expect(await collectReachable(dir)).toEqual(['bg/bg.js', 'page/x.js', 'page/y.js']);
+
+    writeTree({ 'bg/bg.js': "chrome.runtime.getURL('page/gone.js');" });
+    await expect(collectReachable(dir)).rejects.toThrow('Missing referenced file: page/gone.js');
+  });
+
+  it('throws on chrome.runtime.getURL( with a non-literal argument', async () => {
+    writeTree({
+      'manifest.json': { manifest_version: 3, background: { service_worker: 'bg.js' } },
+      'bg.js': 'chrome.runtime.getURL(`page/${name}.js`);',
+    });
+    await expect(collectReachable(dir)).rejects.toThrow(/Unresolvable reference in bg\.js: runtime\.getURL\(/);
+  });
+
+  it('throws on import() with template literal or variable', async () => {
+    writeTree({
+      'manifest.json': { manifest_version: 3, background: { service_worker: 'bg.js', type: 'module' } },
+      'bg.js': 'await import(`./lib/${name}.js`);',
+    });
+    await expect(collectReachable(dir)).rejects.toThrow(/Unresolvable reference in bg\.js: import\(`/);
+
+    writeTree({ 'bg.js': 'await import(path);' });
+    await expect(collectReachable(dir)).rejects.toThrow(/Unresolvable reference in bg\.js: import\(path/);
+  });
+
+  it('throws on importScripts(', async () => {
+    writeTree({
+      'manifest.json': { manifest_version: 3, background: { service_worker: 'bg.js' } },
+      'bg.js': "importScripts('lib.js');",
+      'lib.js': '',
+    });
+    await expect(collectReachable(dir)).rejects.toThrow(/Unresolvable reference in bg\.js: importScripts\(/);
+  });
+
+  it('existing src/ still builds', async () => {
+    const srcDir = resolve(import.meta.dirname, '../../src');
+    const read = (name) => JSON.parse(readFileSync(join(srcDir, name), 'utf8'));
+    for (const target of ['chrome', 'firefox']) {
+      const manifest = mergeManifest(read('manifest.base.json'), read(`manifest.${target}.json`));
+      const files = await collectReachable(srcDir, { manifest });
+      expect(files).toContain('page/page-debug-snapshot.js');
+    }
   });
 });

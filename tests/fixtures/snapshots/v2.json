@@ -1,0 +1,190 @@
+{
+  "schemaVersion": 2,
+  "extensionVersion": "0.3.0",
+  "source": "extension",
+  "collectedAt": "2026-01-15T10:01:05.000Z",
+  "recordingStartedAt": "2026-01-15T10:00:00.000Z",
+  "recordingStoppedReason": null,
+  "timeOrigin": 1768471204200.25,
+  "documents": [
+    {
+      "id": 0,
+      "url": "http://127.0.0.1:8080/form.html",
+      "timeOrigin": 1768471200120.5,
+      "navigationType": "reload",
+      "recorded": true,
+      "flushed": true,
+      "current": false,
+      "counts": {
+        "consoleLogs": 1,
+        "runtimeErrors": 0,
+        "network": 0
+      },
+      "kept": {
+        "consoleLogs": 1,
+        "runtimeErrors": 0,
+        "network": 0
+      }
+    },
+    {
+      "id": 1,
+      "url": "http://127.0.0.1:8080/result.html",
+      "timeOrigin": 1768471204200.25,
+      "navigationType": "navigate",
+      "recorded": true,
+      "flushed": true,
+      "current": true,
+      "counts": {
+        "consoleLogs": 1,
+        "runtimeErrors": 2,
+        "network": 1
+      },
+      "kept": {
+        "consoleLogs": 1,
+        "runtimeErrors": 2,
+        "network": 1
+      }
+    }
+  ],
+  "limits": {
+    "consoleLogs": 5000,
+    "runtimeErrors": 1000,
+    "network": 5000,
+    "entryChars": 10000
+  },
+  "truncated": {
+    "consoleLogs": false,
+    "runtimeErrors": false,
+    "network": false
+  },
+  "notes": [
+    "Recording started at 2026-01-15T10:00:00.000Z (page reloaded); earlier data is not included."
+  ],
+  "environment": {
+    "timestamp": "2026-01-15T10:01:05.000Z",
+    "location": {
+      "href": "http://127.0.0.1:8080/result.html",
+      "hostname": "127.0.0.1",
+      "pathname": "/result.html",
+      "search": "",
+      "hash": ""
+    },
+    "document": {
+      "title": "Result fixture",
+      "referrer": "http://127.0.0.1:8080/form.html",
+      "readyState": "complete"
+    },
+    "navigator": {
+      "userAgent": "Mozilla/5.0 (synthetic)",
+      "language": "pl-PL",
+      "platform": "Win32"
+    },
+    "screen": {
+      "width": 1920,
+      "height": 1080
+    },
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "dom": {
+    "counts": {
+      "totalElements": 14,
+      "forms": 0
+    },
+    "html": {
+      "doctype": "html",
+      "lang": "pl",
+      "charset": "UTF-8",
+      "outerHTML": "<html lang=\"pl\">…</html>"
+    },
+    "meta": [],
+    "canonical": null,
+    "hreflangs": [],
+    "scripts": [],
+    "stylesheets": [],
+    "images": [],
+    "iframes": [],
+    "forms": [],
+    "rootMarkers": {}
+  },
+  "performance": {
+    "timeOrigin": 1768471204200.25,
+    "navigation": {
+      "type": "navigate",
+      "domContentLoadedEventStart": 42.1
+    },
+    "resources": []
+  },
+  "storage": {
+    "cookies": "theme=dark",
+    "localStorage": {
+      "theme": "dark"
+    },
+    "sessionStorage": {}
+  },
+  "consoleLogs": [
+    {
+      "t": 310.4,
+      "doc": 0,
+      "level": "info",
+      "args": [
+        "\"form ready\""
+      ],
+      "stack": "at init (http://127.0.0.1:8080/form.js:3:11)"
+    },
+    {
+      "t": 15.2,
+      "doc": 1,
+      "level": "error",
+      "args": [
+        "\"save failed\"",
+        "{\"code\":500}"
+      ],
+      "stack": "at onSave (http://127.0.0.1:8080/result.js:12:9)"
+    }
+  ],
+  "runtimeErrors": [
+    {
+      "t": 8.7,
+      "doc": 1,
+      "type": "error",
+      "message": "Uncaught TypeError: x is undefined",
+      "filename": "http://127.0.0.1:8080/result.html",
+      "lineno": 3,
+      "colno": 9,
+      "stack": "TypeError: x is undefined\n    at http://127.0.0.1:8080/result.html:3:9"
+    },
+    {
+      "t": 11,
+      "doc": 1,
+      "type": "unhandledrejection",
+      "message": "rejected in head",
+      "stack": "Error: rejected in head\n    at http://127.0.0.1:8080/result.html:5:20",
+      "reason": "{\"name\":\"Error\",\"message\":\"rejected in head\"}"
+    }
+  ],
+  "network": [
+    {
+      "t": 12.5,
+      "doc": 1,
+      "type": "fetch",
+      "method": "POST",
+      "url": "http://127.0.0.1:8080/api/fail",
+      "status": 500,
+      "statusText": "Internal Server Error",
+      "ok": false,
+      "redirected": false,
+      "durationMs": 3.21,
+      "requestHeaders": {
+        "content-type": "application/json"
+      },
+      "responseHeaders": {
+        "content-type": "text/plain"
+      },
+      "requestBody": "{\"name\":\"Example\"}",
+      "error": null
+    }
+  ]
+}

@@ -101,19 +101,31 @@ Nie istnieją jeszcze (planowane w kolejnych epikach, patrz `docs/BACKLOG.md`).
 
 ## Uprawnienia
 
-- `activeTab` — dostęp do bieżącej karty tylko po kliknięciu ikony rozszerzenia; daje adres strony i prawo do uruchomienia zrzutu.
-- `scripting` — uruchomienie skryptu zbierającego dane na bieżącej stronie (`scripting.executeScript` w świecie strony).
+- `activeTab` — dostęp do bieżącej karty tylko po kliknięciu ikony rozszerzenia; daje adres strony, aby zaproponować nagranie tej witryny.
+- `scripting` — rejestracja dołączonego skryptu nagrywania tylko dla jednej wybranej witryny (od początku ładowania strony); skrypt jest wyrejestrowywany po zapisie raportu.
+- `storage` — stan nagrania bieżącej karty w pamięci sesji (`storage.session`), czyszczonej przez przeglądarkę przy zamknięciu; nagrane dane nie trafiają do pamięci trwałej.
+- `downloads` — zapis pliku raportu do folderu pobranych i sprawdzenie, że plik naprawdę powstał.
+- `optional_host_permissions` (`http://*/*`, `https://*/*`, `file:///*`) — nie są przyznawane przy instalacji; rozszerzenie prosi w trakcie działania wyłącznie o dostęp do witryny z bieżącej karty (jeden wzorzec), gdy użytkownik wybierze jej nagranie.
 
-Rozszerzenie nie prosi o dostęp do wszystkich witryn i niczego nie wysyła do sieci.
+Rozszerzenie nie dostaje przy instalacji dostępu do wszystkich witryn i niczego nie wysyła do sieci.
 
 Wersje do formularzy sklepów (Chrome Web Store, AMO):
 
 - `activeTab`
-  - PL: Po kliknięciu ikony rozszerzenie uzyskuje dostęp wyłącznie do bieżącej karty, aby zapisać z niej plik diagnostyczny; bez kliknięcia nie ma dostępu do żadnej strony.
-  - EN: When the user clicks the toolbar icon, the extension gets access to the current tab only, to save a diagnostic file from it; without that click it cannot access any website.
+  - PL: Po kliknięciu ikony rozszerzenie odczytuje wyłącznie adres bieżącej karty, aby zaproponować nagranie tej witryny; bez kliknięcia nie ma dostępu do żadnej strony.
+  - EN: When the user clicks the toolbar icon, the extension reads the address of the current tab only, to offer recording of that site; without the click it cannot access any website.
 - `scripting`
-  - PL: Uruchamia na bieżącej karcie, po kliknięciu użytkownika, dołączony do rozszerzenia skrypt, który zbiera błędy, logi konsoli, zapytania sieciowe i strukturę strony do pliku zapisywanego lokalnie.
-  - EN: After the user's click, runs a script bundled with the extension on the current tab to gather errors, console logs, network requests and page structure into a locally saved file.
+  - PL: Rejestruje dołączony do rozszerzenia skrypt nagrywania tylko dla witryny wybranej przez użytkownika, aby działał od początku ładowania strony, i usuwa go po zapisaniu raportu.
+  - EN: Registers the bundled recording script only for the site the user chose to record, so it runs from the start of the page load, and removes it after the report is saved.
+- `storage`
+  - PL: Przechowuje stan nagrania bieżącej karty (czas startu, witryna, postęp zapisu) w pamięci sesji, którą przeglądarka czyści przy zamknięciu; nagrane dane nigdy nie trafiają do pamięci trwałej.
+  - EN: Keeps the recording state of the current tab (start time, site, save progress) in session memory that the browser clears on exit; recorded data is never written to persistent storage.
+- `downloads`
+  - PL: Zapisuje plik raportu w pobranych plikach użytkownika i sprawdza, że plik naprawdę powstał, zanim poinformuje o zapisie.
+  - EN: Saves the report file to the user's downloads and confirms the file was actually written before telling the user it is saved.
+- `optional_host_permissions`
+  - PL: Prośba w trakcie działania wyłącznie o witrynę, którą użytkownik wybrał do nagrania (albo o lokalny plik otwarty w przeglądarce), aby nagrywanie mogło zacząć się od załadowania strony; o dostęp do innych witryn rozszerzenie nigdy nie prosi.
+  - EN: Requested at runtime only for the site the user chooses to record, so recording can start with the page load; access to other sites is never requested. The `file:///*` pattern is requested only if the user chooses to record a local file opened in the browser.
 - Zdalny kod: nie. Cały JavaScript jest w paczce; nic nie jest pobierane ani wykonywane z sieci (EN: "No, I am not using remote code").
 
 > Identyfikator dodatku Firefox (`browser_specific_settings.gecko.id` w `src/manifest.firefox.json`)
