@@ -81,10 +81,20 @@ describe('snapshotTab', () => {
   it('injects page script only when runInPage reports not-loaded', async () => {
     const { api, calls } = fakeApi({ funcResults: [NOT_LOADED, SUCCESS] });
     const outcome = await snapshotTab(WEB_TAB, api);
-    expect(calls.map((c) => (c.func ? 'func' : c.files))).toEqual(['func', ['page/page-debug-snapshot.js'], 'func']);
+    expect(calls.map((c) => (c.func ? 'func' : c.files))).toEqual(['func', ['/page/page-debug-snapshot.js'], 'func']);
     expect(calls[0].func).toBe(runInPage);
     expect(calls[2].func).toBe(runInPage);
     expect(outcome).toEqual({ kind: 'success', fileName: SUCCESS.fileName });
+  });
+
+  // Firefox resolves `files` against the calling document (popup/), Chrome against the
+  // extension root; a leading '/' means the extension root in both (QA E0 F1).
+  it('every files path is absolute from the extension root', async () => {
+    const { api, calls } = fakeApi({ funcResults: [NOT_LOADED, SUCCESS] });
+    await snapshotTab(WEB_TAB, api);
+    const files = calls.flatMap((c) => c.files ?? []);
+    expect(files.length).toBeGreaterThan(0);
+    for (const path of files) expect(path).toMatch(/^\/[^/]/);
   });
 
   it('second snapshot on same tab does not inject files again', async () => {
@@ -112,6 +122,35 @@ describe('snapshotTab', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { api } = fakeApi({ reject: new Error(message), isFirefox, fileAccess: null });
     expect(await snapshotTab({ id: 1, url }, api)).toEqual({ kind });
+    spy.mockRestore();
+  });
+
+  // Chrome without "Allow access to file URLs" hides tab.url for file:// (QA E0 F2).
+  it.each([
+    'Cannot access contents of url "file:///C:/a.html". Extension manifest must request permission to access this host.',
+    'Cannot access contents of the page. Extension manifest must request permission to access the respective host.',
+  ])('returns fileAccess for a tab without url when Chrome denies file access: %s', async (message) => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { api } = fakeApi({ reject: new Error(message), fileAccess: false });
+    expect(await snapshotTab({ id: 1 }, api)).toEqual({ kind: 'fileAccess' });
+    expect(api.isAllowedFileSchemeAccess).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it.each([
+    ['chrome:// page, file access off', 'Cannot access a chrome:// URL', false, false],
+    [
+      'generic denial, file access on',
+      'Cannot access contents of the page. Extension manifest must request permission to access the respective host.',
+      true,
+      false,
+    ],
+    ['generic denial in Firefox', 'Missing host permission for the tab', false, true],
+  ])('keeps restricted for a tab without url: %s', async (_label, message, fileAccess, isFirefox) => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { api } = fakeApi({ reject: new Error(message), fileAccess, isFirefox });
+    expect(await snapshotTab({ id: 1 }, api)).toEqual({ kind: 'restricted' });
+    if (isFirefox) expect(api.isAllowedFileSchemeAccess).not.toHaveBeenCalled();
     spy.mockRestore();
   });
 

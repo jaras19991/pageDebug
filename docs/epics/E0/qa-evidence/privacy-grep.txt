@@ -1,0 +1,6 @@
+Strona testowa: localStorage auth_token=SECRET-TOKEN-QA-7f3a9c1d, sessionStorage session_secret=SESSION-SECRET-QA-55aa,
+cookie sid=COOKIE-SECRET-QA-91bb, formularz email=jan.kowalski.qa@example.org, haslo=HASLO-QA-hunter2
+grep po paczce rozszerzenia (dist/ i src/): 0 trafien dla kazdej wartosci
+grep po pobranym snapshotcie (Chrome, privacy-page-debug-snapshot-*.json): token 2x, session 2x, cookie 2x, email 2x, haslo 1x (outerHTML pola password)
+  storage = {"cookies":"sid=COOKIE-SECRET-QA-91bb","localStorage":{"auth_token":"SECRET-TOKEN-QA-7f3a9c1d"},"sessionStorage":{"session_secret":"SESSION-SECRET-QA-55aa"}}
+Wartosci sa jawne w snapshotcie - znane i zaakceptowane w spec (E3 = redakcja).

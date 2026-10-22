@@ -1,0 +1,225 @@
+{
+  "version": "1.0.0",
+  "collectedAt": "2026-10-22T08:11:33.684Z",
+  "initializedAt": "2026-10-22T08:11:33.684Z",
+  "notes": [
+    "Console logs are captured only from initialization time.",
+    "Fetch/XHR logs are captured only from initialization time.",
+    "Already loaded resources are collected from Performance API."
+  ],
+  "environment": {
+    "timestamp": "2026-10-22T08:11:33.684Z",
+    "location": {
+      "href": "http://127.0.0.1:8081/privacy.html",
+      "origin": "http://127.0.0.1:8081",
+      "protocol": "http:",
+      "host": "127.0.0.1:8081",
+      "hostname": "127.0.0.1",
+      "port": "8081",
+      "pathname": "/privacy.html",
+      "search": "",
+      "hash": ""
+    },
+    "document": {
+      "title": "PDS QA privacy page",
+      "referrer": "",
+      "readyState": "complete",
+      "visibilityState": "visible",
+      "lastModified": "10/22/2026 10:11:33"
+    },
+    "navigator": {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
+      "language": "pl",
+      "languages": [
+        "pl",
+        "en-US",
+        "en"
+      ],
+      "cookieEnabled": true,
+      "onLine": true,
+      "platform": "Win32",
+      "hardwareConcurrency": 32,
+      "deviceMemory": null
+    },
+    "screen": {
+      "width": 3440,
+      "height": 1440,
+      "availWidth": 3440,
+      "availHeight": 1392,
+      "colorDepth": 24,
+      "pixelDepth": 24
+    },
+    "viewport": {
+      "innerWidth": 1280,
+      "innerHeight": 955,
+      "outerWidth": 1296,
+      "outerHeight": 1048,
+      "devicePixelRatio": 1,
+      "scrollX": 0,
+      "scrollY": 0
+    }
+  },
+  "dom": {
+    "counts": {
+      "totalElements": 11,
+      "scripts": 1,
+      "stylesheets": 0,
+      "images": 0,
+      "links": 0,
+      "iframes": 0,
+      "forms": 1
+    },
+    "html": {
+      "doctype": {
+        "name": "html",
+        "publicId": "",
+        "systemId": ""
+      },
+      "lang": "pl",
+      "charset": "UTF-8",
+      "compatMode": "CSS1Compat",
+      "outerHTML": "<html lang=\"pl\"><head><meta charset=\"utf-8\"><title>PDS QA privacy page</title>\n<script>\nlocalStorage.setItem('auth_token','SECRET-TOKEN-QA-7f3a9c1d');\nsessionStorage.setItem('session_secret','SESSION-SECRET-QA-55aa');\ndocument.cookie='sid=COOKIE-SECRET-QA-91bb; path=/';\nconsole.log('privacy page loaded');\n</script></head><body><h1>Formularz</h1>\n<form onsubmit=\"return false\"><input id=\"email\" type=\"email\" value=\"jan.kowalski.qa@example.org\"><input id=\"pwd\" type=\"password\" value=\"HASLO-QA-hunter2\"><button id=\"go\">Wyslij</button></form>\n\n</body></html>"
+    },
+    "meta": [
+      {
+        "tagName": "META",
+        "id": null,
+        "className": null,
+        "name": null,
+        "type": null,
+        "src": null,
+        "href": null,
+        "text": "",
+        "attributes": {
+          "charset": "utf-8"
+        }
+      }
+    ],
+    "canonical": null,
+    "hreflangs": [],
+    "scripts": [
+      {
+        "src": null,
+        "type": null,
+        "async": false,
+        "defer": false,
+        "textLength": 220,
+        "id": null,
+        "attributes": {}
+      }
+    ],
+    "stylesheets": [],
+    "images": [],
+    "iframes": [],
+    "forms": [
+      {
+        "id": null,
+        "name": null,
+        "method": "get",
+        "action": "http://127.0.0.1:8081/privacy.html",
+        "enctype": "application/x-www-form-urlencoded",
+        "elements": [
+          {
+            "tagName": "INPUT",
+            "type": "email",
+            "name": null,
+            "id": "email",
+            "value": "jan.kowalski.qa@example.org",
+            "checked": false
+          },
+          {
+            "tagName": "INPUT",
+            "type": "password",
+            "name": null,
+            "id": "pwd",
+            "value": "[redacted]",
+            "checked": false
+          },
+          {
+            "tagName": "BUTTON",
+            "type": "submit",
+            "name": null,
+            "id": "go",
+            "value": ""
+          }
+        ]
+      }
+    ],
+    "rootMarkers": {
+      "bodyClassName": null,
+      "htmlClassName": null,
+      "dataAttributesOnHtml": {
+        "lang": "pl"
+      },
+      "dataAttributesOnBody": {}
+    }
+  },
+  "performance": {
+    "timeOrigin": 1792656691336,
+    "navigation": {
+      "name": "http://127.0.0.1:8081/privacy.html",
+      "entryType": "navigation",
+      "startTime": 0,
+      "duration": 30,
+      "initiatorType": "navigation",
+      "nextHopProtocol": "http/1.1",
+      "workerStart": 0,
+      "redirectStart": 0,
+      "redirectEnd": 0,
+      "fetchStart": -1,
+      "domainLookupStart": -1,
+      "domainLookupEnd": -1,
+      "connectStart": -1,
+      "secureConnectionStart": 0,
+      "connectEnd": -1,
+      "requestStart": 9,
+      "responseStart": 9,
+      "responseEnd": 9,
+      "domInteractive": 17,
+      "domContentLoadedEventStart": 17,
+      "domContentLoadedEventEnd": 18,
+      "domComplete": 30,
+      "loadEventStart": 30,
+      "loadEventEnd": 30,
+      "transferSize": 871,
+      "encodedBodySize": 571,
+      "decodedBodySize": 571,
+      "type": "navigate"
+    },
+    "resources": [
+      {
+        "name": "http://127.0.0.1:8081/favicon.ico",
+        "entryType": "resource",
+        "initiatorType": "other",
+        "startTime": 20,
+        "duration": 4,
+        "transferSize": 309,
+        "encodedBodySize": 9,
+        "decodedBodySize": 9,
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": null,
+        "responseEnd": 24
+      }
+    ]
+  },
+  "storage": {
+    "cookies": "sid=COOKIE-SECRET-QA-91bb",
+    "localStorage": {
+      "auth_token": "SECRET-TOKEN-QA-7f3a9c1d"
+    },
+    "sessionStorage": {
+      "session_secret": "SESSION-SECRET-QA-55aa"
+    }
+  },
+  "consoleLogs": [
+    {
+      "timestamp": "2026-10-22T08:11:33.684Z",
+      "level": "info",
+      "args": [
+        "PageDebugSnapshot initialized."
+      ]
+    }
+  ],
+  "runtimeErrors": [],
+  "network": []
+}

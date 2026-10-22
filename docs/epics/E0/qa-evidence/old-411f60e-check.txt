@@ -1,0 +1,6 @@
+Baseline 411f60e (git worktree, popup.html + inject.js, <all_urls>), Playwright Chromium, basic.html, klik w popupie:
+  status popupu: "Snapshot zostal uruchomiony i pobrany."   (falszywy sukces)
+  pobrany plik: BRAK (zdarzenie download nie wystapilo w 10 s)
+  konsola strony: [PageDebugSnapshot Extension] Error: window.PageDebugSnapshot nie istnieje po wstrzyknieciu. at run (chrome-extension://.../inject.js:32:13)
+Wniosek: stara wersja w Chromium nie produkuje pliku (inject.js dziala w swiecie ISOLATED) - baseline czasu niemierzalny.
+HEAD (dist/chrome), ta sama metoda (klik -> zdarzenie download), 2 x 3 uruchomienia po 5: mediana 9 ms (7-12 ms); e2e perf (z odczytem pliku): 58-67 ms.

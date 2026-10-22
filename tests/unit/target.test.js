@@ -89,6 +89,43 @@ describe('mapInjectionError', () => {
     expect(mapInjectionError(new Error(message), url, { isFirefox })).toBe(expected);
   });
 
+  // Chrome hides tab.url for file:// without "Allow access to file URLs" (QA E0 F2);
+  // the URL named in the error text is then the only hint.
+  const denied = (u) => `Cannot access contents of url "${u}". Extension manifest must request permission to access this host.`;
+
+  it.each([
+    [denied('file:///C:/a.html'), false, 'fileAccess'],
+    [denied('file:///C:/a.html'), true, 'restricted'],
+    [denied('chrome://version/'), false, 'restricted'],
+    ['Cannot access a chrome:// URL', false, 'restricted'],
+    [denied('https://example.com/'), false, 'restricted'],
+  ])('url unknown, URL taken from message: %s (firefox %s) → %s', (message, isFirefox, expected) => {
+    expect(mapInjectionError(new Error(message), undefined, { isFirefox })).toBe(expected);
+  });
+
+  it('known tab url wins over the URL in the message', () => {
+    expect(mapInjectionError(new Error(denied('file:///C:/a.html')), web)).toBe('restricted');
+  });
+
+  it('url unknown, generic denial: fileAccess only when Chrome reports file access off', () => {
+    const generic = new Error(
+      'Cannot access contents of the page. Extension manifest must request permission to access the respective host.',
+    );
+    expect(mapInjectionError(generic, undefined, { fileAccessDenied: true })).toBe('fileAccess');
+    expect(mapInjectionError(generic, undefined, { fileAccessDenied: false })).toBe('restricted');
+    expect(mapInjectionError(generic, undefined)).toBe('restricted');
+    expect(mapInjectionError(generic, undefined, { fileAccessDenied: true, isFirefox: true })).toBe('restricted');
+    expect(mapInjectionError(generic, web, { fileAccessDenied: true })).toBe('restricted');
+    // Never for a page the message identifies as something other than a file.
+    for (const message of [
+      'Cannot access a chrome:// URL',
+      'The extensions gallery cannot be scripted.',
+      denied('chrome://version/'),
+    ]) {
+      expect(mapInjectionError(new Error(message), undefined, { fileAccessDenied: true })).toBe('restricted');
+    }
+  });
+
   it('maps undefined error to failed', () => {
     expect(mapInjectionError(undefined, web)).toBe('failed');
   });

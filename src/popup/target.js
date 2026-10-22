@@ -56,14 +56,33 @@ export function classifyUrl(url) {
   return isStore ? 'restricted' : 'web';
 }
 
-/** @returns {'restricted' | 'fileAccess' | 'failed'} */
-export function mapInjectionError(err, url, { isFirefox = false } = {}) {
+// Chrome names the page in host-permission errors: Cannot access contents of url "file:///…".
+const ERROR_URL = /\burl\s+"([^"]{1,2048})"/i;
+// Errors that name the kind of page themselves; never a file without access.
+const NON_FILE_ERROR_PATTERNS = [/Cannot access a chrome/i, /extensions gallery cannot be scripted/i];
+
+/**
+ * @param {{ isFirefox?: boolean, fileAccessDenied?: boolean }} [options]
+ *   fileAccessDenied: Chrome's file-URL probe said "no"; used only when the tab URL is unknown.
+ * @returns {'restricted' | 'fileAccess' | 'failed'}
+ */
+export function mapInjectionError(err, url, { isFirefox = false, fileAccessDenied = false } = {}) {
   const raw = typeof err === 'string' ? err : err?.message;
   if (typeof raw !== 'string' || raw === '') return 'failed';
   const message = raw.slice(0, MAX_ERROR_LENGTH);
   if (!RESTRICTED_ERROR_PATTERNS.some((re) => re.test(message))) return 'failed';
   // The file-access hint names a Chrome setting; in Firefox it would be untrue.
-  if (!isFirefox && classifyUrl(url) === 'file') return 'fileAccess';
+  if (isFirefox) return 'restricted';
+
+  const target = classifyUrl(url);
+  if (target === 'file') return 'fileAccess';
+  if (target !== 'unknown') return 'restricted';
+
+  // Without file-URL access Chrome hides tab.url for file:// (QA E0 F2), so fall back
+  // to the URL in the error text, then to the probe for errors that name no page.
+  const named = ERROR_URL.exec(message)?.[1];
+  if (named !== undefined) return classifyUrl(named) === 'file' ? 'fileAccess' : 'restricted';
+  if (fileAccessDenied && !NON_FILE_ERROR_PATTERNS.some((re) => re.test(message))) return 'fileAccess';
   return 'restricted';
 }
 

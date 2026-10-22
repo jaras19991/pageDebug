@@ -28,3 +28,6 @@ src/icons/logo*.png
 # Firefox signed artifacts
 *.xpi
 web-ext-artifacts/
+
+# QA screenshots stay local (5 MB per epic); logs/txt/json are tracked
+docs/epics/*/qa-evidence/*.png

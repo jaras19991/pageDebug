@@ -1,0 +1,13 @@
+Q1 - czysty klon (git clone lokalnego repo, HEAD e48fc41), Node v26.12.1, Windows 11
+ci exit=0 ms=35442
+lint exit=0 ms=5962
+test exit=0 ms=2155
+e2e exit=0 ms=10968
+npm test: 200/200 (vitest Duration 1.21s)
+npm run test:e2e: 13 passed (10.0s), git status po e2e: czysty (AC-3.4)
+npm run lint: eslint 0 errors / web-ext 0 errors, 2 warnings (data_collection_permissions vs strict_min_version)
+AC-5.3: find po klonie - brak logo*, *.zip (poza dist/), node_modules/ w src/ (src/: icons manifest.* page popup standalone)
+test-results/snapshot-timing.json: runs 71,67,64,62,139 ms, median 67 ms
+AC-3.5: odwrocona asercja safeSlice w kopii -> npm test exit 1 (1 failed | 199 passed), plik przywrocony git checkout
+Build: npm run build 586 ms; dist/chrome 70 932 B, dist/firefox 71 133 B; npm run pack 696 ms; zipy 49 328 B / 49 413 B
+AC-7.4: dev-browser.ps1 -Browser opera -> exit 1 (ValidateSet, lista "chrome;firefox"); node scripts/dev-browser.mjs opera -> exit 2 'Unknown browser "opera". Allowed: chrome, firefox'

@@ -127,6 +127,26 @@ describe('collectReachable', () => {
     await expect(collectReachable(dir)).rejects.toThrow(/outside/);
   });
 
+  // Firefox needs a leading '/' in executeScript files (QA E0 F1); it means the extension root.
+  it('resolves a leading / in files: [...] against the extension root, not the JS file', async () => {
+    writeTree({
+      'manifest.json': { manifest_version: 3, action: { default_popup: 'popup/popup.html' } },
+      'popup/popup.html': '<script type="module" src="popup.js"></script>',
+      'popup/popup.js': "executeScript({ files: ['/page/page-debug-snapshot.js'] });",
+      'page/page-debug-snapshot.js': '',
+    });
+    expect(await collectReachable(dir)).toEqual(['page/page-debug-snapshot.js', 'popup/popup.html', 'popup/popup.js']);
+  });
+
+  it('rejects a leading / path in files: [...] that escapes the root', async () => {
+    writeTree({
+      'manifest.json': { manifest_version: 3, action: { default_popup: 'popup.html' } },
+      'popup.html': '<script src="popup.js"></script>',
+      'popup.js': "executeScript({ files: ['/../outside.js'] });",
+    });
+    await expect(collectReachable(dir)).rejects.toThrow(/escapes extension directory/);
+  });
+
   it('collectReachable handles background.service_worker/scripts and content_scripts', async () => {
     writeTree({
       'manifest.json': {

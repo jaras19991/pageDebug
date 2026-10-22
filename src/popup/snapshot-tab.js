@@ -34,7 +34,8 @@ export async function snapshotTab(tab, api) {
     if (result?.ok === false && result.reason === 'not-loaded') {
       // First click on this page: define window.PageDebugSnapshot, then run again.
       // Later clicks skip this, so hooks are never installed twice (AC-1.5).
-      await api.scripting.executeScript({ ...inMain, files: ['page/page-debug-snapshot.js'] });
+      // Leading '/': Firefox resolves `files` against the popup page, Chrome against the root.
+      await api.scripting.executeScript({ ...inMain, files: ['/page/page-debug-snapshot.js'] });
       result = await probe();
     }
     if (result?.ok === true && typeof result.fileName === 'string' && result.fileName) {
@@ -44,6 +45,9 @@ export async function snapshotTab(tab, api) {
     return { kind: 'failed' };
   } catch (error) {
     console.error('[Page Debug Snapshot] executeScript failed', error);
-    return { kind: mapInjectionError(error, tab.url, { isFirefox: api.isFirefox }) };
+    // Chrome hides tab.url for file:// without file-URL access; ask the probe only then.
+    const fileAccessDenied =
+      target === 'unknown' && !api.isFirefox && (await api.isAllowedFileSchemeAccess()) === false;
+    return { kind: mapInjectionError(error, tab.url, { isFirefox: api.isFirefox, fileAccessDenied }) };
   }
 }

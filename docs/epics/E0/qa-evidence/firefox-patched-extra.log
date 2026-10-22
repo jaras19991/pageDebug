@@ -1,0 +1,10 @@
+AC-1.5 click1: "Gotowe. Zapisano plik page-debug-snapshot-1792656730275.json — znajdziesz go w pobranych plikach."
+AC-1.5 click2: "Gotowe. Zapisano plik page-debug-snapshot-1792656732064.json — znajdziesz go w pobranych plikach."
+AC-1.5 files: ["page-debug-snapshot-1792656730275.json","page-debug-snapshot-1792656732064.json"]
+AC-1.5 occurrences of "marker" in 2nd file consoleLogs: 1 | "already exists" warnings: false
+consoleLogs sample: [{"timestamp":"2026-10-22T08:12:10.275Z","level":"info","args":["PageDebugSnapshot initialized."]},{"timestamp":"2026-10-22T08:12:10.322Z","level":"log","args":["marker"]}]
+dblclick op: clicked twice
+dblclick status: "Gotowe. Zapisano plik page-debug-snapshot-1792656734470.json — znajdziesz go w pobranych plikach." new files: ["page-debug-snapshot-1792656734470.json"]
+close-tab-mid-run: tabs left 1 new files: []
+popup panel state after tab closed: open
+newtab status: "Na tej stronie nie da się zapisać paczki. Otwórz stronę, na której widzisz problem, i kliknij ponownie."

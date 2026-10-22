@@ -1,0 +1,10 @@
+cws url after goto: https://consent.google.com/m?continue=https://chromewebstore.google.com/&gl=PL&m=0&pc=cws&cm=2&hl=pl&src=1
+cws url final: https://chromewebstore.google.com/
+CWS (real chromewebstore page) status: "Na tej stronie nie da się zapisać paczki. Otwórz stronę, na której widzisz problem, i kliknij ponownie." isError: true
+rapid double click -> status: "Gotowe. Zapisano plik page-debug-snapshot-1792656772318.json — znajdziesz go w pobranych plikach."
+rapid double click -> downloads: ["page-debug-snapshot-1792656772318.json"]
+2nd separate click status: "Gotowe. Zapisano plik page-debug-snapshot-1792656773151.json — znajdziesz go w pobranych plikach."
+all downloads: ["page-debug-snapshot-1792656772318.json","page-debug-snapshot-1792656773151.json"]
+close tab right after click -> popup gone: cdpSession.send: Protocol error (Target.sendMessageToTarget): No session with given id | downloads: []
+click while next navigation is pending -> status: "Gotowe. Zapisano plik page-debug-snapshot-1792656776152.json — znajdziesz go w pobranych plikach." | downloads: ["page-debug-snapshot-1792656776152.json"]
+click while page loading: harness error Expected one active tab target for about:blank, found 0

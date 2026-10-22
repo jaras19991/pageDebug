@@ -53,16 +53,23 @@ Grupa E (po T16b)
 
 Fazy po implementacji
 - [x] E0-TEST pds-tester: lint ✓, unit 195/195 (1,5 s — AC-3.2 ✓; 46 s nieodtworzone, prawdopodobnie cold cache), e2e 13/13 ×3, 43/43 AC → docs/epics/E0/test-coverage.md. Werdykt: zielone.
-- [~] E0-R1 pds-reviewer ✓ (approve-with-fixes) ∥ E0-R2 pds-store-reviewer ✓ (would-be-rejected dla dziś; E0 nie blokuje — blokery w E1/E3/E5, docs/epics/E0/store-review.md) ∥ E0-Q1/Q2 pds-qa (w toku)
+- [~] E0-R1 pds-reviewer ✓ (approve-with-fixes) ∥ E0-R2 pds-store-reviewer ✓ (would-be-rejected dla dziś; E0 nie blokuje — blokery w E1/E3/E5, docs/epics/E0/store-review.md) ∥ E0-Q1/Q2 pds-qa ✓ **FAIL** (38 PASS / 4 FAIL / 1 BLOCKED) → poprawki F7, F8 → re-QA
 
 ### Findings R1 (pds-reviewer, 2026-10-22) — do poprawki w E0 (grupa F)
-- [ ] F1 [medium] scripts/dev-browser.ps1:44 — regex `'
+- [x] F1 [medium] ✓ (-Pack → npm run pack; 2 testy) scripts/dev-browser.ps1:44 — regex `'
 ode_modules'` zepsuty w T11 → `-Pack` zawsze pada. Poprawka: `-Pack` deleguje do `npm run pack` (dist ma już tylko osiągalne pliki), usunąć własny filtr i Compress-Archive.
 - [x] F2 [low] .gitignore — `*.xpi`, `web-ext-artifacts/` dodane.
 - [ ] F4 [medium, store] README: dopisać sklepowe (PL+EN) wersje uzasadnień uprawnień z store-review.md — faza Docs.
 - [ ] F5 [low, store] Release: manifest version = wersja release (0.2.0); nic nie było wysłane do sklepów.
 - [x] F6 [high, store + decyzja użytkownika 2026-10-22] ✓ scripts/icons.mjs + icons-script.test.js (3), PNG 139/311/927 B, 200/200 — **Plugin niezależny, bez brandingu Agory**: `gecko.id` → GUID `{799eb178-df9a-41bb-9775-8fc8aff45926}`
   (zrobione), ikony 16/48/128 → generowane skryptem `scripts/icons.mjs` (neutralne, bez tekstu/logo, margines wg CWS), README/docs bez odniesień do organizacji.
+- [~] F7 [critical, QA Firefox] `files: ['page/page-debug-snapshot.js']` — Firefox rozwiązuje względem popupu → zrzut nie działa na żadnej stronie.
+  Poprawka: wiodący `/` + walker akceptuje root-relative. Luka testów: unit mockują executeScript, e2e tylko Chromium.
+- [~] F8 [high, QA Chrome] `file://` bez zgody: `tab.url` undefined → `unknown` → sonda pominięta → `restricted` zamiast `fileAccess`.
+  Poprawka: URL z treści błędu Chrome + sonda przy `unknown`.
+- QA pozostałe: czysty klon zielony (200 unit, 13 e2e), dev:chrome ~1 s, dev:firefox ~2,7 s, AC-2.2 OK w obu, zrzut 9 ms;
+  baseline 411f60e niemierzalny (stara wersja nie tworzy pliku — inject.js w ISOLATED; fałszywy sukces). AC-5.5 BLOCKED do DOC1.
+  qa-evidence: 66 PNG (5 MB) lokalnie, ignorowane; logi/txt/json śledzone.
 - [ ] F3 [medium→QA] fałszywy sukces przy zablokowanych automatycznych pobraniach w Chrome („Blokuj” w „Ta strona chce pobrać wiele plików”) — QA ręczne: dwa kliknięcia bez interakcji ze stroną w zwykłym Chrome; naprawa w E1 (patrz backlog).
 Poza E0 (dopisane do backlogu): E1 — `downloads` permission + sukces po `onChanged state=complete`; sprawdzanie `pds.version` w `runInPage` (strona może podstawić obiekt → fałszywy sukces); timeout `executeScript` (~15 s) z komunikatem; walker fail-safe na `url(`/`getURL(`. E3 — usunąć global `window.__PAGE_DEBUG_SNAPSHOT__` (pełna paczka dostępna skryptom strony).
 Do decyzji użytkownika: mechanizm pobierania w E1 (`downloads` permission = jedno uprawnienie więcej, ale prawdziwy wynik).

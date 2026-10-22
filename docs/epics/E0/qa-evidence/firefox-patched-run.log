@@ -1,0 +1,15 @@
+basic url: http://127.0.0.1:8080/basic.html | idle: "Page Debug Snapshot\n\nUruchom snapshot debugowy dla aktualnej karty.\n\nDebug snapshot"
+basic status@~20ms: "Gotowe. Zapisano plik page-debug-snapshot-1792656682876.json — znajdziesz go w pobranych plikach."
+basic RESULT status="Gotowe. Zapisano plik page-debug-snapshot-1792656682876.json — znajdziesz go w pobranych plikach." error=false waitedMs~12 newFiles=[]
+throw url: http://127.0.0.1:8080/throw-on-snapshot.html | idle: "Page Debug Snapshot\n\nUruchom snapshot debugowy dla aktualnej karty.\n\nDebug snapshot"
+throw status@~20ms: "Nie udało się zapisać paczki. Odśwież stronę i spróbuj ponownie. Jeśli to się powtarza, opisz problem developerowi bez paczki."
+throw RESULT status="Nie udało się zapisać paczki. Odśwież stronę i spróbuj ponownie. Jeśli to się powtarza, opisz problem developerowi bez paczki." error=true waitedMs~1 newFiles=[]
+csp url: http://127.0.0.1:8080/csp-strict.html | idle: "Page Debug Snapshot\n\nUruchom snapshot debugowy dla aktualnej karty.\n\nDebug snapshot"
+csp status@~20ms: "Gotowe. Zapisano plik page-debug-snapshot-1792656690064.json — znajdziesz go w pobranych plikach."
+csp RESULT status="Gotowe. Zapisano plik page-debug-snapshot-1792656690064.json — znajdziesz go w pobranych plikach." error=false waitedMs~2 newFiles=[]
+privacy url: http://127.0.0.1:8081/privacy.html | idle: "Page Debug Snapshot\n\nUruchom snapshot debugowy dla aktualnej karty.\n\nDebug snapshot"
+privacy status@~20ms: "Gotowe. Zapisano plik page-debug-snapshot-1792656693684.json — znajdziesz go w pobranych plikach."
+privacy RESULT status="Gotowe. Zapisano plik page-debug-snapshot-1792656693684.json — znajdziesz go w pobranych plikach." error=false waitedMs~2 newFiles=[]
+file url: file:///C:/Agora/pluginDebbuging/tests/fixtures/pages/basic.html | idle: "Page Debug Snapshot\n\nUruchom snapshot debugowy dla aktualnej karty.\n\nDebug snapshot"
+file status@~20ms: "Gotowe. Zapisano plik page-debug-snapshot-1792656697278.json — znajdziesz go w pobranych plikach."
+file RESULT status="Gotowe. Zapisano plik page-debug-snapshot-1792656697278.json — znajdziesz go w pobranych plikach." error=false waitedMs~1 newFiles=[]
