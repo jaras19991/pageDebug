@@ -4,6 +4,9 @@ import { readFile } from 'node:fs/promises';
 import { harnessOf, openPopupFor, waitForDownloadFile } from './launch.js';
 
 const STEP_TIMEOUT = 10_000;
+// The popup controller gives up on a lost `collect` after 15 s and shows `pageBusy`; waiting
+// longer makes a lost answer surface as that message and not as "no save result" (F-e1-2).
+const SAVE_RESULT_TIMEOUT = 16_000;
 /** storage.session key read by the background instead of the 10-minute limit (E1-T12). */
 export const TEST_LIMIT_KEY = 'pds:test:recordingLimitMs';
 
@@ -101,28 +104,33 @@ export async function startRecording(page, { grant = true, timeout = STEP_TIMEOU
  * harness download dir.
  * @param {import('@playwright/test').Page} page
  * @param {{ timeout?: number }} [options]
- * @returns {Promise<{ fileName: string, path: string, json: any, statusText: string }>}
+ * @returns {Promise<{ fileName: string, path: string, json: any, statusText: string, savedAfterMs: number }>}
+ *   savedAfterMs: click on "Zapisz paczkę" → "Zapisano plik …" visible (popup polled every 50 ms).
  */
-export async function saveRecording(page, { timeout = STEP_TIMEOUT } = {}) {
+export async function saveRecording(page, { timeout = STEP_TIMEOUT, resultTimeout = SAVE_RESULT_TIMEOUT } = {}) {
   const popup = await openPopupFor(page);
   let statusText;
+  let clickedAt;
+  let savedAfterMs;
   try {
     await waitForState(popup, (s) => s.section === 'recording' && s.saveEnabled, '"Zapisz paczkę" button', timeout);
+    clickedAt = Date.now();
     await popup.click('#save');
     const state = await waitForState(
       popup,
       (s) => SAVED_RE.test(s.status) || (s.statusIsError && s.status),
       'save result',
-      timeout,
+      resultTimeout,
     );
     if (!SAVED_RE.test(state.status)) throw new Error(`Save failed: ${state.status}`);
+    savedAfterMs = Date.now() - clickedAt;
     statusText = state.status;
   } finally {
     await popup.close();
   }
   const fileName = SAVED_RE.exec(statusText)[1];
   const { path } = await waitForDownloadFile(page, { fileName, timeout });
-  return { fileName, path, json: JSON.parse(await readFile(path, 'utf8')), statusText };
+  return { fileName, path, json: JSON.parse(await readFile(path, 'utf8')), statusText, savedAfterMs };
 }
 
 /**

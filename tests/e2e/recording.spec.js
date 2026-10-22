@@ -194,6 +194,22 @@ test('save: Zapisano names the file that exists in download dir; file is JSON sc
   });
 });
 
+test('NFR: click "Zapisz paczkę" → "Zapisano" on basic.html, median of 5 ≤ 5 s', async () => {
+  const times = [];
+  for (let i = 0; i < 5; i++) {
+    await withPage(async (page) => {
+      await page.goto(`${server.url}/basic.html`);
+      await startRecording(page);
+      const saved = await saveRecording(page);
+      expect(saved.statusText).toBe(MESSAGES.saved(saved.fileName));
+      times.push(saved.savedAfterMs);
+    });
+  }
+  const median = [...times].sort((a, b) => a - b)[2];
+  console.log(`save→Zapisano ms: ${times.join(', ')} (median ${median})`);
+  expect(median).toBeLessThanOrEqual(5000);
+});
+
 test('head error, early fetch 500, console.error and rejection are in the package with t < domContentLoadedEventStart', async () => {
   await withPage(async (page) => {
     const { json, dcl } = await recordEarlyError(page);

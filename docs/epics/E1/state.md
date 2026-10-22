@@ -1,6 +1,6 @@
 # E1 — Model nagrywania: dane od startu strony — stan
 
-faza: implement
+faza: test
 rozpoczęto: 2026-10-22
 ostatnia aktualizacja: 2026-10-22
 
@@ -94,7 +94,9 @@ ostatnia aktualizacja: 2026-10-22
 - **Implementacja E1: 27/27 (commit grupy G). 589 unit, 47 e2e (2 fixme → F-e1-1, F-e1-2).**
 - [x] F-e1-1: controller STICKY_OUTCOMES (pageBusy/failed/downloadFailed/saveCancelled nie kasowane zmianą stanu tła) + 4 testy; popup.close() czeka na zniknięcie targetId, openPopupFor na gotowy dokument; fixme w failure.spec zdjęty; adapter w recording.spec usunięty — 593/593, lint 0; e2e recording 150/150 repeat
   Tester: 1/330 „after save: reload has no recorder” — startRecording nie doczekał reloadu w 10 s przy równoległym Chromium; sprawdzić na przebiegu na wyłączność (może wiązać się z F-e1-2).
-- [~] F-e1-2: zawieszony zapis po restarcie SW — diagnoza + naprawa (start)
+- [x] F-e1-2: nieodtwarzalne (350+ prób ze znacznikami SW/ISOLATED/popup, 0 zawieszeń; navigation 100/100). Popup nie wisi (kontroler 15 s → pageBusy). Przyczyna losowych porażek w grupie G: **równoległe przebiegi e2e przebudowują dist/chrome pod działającą przeglądarką** (21/40 porażek w takim scenariuszu). Skrypt diagnostyczny: scratchpad/diag/run.mjs.
+  Dla testera: (1) `saveRecording` czekać ≥ 16 s (dłużej niż timeout kontrolera), (2) global-setup: build do katalogu per przebieg lub blokada/flaga `PDS_E2E_NO_BUILD`, żeby równoległe przebiegi nie psuły dist.
+- [~] E1-TEST pds-tester (start 2026-10-23)
     Tester: NFR „save→Zapisano mediana z 5 ≤ 5 s” brak w T19e — dopisać w fazie Testy; `hooks-overhead.json` kasowany przez równoległe przebiegi — QA bierze z przebiegu na wyłączność.
 - [ ] E1-TEST1..3, R1, Q1, DOC1
 
