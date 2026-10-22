@@ -88,9 +88,12 @@ describe('manifest parity chrome vs firefox', () => {
     }
   });
 
-  it('no background in either manifest (E0)', () => {
-    expect(chrome).not.toHaveProperty('background');
-    expect(firefox).not.toHaveProperty('background');
+  it('chrome manifest has background.service_worker, firefox has background.scripts, same file and type module', () => {
+    // D2: one ES module; Chrome runs it as a service worker, Firefox as an event page.
+    expect(chrome.background).toEqual({ service_worker: 'background.js', type: 'module' });
+    expect(firefox.background).toEqual({ scripts: ['background.js'], type: 'module' });
+    expect(firefox.background.scripts[0]).toBe(chrome.background.service_worker);
+    expect(firefox.background.type).toBe(chrome.background.type);
   });
 
   it('mergeManifest rejects an overlay overriding permissions', () => {

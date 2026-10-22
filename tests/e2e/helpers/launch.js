@@ -1,9 +1,12 @@
-// E2E harness (E0-T16b): Chromium with the built extension, the real popup opened with
-// activeTab through CDP (design D10 path (a), recipe in docs/epics/E0/spike-T17.md) and
-// a download helper. The popup is not a Playwright Page, so it is driven over a
+// E2E harness (E0-T16b, extended in E1-T18): Chromium with the built extension, the real popup
+// opened with activeTab through CDP (design D10, recipe in docs/epics/E0/spike-T17.md), the
+// background service worker, origin grants and downloads into a temp dir (D11 as corrected by
+// docs/epics/E1/spike-T0.md). The popup is not a Playwright Page, so it is driven over a
 // non-flatten CDP session (Target.sendMessageToTarget + Runtime.evaluate).
 import { chromium } from '@playwright/test';
-import { dirname, resolve } from 'node:path';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -12,66 +15,209 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 export const DIST_CHROME = resolve(ROOT, 'dist/chrome');
 
 const POPUP_TIMEOUT = 5_000;
+const SW_TIMEOUT = 5_000;
+const DOWNLOAD_TIMEOUT = 10_000;
 const POLL_MS = 50;
 
-// context -> { extensionId, browserCdp }, so openPopupFor(page) needs only the page.
+// context -> harness (see launchWithExtension), so page-based helpers need only the page.
 const harnesses = new WeakMap();
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function readExtensionInfo(context, distDir) {
+/**
+ * The harness of a page or of the object returned by launchWithExtension().
+ * @param {import('@playwright/test').Page | { context: import('@playwright/test').BrowserContext }} pageOrExt
+ */
+export function harnessOf(pageOrExt) {
+  const context = typeof pageOrExt?.context === 'function' ? pageOrExt.context() : pageOrExt?.context;
+  const harness = context && harnesses.get(context);
+  if (!harness) throw new Error('Page or context does not come from launchWithExtension()');
+  return harness;
+}
+
+async function withExtensionsPage(context, fn) {
   const page = await context.newPage();
   try {
     await page.goto('chrome://extensions');
-    const infos = await page.evaluate(() => globalThis.chrome.developerPrivate.getExtensionsInfo());
-    const info = infos.find((i) => resolve(i.path ?? '') === distDir);
-    if (!info) throw new Error(`Extension from ${distDir} is not loaded`);
-    return { id: info.id, name: info.name, version: info.version, path: info.path };
+    return await fn(page);
   } finally {
     await page.close();
   }
 }
 
+function readExtensionInfo(context, distDir) {
+  return withExtensionsPage(context, async (page) => {
+    const infos = await page.evaluate(() => globalThis.chrome.developerPrivate.getExtensionsInfo());
+    const info = infos.find((i) => resolve(i.path ?? '') === distDir);
+    if (!info) throw new Error(`Extension from ${distDir} is not loaded`);
+    return { id: info.id, name: info.name, version: info.version, path: info.path };
+  });
+}
+
+// Chrome's own download directory for a fresh profile. With Browser.setDownloadBehavior 'allow'
+// Chrome ignores downloads.download({ filename }) and saves `<blob uuid>.json` (spike T0, S7),
+// so downloads stay in Chrome's hands ('default') and land in this directory instead.
+async function writeProfilePreferences(profileDir, downloadDir) {
+  await mkdir(join(profileDir, 'Default'), { recursive: true });
+  const prefs = { download: { default_directory: downloadDir, prompt_for_download: false, directory_upgrade: true } };
+  await writeFile(join(profileDir, 'Default', 'Preferences'), JSON.stringify(prefs));
+}
+
+// Overrides Playwright's per-context download behaviour, globally and for the page context.
+async function useChromeDownloads(cdp) {
+  await cdp.send('Browser.setDownloadBehavior', { behavior: 'default' });
+  const { targetInfos } = await cdp.send('Target.getTargets');
+  const contextIds = new Set(targetInfos.map((t) => t.browserContextId).filter(Boolean));
+  for (const browserContextId of contextIds) {
+    await cdp.send('Browser.setDownloadBehavior', { behavior: 'default', browserContextId });
+  }
+}
+
 /**
- * Starts Chromium with only the given unpacked extension. Downloads stay in Playwright's
- * temp dir (no downloadsPath), never in the user's Downloads folder (AC-3.4).
- * @param {{ distDir?: string, headless?: boolean }} [options]
+ * Starts Chromium with only the given unpacked extension, in a throwaway profile. Downloads go
+ * to `downloadDir` (a temp dir by default), never to the user's Downloads folder (AC-3.4).
+ * @param {{ distDir?: string, headless?: boolean, downloadDir?: string }} [options]
+ *   downloadDir: an existing directory owned by the caller; by default one is created and
+ *   removed by close().
  * @returns {Promise<{ context: import('@playwright/test').BrowserContext, extensionId: string,
  *   extensionInfo: { id: string, name: string, version: string, path: string },
- *   browserCdp: import('@playwright/test').CDPSession, close: () => Promise<void> }>}
+ *   browserCdp: import('@playwright/test').CDPSession, downloadDir: string,
+ *   serviceWorker: (options?: { timeout?: number }) => Promise<import('@playwright/test').Worker>,
+ *   stopServiceWorker: (options?: { timeout?: number }) => Promise<void>,
+ *   grantOrigin: (pattern: string) => Promise<void>,
+ *   sessionStorage: { get: (key: string) => Promise<any>, set: (key: string, value: any) => Promise<void> },
+ *   close: () => Promise<void> }>}
  */
 export async function launchWithExtension({
   distDir = DIST_CHROME,
   headless = process.env.PDS_E2E_HEADED !== '1',
+  downloadDir,
 } = {}) {
   distDir = resolve(distDir);
-  // channel 'chromium' runs the full browser in new headless mode (extensions need it).
-  const context = await chromium.launchPersistentContext('', {
-    channel: 'chromium',
-    headless,
-    acceptDownloads: true,
-    args: [
-      `--disable-extensions-except=${distDir}`,
-      `--load-extension=${distDir}`,
-      // Exposes the CDP Extensions domain (Extensions.triggerAction).
-      '--enable-unsafe-extension-debugging',
-    ],
-  });
+  const tempRoot = await mkdtemp(join(tmpdir(), 'pds-e2e-'));
+  const profileDir = join(tempRoot, 'profile');
+  downloadDir = downloadDir ? resolve(downloadDir) : join(tempRoot, 'downloads');
+  await mkdir(downloadDir, { recursive: true });
+  await writeProfilePreferences(profileDir, downloadDir);
+
+  let context;
+  const cleanup = async () => {
+    await context?.close();
+    await rm(tempRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  };
   try {
+    // channel 'chromium' runs the full browser in new headless mode (extensions need it).
+    context = await chromium.launchPersistentContext(profileDir, {
+      channel: 'chromium',
+      headless,
+      acceptDownloads: true,
+      args: [
+        `--disable-extensions-except=${distDir}`,
+        `--load-extension=${distDir}`,
+        // Exposes the CDP Extensions domain (Extensions.triggerAction).
+        '--enable-unsafe-extension-debugging',
+      ],
+    });
     const extensionInfo = await readExtensionInfo(context, distDir);
     const browserCdp = await context.browser().newBrowserCDPSession();
-    harnesses.set(context, { extensionId: extensionInfo.id, browserCdp });
-    return {
-      context,
-      extensionId: extensionInfo.id,
-      extensionInfo,
-      browserCdp,
-      close: () => context.close(),
-    };
+    await useChromeDownloads(browserCdp);
+    const ext = createHarness({ context, extensionInfo, browserCdp, downloadDir, close: cleanup });
+    harnesses.set(context, ext);
+    return ext;
   } catch (error) {
-    await context.close();
+    await cleanup();
     throw error;
   }
+}
+
+function createHarness({ context, extensionInfo, browserCdp: cdp, downloadDir, close }) {
+  const extensionId = extensionInfo.id;
+  const swUrlPrefix = `chrome-extension://${extensionId}/`;
+  // Worker handles of the background. Playwright reports neither 'close' for a worker stopped
+  // with Target.closeTarget (spike T0, S2) nor a new 'serviceworker' when it starts again: the
+  // old handle reattaches to the restarted worker (same version target), so it is reused.
+  const workers = context.serviceWorkers().filter((w) => w.url().startsWith(swUrlPrefix));
+  context.on('serviceworker', (w) => {
+    if (w.url().startsWith(swUrlPrefix)) workers.push(w);
+  });
+
+  async function swTargets() {
+    const { targetInfos } = await cdp.send('Target.getTargets');
+    return targetInfos.filter((t) => t.type === 'service_worker' && t.url.startsWith(swUrlPrefix));
+  }
+
+  // Any event wakes a stopped worker; a message from an extension page is the simplest one.
+  // The router ignores unknown types, so sendMessage rejects (no receiver) — that is expected.
+  async function wakeServiceWorker() {
+    const page = await context.newPage();
+    try {
+      await page.goto(`${swUrlPrefix}manifest.json`);
+      await page.evaluate(() => globalThis.chrome.runtime.sendMessage({ type: 'pds:e2e:wake' }).catch(() => {}));
+    } finally {
+      await page.close();
+    }
+  }
+
+  async function serviceWorker({ timeout = SW_TIMEOUT } = {}) {
+    const deadline = Date.now() + timeout;
+    if ((await swTargets()).length === 0) await wakeServiceWorker();
+    while (workers.length === 0 || (await swTargets()).length === 0) {
+      if (Date.now() > deadline) throw new Error(`Service worker of ${extensionId} did not start within ${timeout} ms`);
+      await delay(POLL_MS);
+    }
+    return workers[workers.length - 1];
+  }
+
+  async function stopServiceWorker({ timeout = SW_TIMEOUT } = {}) {
+    for (const target of await swTargets()) {
+      await cdp.send('Target.closeTarget', { targetId: target.targetId }).catch(() => {});
+    }
+    const deadline = Date.now() + timeout;
+    while ((await swTargets()).length > 0) {
+      if (Date.now() > deadline) throw new Error(`Service worker of ${extensionId} did not stop within ${timeout} ms`);
+      await delay(POLL_MS);
+    }
+  }
+
+  // developerPrivate.addHostPermission alone does not grant (permissions.contains stays false),
+  // but the next permissions.request from a popup click with a user gesture resolves true
+  // without a prompt (spike T0, S3/S4). So this prepares the grant made by "Nagrywaj".
+  function grantOrigin(pattern) {
+    return withExtensionsPage(context, (page) =>
+      page.evaluate(
+        ([id, host]) => globalThis.chrome.developerPrivate.addHostPermission(id, host),
+        [extensionId, pattern],
+      ),
+    );
+  }
+
+  const sessionStorage = {
+    async get(key) {
+      const sw = await serviceWorker();
+      return sw.evaluate(async (k) => (await globalThis.chrome.storage.session.get(k))[k], key);
+    },
+    /** `undefined` removes the key. */
+    async set(key, value) {
+      const sw = await serviceWorker();
+      await sw.evaluate(
+        ([k, v]) => (v === undefined ? globalThis.chrome.storage.session.remove(k) : globalThis.chrome.storage.session.set({ [k]: v })),
+        [key, value],
+      );
+    },
+  };
+
+  return {
+    context,
+    extensionId,
+    extensionInfo,
+    browserCdp: cdp,
+    downloadDir,
+    serviceWorker,
+    stopServiceWorker,
+    grantOrigin,
+    sessionStorage,
+    close,
+  };
 }
 
 async function findTabTarget(cdp, page) {
@@ -148,18 +294,18 @@ function toMatcher(predicate) {
 
 /**
  * Opens the extension popup for `page` like a user clicking the toolbar icon, so the popup
- * gets activeTab for this tab. activeTab is lost on navigation: call again after goto.
+ * gets activeTab for this tab. Only one popup is open at a time: opening another closes it.
  * @param {import('@playwright/test').Page} page a page from launchWithExtension().context
  * @param {{ timeout?: number }} [options]
- * @returns {Promise<{ url: string, targetId: string, evaluate: (expression: string) => Promise<any>,
+ * @returns {Promise<{ url: string, targetId: string,
+ *   evaluate: (expression: string, options?: { userGesture?: boolean }) => Promise<any>,
  *   click: (selector: string) => Promise<void>, textOf: (selector: string) => Promise<string>,
  *   waitForText: (selector: string, predicate: string | RegExp | ((text: string) => boolean), timeout?: number) => Promise<string>,
+ *   waitFor: (expression: string, timeout?: number) => Promise<any>,
  *   close: () => Promise<void> }>}
  */
 export async function openPopupFor(page, { timeout = POPUP_TIMEOUT } = {}) {
-  const harness = harnesses.get(page.context());
-  if (!harness) throw new Error('openPopupFor: page does not come from launchWithExtension()');
-  const { extensionId, browserCdp: cdp } = harness;
+  const { extensionId, browserCdp: cdp } = harnessOf(page);
   await page.bringToFront();
   const tabTargetId = await findTabTarget(cdp, page);
   const popupUrl = `chrome-extension://${extensionId}/popup/popup.html`;
@@ -171,11 +317,12 @@ export async function openPopupFor(page, { timeout = POPUP_TIMEOUT } = {}) {
   const { sessionId } = await cdp.send('Target.attachToTarget', { targetId: target.targetId, flatten: false });
   const client = createSessionClient(cdp, sessionId);
 
-  async function evaluate(expression) {
+  async function evaluate(expression, { userGesture = false } = {}) {
     const { result, exceptionDetails } = await client.send('Runtime.evaluate', {
       expression,
       awaitPromise: true,
       returnByValue: true,
+      userGesture,
     });
     if (exceptionDetails) {
       throw new Error(`Popup evaluate failed: ${exceptionDetails.exception?.description ?? exceptionDetails.text}`);
@@ -194,9 +341,11 @@ export async function openPopupFor(page, { timeout = POPUP_TIMEOUT } = {}) {
     url: target.url,
     targetId: target.targetId,
     evaluate,
+    // A user gesture, as a real click: permissions.request rejects without one (spike T0, S4).
     async click(selector) {
       const found = await evaluate(
         `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; el.click(); return true; })()`,
+        { userGesture: true },
       );
       if (!found) throw new Error(`Popup: no element ${selector}`);
     },
@@ -219,6 +368,16 @@ export async function openPopupFor(page, { timeout = POPUP_TIMEOUT } = {}) {
         await delay(POLL_MS);
       }
     },
+    /** Polls a popup expression until it is truthy and returns its value. */
+    async waitFor(expression, waitTimeout = POPUP_TIMEOUT) {
+      const end = Date.now() + waitTimeout;
+      for (;;) {
+        const value = await evaluate(expression);
+        if (value) return value;
+        if (Date.now() > end) throw new Error(`Popup: ${expression} stayed falsy for ${waitTimeout} ms`);
+        await delay(POLL_MS);
+      }
+    },
     async close() {
       client.dispose();
       await cdp.send('Target.closeTarget', { targetId: target.targetId }).catch(() => {});
@@ -227,17 +386,55 @@ export async function openPopupFor(page, { timeout = POPUP_TIMEOUT } = {}) {
   return popup;
 }
 
+// Finished downloads only: Chrome writes `<name>.crdownload` / `Unconfirmed <n>.crdownload`
+// and renames the file when the download completes.
+async function finishedFiles(dir) {
+  const names = await readdir(dir);
+  return names.filter((n) => !n.endsWith('.crdownload') && !n.startsWith('Unconfirmed '));
+}
+
 /**
- * Runs `action` and returns the download it starts on `page`. The file lives in Playwright's
- * temp dir and is deleted when the context closes.
- * @param {import('@playwright/test').Page} page the tab that saves the file
+ * Names of files in the harness download dir: finished ones, or all with `includePartial`.
+ * @param {import('@playwright/test').Page | object} pageOrExt
+ * @param {{ includePartial?: boolean }} [options]
+ */
+export function listDownloads(pageOrExt, { includePartial = false } = {}) {
+  const { downloadDir } = harnessOf(pageOrExt);
+  return includePartial ? readdir(downloadDir) : finishedFiles(downloadDir);
+}
+
+/**
+ * Waits until the finished file `fileName` (or, without a name, any file not in `known`)
+ * appears in the harness download dir.
+ * @param {import('@playwright/test').Page | object} pageOrExt
+ * @param {{ fileName?: string, known?: Iterable<string>, timeout?: number }} [options]
+ * @returns {Promise<{ suggestedFilename: string, path: string }>}
+ */
+export async function waitForDownloadFile(pageOrExt, { fileName, known = [], timeout = DOWNLOAD_TIMEOUT } = {}) {
+  const { downloadDir } = harnessOf(pageOrExt);
+  const skip = new Set(known);
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const files = await finishedFiles(downloadDir);
+    const found = fileName ? files.find((n) => n === fileName) : files.find((n) => !skip.has(n));
+    if (found) return { suggestedFilename: found, path: join(downloadDir, found) };
+    if (Date.now() > deadline) {
+      throw new Error(`No ${fileName ?? 'new file'} in ${downloadDir} within ${timeout} ms (have: ${files.join(', ') || 'none'})`);
+    }
+    await delay(POLL_MS);
+  }
+}
+
+/**
+ * Runs `action` and returns the first new file it saves into the harness download dir.
+ * The popup starts the download, so Playwright's `download` event never fires (spike T0, S7).
+ * @param {import('@playwright/test').Page | object} pageOrExt
  * @param {() => Promise<unknown>} action
  * @param {{ timeout?: number }} [options]
  * @returns {Promise<{ suggestedFilename: string, path: string }>}
  */
-export async function expectDownload(page, action, { timeout = 10_000 } = {}) {
-  const [download] = await Promise.all([page.waitForEvent('download', { timeout }), action()]);
-  const failure = await download.failure();
-  if (failure) throw new Error(`Download failed: ${failure}`);
-  return { suggestedFilename: download.suggestedFilename(), path: await download.path() };
+export async function expectDownload(pageOrExt, action, { timeout = DOWNLOAD_TIMEOUT } = {}) {
+  const known = await listDownloads(pageOrExt);
+  await action();
+  return waitForDownloadFile(pageOrExt, { known, timeout });
 }

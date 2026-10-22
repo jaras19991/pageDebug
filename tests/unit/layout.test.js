@@ -10,7 +10,9 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 describe('repo layout', () => {
   it('extension sources live in src/', () => {
     const files = [
-      'src/page/page-debug-snapshot.js',
+      'src/background.js',
+      'src/content/main-world.js',
+      'src/popup/controller.js',
       'src/page/console-entry.js',
       'src/popup/popup.html',
       'src/icons/icon16.png',

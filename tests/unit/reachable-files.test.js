@@ -328,7 +328,10 @@ describe('collectReachable', () => {
     for (const target of ['chrome', 'firefox']) {
       const manifest = mergeManifest(read('manifest.base.json'), read(`manifest.${target}.json`));
       const files = await collectReachable(srcDir, { manifest });
-      expect(files).toContain('page/page-debug-snapshot.js');
+      for (const file of ['background.js', 'content/main-world.js', 'popup/controller.js']) {
+        expect(files, `${target}: ${file}`).toContain(file);
+      }
+      expect(files).not.toContain('page/page-debug-snapshot.js');
     }
   });
 });

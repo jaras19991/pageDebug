@@ -41,8 +41,7 @@ export default [
   },
   {
     // Generated content scripts and the console fallback: classic scripts, no chrome.*.
-    // page-debug-snapshot.js is the E0 classic script (removed in E1-T17).
-    files: ['src/content/**/*.js', 'src/standalone/**/*.js', 'src/page/page-debug-snapshot.js'],
+    files: ['src/content/**/*.js', 'src/standalone/**/*.js'],
     languageOptions: {
       sourceType: 'script',
       globals: { ...globals.browser },
@@ -78,11 +77,7 @@ export default [
   },
   {
     // Unit tests running under `// @vitest-environment jsdom`: Node plus DOM globals.
-    files: [
-      'tests/unit/helpers/load-page-script.js',
-      'tests/unit/page-debug-snapshot.test.js',
-      'tests/unit/serialize.test.js',
-    ],
+    files: ['tests/unit/serialize.test.js'],
     languageOptions: {
       globals: { ...globals.node, ...globals.browser },
     },

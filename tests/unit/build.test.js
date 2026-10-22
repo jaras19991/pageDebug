@@ -74,6 +74,35 @@ describe('build', () => {
     }
   });
 
+  it('both targets contain the background module, its lib imports, the popup modules and the registered content files', async () => {
+    const expected = [
+      'background.js',
+      'lib/content-scripts.js',
+      'lib/origin.js',
+      'lib/package.js',
+      'lib/recording.js',
+      'lib/save.js',
+      'lib/session-store.js',
+      'popup/controller.js',
+      'popup/view.js',
+      'popup/target.js',
+      'content/main-world.js',
+      'content/isolated-world.js',
+    ];
+    for (const t of TARGETS) {
+      expect(built.files[t], t).toEqual(expect.arrayContaining(expected));
+    }
+  });
+
+  it('registered content files exist in both dist targets', async () => {
+    const { scriptsFor } = await import('../../src/lib/content-scripts.js');
+    const files = scriptsFor('https://example.com/*').flatMap((s) => s.js.map((p) => p.replace(/^\//, '')));
+    expect(files).toHaveLength(2);
+    for (const t of TARGETS) {
+      for (const f of files) expect(existsSync(join(targetDir(t), f)), `${t}/${f}`).toBe(true);
+    }
+  });
+
   it('writes manifest.json as 2-space JSON with LF and trailing newline', async () => {
     for (const t of TARGETS) {
       const text = await readFile(join(targetDir(t), 'manifest.json'), 'utf8');

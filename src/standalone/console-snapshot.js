@@ -1480,7 +1480,7 @@ function assemblePackage({ meta, current, priorDocs = [], docs = [] }) {
     notes.push('The current page was not available (it left the recorded origin or did not answer); environment, dom, performance and storage are null.');
   } else if (Array.isArray(current.errors)) {
     for (const err of current.errors.slice(0, PAGE_SECTIONS.length)) {
-      notes.push(`Section ${cap(err?.section, NOTE_TEXT_MAX)} could not be collected (${cap(err?.name, NOTE_TEXT_MAX)}).`);
+      notes.push(`Section ${cap(err?.section, NOTE_TEXT_MAX)} could not be collected (${cap(err?.error ?? err?.name, NOTE_TEXT_MAX)}).`);
     }
   }
 

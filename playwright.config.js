@@ -6,7 +6,7 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: 'tests/e2e',
   testMatch: '**/*.spec.js',
-  testIgnore: ['**/spike/**'],
+  testIgnore: ['**/spike/**', '**/spike-e1/**'],
   globalSetup: './tests/e2e/global-setup.js',
   globalTeardown: './tests/e2e/global-teardown.js',
   outputDir: 'test-results',

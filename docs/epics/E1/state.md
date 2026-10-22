@@ -17,7 +17,7 @@ ostatnia aktualizacja: 2026-10-22
     pds:rec = {v:1, requestId, tabId, origin, pattern, startedAt, limitMs, deadline, status, stopReason, docSeq, docs[{id,url,flushed,recorded?,bridgeError?}], save, lastError}
     hello → {record:true|false, docId, deadline, limitMs} (nie {config}/{destroy}); start → {ok,startedAt}|{ok:false,reason}; getStatus → {state:'idle'|'recording'|'stopped'|'saving', startedAt, stopReason, isRecordingTab, otherTabRecording, otherOrigin, lastSaved, lastError}
     T1c: jeden store dla recording+save; router sprawdza nadawcę; recording.js importuje ../popup/target.js. T6b: getStatus z ownRequestId. T12: RECORDING_LIMIT_MS → resolveLimitMs(getTestLimit()), leniwe wygaszanie, handler `stopped`.
-  - [ ] T1c background.js + manifesty
+  - [x] T1c background.js + manifesty (grupa E) ✓
 - [ ] E1-T2 registerContentScripts dla origin karty; auto-reload (w T1b)
 - [~] E1-T3 refaktor page-debug-snapshot.js → moduły ES
   - [x] T3a src/page/serialize.js (deepMerge głęboka kopia, safeSlice(value,max), safeJson bez fałszywego [Circular], serializeCapped → {value,chars,truncated}),
@@ -67,7 +67,15 @@ ostatnia aktualizacja: 2026-10-22
 - [ ] E1-T10 timeout executeScript (~15 s)
 - [x] E1-T11 walker: CSS url()/@import, HTML <style>/style="", js:[…], literalne getURL — rozwiązywane i wymagane; nie-literalne url(/getURL(/import(/files:/js: i każde importScripts( → „Unresolvable reference in <file>: <snippet>” — 12 testów ✓
   Uwaga (T14/T15): dopasowanie regexowe — `getURL(`/`url(` w komentarzu lub stringu JS też wyzwala fail-safe; bundle nie mogą mieć takich fraz w komentarzach.
-- [~] E1-T12 limit 10 min + uzgodnienie protokołu popup↔tło (grupa D, start)
+- [x] E1-T12 resolveLimitMs, deadline w rec, leniwe wygaszanie (getStatus/hello/stopped), badge ■; protokół uzgodniony (tabela w raporcie: ownRequestId, stan 'starting', pds:last z downloadId, downloadFailed vs saveCancelled, save po auto-stopie bez odbiorcy → paczka z dokumentów) — 24 testy + tests/unit/popup-background-integration.test.js (6, **kontrakt dla T1c**)
+  Router T1c: polecenia popupu tylko od stron rozszerzenia bez sender.tab; wiadomości mostu tylko z sender.tab i frameId 0; permissions.onAdded → onPermissionAdded; downloads.onChanged → onDownloadChanged; jeden store; createRecordingHandlers({chrome, store, expireSave}).
+  Edge (T1c/QA): popup zamknięty między armStart a start przy już nadanym uprawnieniu → 'starting' do TTL 120 s.
+- grupa D zamknięta; checkpoint commit
+- [x] E1-T1c src/background.js (createRouter({chrome,store}) — acceptsMessage: popup tylko z sender.url == getURL('popup/popup.html'); most tylko sender.tab+frameId 0; top-level listenery), manifesty background (chrome service_worker/type module, firefox scripts/type module), package.js err.error — 10 testów ✓; edge 'starting' naprawiony (auto-start przy pending + permissions.contains)
+  dist/chrome = dist/firefox: 19 plików ~150 KB (background 4,4 KB, content 72 KB, lib 47 KB, popup 28 KB); web-ext 0 errors; npm test 637/637 poza T17
+- [x] E1-T17 usunięte 14 plików (page-debug-snapshot.js, snapshot-tab.js, run-in-page.js, ich testy, 6 speców e2e E0, throw-on-snapshot.html); reachable-files/layout/eslint poprawione; tests/unit/no-e0-flow.test.js — **npm test 588/588, lint 0, build OK, gen --check 0**
+  csp-strict.html zostaje (T19c użyje w teście izolacji/CSP). harness.spec.js z E0 → T18 zastępuje.
+- [~] E1-T18 harness e2e dla tła (w toku)
 - [ ] E1-TEST1..3, R1, Q1, DOC1
 
 ## Wejście z E0 (obowiązkowe dla analityka i architekta)
