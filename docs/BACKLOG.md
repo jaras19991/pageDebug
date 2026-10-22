@@ -160,7 +160,7 @@ Testy / Review / QA / Docs / Release
 - [ ] E2-TEST3 E2E: 404 na obrazku i 500 na fetch → oba mają status w paczce.
 - [ ] E2-R1 Review: permission `webRequest` uzasadnione w manifeście i README; brak wartości inputów w krokach.
 - [ ] E2-Q1 QA: na realnej stronie (np. dowolny portal) paczka ma CWV, statusy, screenshot, kroki.
-- [ ] E2-DOC1 Aktualizacja `docs/snapshot-schema.md` (schemaVersion 2).
+- [ ] E2-DOC1 Aktualizacja `docs/snapshot-schema.md` (schemaVersion **3**, jeśli zmiana łamiąca; v2 zajęło E1).
 
 ---
 
@@ -194,7 +194,7 @@ Implementacja
 - [ ] E3-T3 Strukturalny zrzut DOM zamiast `outerHTML`.
 - [ ] E3-T4 Pakowanie do `.zip` + nazwa pliku `snapshot-<host>-<YYYYMMDD-HHMMSS>.zip`.
 - [ ] E3-T5 Raport redakcji w `summary.md` („zamaskowano 14 wartości w 3 sekcjach”).
-- [ ] E3-T6 (z review E0) Usunąć global `window.__PAGE_DEBUG_SNAPSHOT__` — pełna paczka (cookies, storage, DOM) nie może
+- [-] E3-T6 (z review E0) **przeniesione do E1 (AC-5.4 w spec E1)** — usunąć global `window.__PAGE_DEBUG_SNAPSHOT__` — pełna paczka (cookies, storage, DOM) nie może
       być dostępna skryptom firm trzecich na stronie ani zalegać w pamięci.
 
 Testy / Review / QA / Docs / Release

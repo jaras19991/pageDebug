@@ -69,9 +69,9 @@ Nie trzymaj listenerów rejestrowanych warunkowo — rejestruj na top-level SW.
 | `activeTab` | dostęp do bieżącej karty po kliknięciu, `captureVisibleTab` | zawsze |
 | `scripting` | `executeScript`, `registerContentScripts` | zawsze |
 | `storage` | `storage.session` dla stanu nagrywania | E1+ |
-| `tabs` | `tabs.reload`, odczyt `tab.url` do `matches` | E1+ |
+| ~~`tabs`~~ | **nie** — `activeTab` daje `tab.url` po kliknięciu, `tabs.reload` nie wymaga `tabs`; `tabs` dodaje ostrzeżenie „Read your browsing history” (store review E0) | — |
 | `webRequest` | kody HTTP i rozmiary zasobów (tylko obserwacja w MV3) | E2 (decyzja) |
-| `downloads` | zapis paczki z nazwą i bez okna „zapisz jako” | opcjonalnie E3/E4 |
+| `downloads` | zapis paczki przez `downloads.download` + sukces dopiero po `onChanged.state === "complete"` (fałszywy sukces z `<a download>` przy zablokowanych pobraniach — re-QA E0) | **E1** (decyzja użytkownika 2026-10-22) |
 | `optional_host_permissions: ["https://*/*", "http://*/*"]` | `registerContentScripts` dla origin karty | E1+ |
 
 **Nie**: `<all_urls>` w `host_permissions` (statycznie), `cookies` (HttpOnly to świadomy brak —
