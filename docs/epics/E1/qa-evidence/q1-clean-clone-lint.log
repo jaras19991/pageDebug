@@ -1,0 +1,37 @@
+
+> page-debug-snapshot@0.2.0 lint
+> npm run build && eslint . && web-ext lint --source-dir dist/firefox
+
+
+> page-debug-snapshot@0.2.0 build
+> node scripts/build.mjs
+
+dist/chrome: 19 files, 152.4 KB
+dist/firefox: 19 files, 152.6 KB
+Validation Summary:
+
+errors          0              
+notices         0              
+warnings        2              
+
+WARNINGS:
+
+Code                                  Message       Description              F
+KEY_FIREFOX_UNSUPPORTED_BY_MIN_VER…   Manifest      "strict_min_version"     m
+SION                                  key not       requires Firefox 128,    s
+                                      supported     which was released        
+                                      by the        before version 140        
+                                      specified     introduced support for    
+                                      minimum       "browser_specific_set…    
+                                      Firefox       tings.gecko.data_coll…    
+                                      version       ection_permissions".      
+KEY_FIREFOX_ANDROID_UNSUPPORTED_BY…   Manifest      "strict_min_version"     m
+_MIN_VERSION                          key not       requires Firefox for     s
+                                      supported     Android 128, which was    
+                                      by the        released before           
+                                      specified     version 142 introduced    
+                                      minimum       support for               
+                                      Firefox for   "browser_specific_set…    
+                                      Android       tings.gecko.data_coll…    
+                                      version       ection_permissions".      
+lint exit 0

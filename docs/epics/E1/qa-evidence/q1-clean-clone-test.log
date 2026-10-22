@@ -1,0 +1,39 @@
+
+> page-debug-snapshot@0.2.0 test
+> vitest run
+
+
+ RUN  v5.0.5 C:/Users/jaros/AppData/Local/Temp/claude/c--Agora-pluginDebbuging/94b08794-091e-478e-a80b-9950a8bfade1/scratchpad/q1/clone
+
+ ❯ tests/unit/recorder.test.js (20 tests | 1 failed) 301ms
+   ❯ createRecorder (20)
+     × 6000 console.log keep 5000 newest, truncated.consoleLogs true; 10 logs → truncated false 259ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/unit/recorder.test.js > createRecorder > 6000 console.log keep 5000 newest, truncated.consoleLogs true; 10 logs → truncated false
+AssertionError: expected [ …(3103) ] to have a length of 5000 but got 3103
+
+- Expected
++ Received
+
+- 5000
++ 3103
+
+ ❯ tests/unit/recorder.test.js:226:29
+    224|     for (let i = 0; i < 6000; i++) win.console.log(i);
+    225|     const out = rec.exportBuffers();
+    226|     expect(out.consoleLogs).toHaveLength(LIMITS.consoleLogs);
+       |                             ^
+    227|     expect(out.consoleLogs[0].args).toEqual([1000]);
+    228|     expect(out.consoleLogs.at(-1).args).toEqual([5999]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 36 passed (37)
+      Tests  1 failed | 600 passed (601)
+   Start at  01:17:16
+   Duration  2.81s (import 31%, tests 28%, environment 23%, transform 17%, worker 1%)
+
+test exit 1
