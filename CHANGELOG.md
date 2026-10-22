@@ -4,6 +4,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/). Wpisy per epik
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-22
+
 ### E0 — Fundament: repo, build, testy, higiena MV3 (Chrome + Firefox)
 
 #### Dodano
@@ -35,3 +37,5 @@ Format: [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/). Wpisy per epik
 - Klucz `.pem`, `*.crx`, `*.xpi`, `*.zip`, `dist/` i prawdziwe snapshoty są ignorowane; historia gita oczyszczona z plików logo.
 - Znane ograniczenia (E3): paczka nadal zawiera jawnie ciasteczka, storage, treść strony i wartości pól (poza `password`/`hidden` w `dom.forms`); po zrzucie zostaje `window.__PAGE_DEBUG_SNAPSHOT__`.
 - Znane ograniczenia (E1): w Chrome zablokowane automatyczne pobieranie wielu plików może dać komunikat sukcesu bez pliku.
+- Znane ograniczenia (Firefox): dodatek ładowany tymczasowo znika po restarcie przeglądarki; trwała instalacja wymaga podpisu AMO (E5).
+- Licencja: MIT (`LICENSE`, `package.json`).

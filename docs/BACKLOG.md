@@ -23,40 +23,40 @@ przez `node_modules` i `logo.png`; `inject.js` + `web_accessible_resources` to o
 **Efekt:** każdy kolejny epik ma gdzie pisać testy i czym się zbudować.
 
 Spec
-- [ ] E0-S1 Spisać definicję „gotowe” dla repo (co jest w paczce, co w repo, co w ignore).
+- [x] E0-S1 Spisać definicję „gotowe” dla repo (co jest w paczce, co w repo, co w ignore).
 
 Design
-- [ ] E0-D1 Układ repo: `src/` dla kodu rozszerzenia, `scripts/` dla narzędzi (ikony), `tests/`.
-- [ ] E0-D2 Wybór narzędzi: vitest + jsdom, Playwright (chromium, `--load-extension`), eslint.
-- [ ] E0-D3 Build: `npm run build` składa `dist/chrome/` i `dist/firefox/`, `npm run pack` robi dwa zipy.
-- [ ] E0-D4 Manifesty: `src/manifest.base.json` + `manifest.chrome.json` (`minimum_chrome_version`) +
+- [x] E0-D1 Układ repo: `src/` dla kodu rozszerzenia, `scripts/` dla narzędzi (ikony), `tests/`.
+- [x] E0-D2 Wybór narzędzi: vitest + jsdom, Playwright (chromium, `--load-extension`), eslint.
+- [x] E0-D3 Build: `npm run build` składa `dist/chrome/` i `dist/firefox/`, `npm run pack` robi dwa zipy.
+- [x] E0-D4 Manifesty: `src/manifest.base.json` + `manifest.chrome.json` (`minimum_chrome_version`) +
       `manifest.firefox.json` (`browser_specific_settings.gecko.id`, `strict_min_version: "128.0"`);
       lista kluczy, którymi wolno się różnić; reszta identyczna (test porównawczy).
 - [x] E0-D5 Źródłowe logo: **usunięte** (decyzja użytkownika 2026-10-21); ikony 16/48/128 są jedynym źródłem.
 
 Implementacja
-- [ ] E0-T1 `git init`, `.gitignore` (pem, crx, zip, node_modules, snapshoty) — **pem poza repo**.
-- [ ] E0-T2 `package.json` (root): usunąć `sharp`, dodać `web-ext` do `devDependencies`, skrypty `test`, `test:e2e`, `lint`, `build`, `pack`.
-- [ ] E0-T3 Zastąpić `inject.js` wywołaniem `chrome.scripting.executeScript({ world: 'MAIN' })`;
+- [x] E0-T1 `git init`, `.gitignore` (pem, crx, zip, node_modules, snapshoty) — **pem poza repo**.
+- [x] E0-T2 `package.json` (root): usunąć `sharp`, dodać `web-ext` do `devDependencies`, skrypty `test`, `test:e2e`, `lint`, `build`, `pack`.
+- [x] E0-T3 Zastąpić `inject.js` wywołaniem `chrome.scripting.executeScript({ world: 'MAIN' })`;
       usunąć `web_accessible_resources`.
-- [ ] E0-T4 Usunąć `host_permissions: <all_urls>` — `activeTab` wystarcza dla obecnego flow.
-- [ ] E0-T5 `popup.js`: wynik `executeScript` ma odzwierciedlać faktyczny sukces/błąd (zwrot z funkcji),
+- [x] E0-T4 Usunąć `host_permissions: <all_urls>` — `activeTab` wystarcza dla obecnego flow.
+- [x] E0-T5 `popup.js`: wynik `executeScript` ma odzwierciedlać faktyczny sukces/błąd (zwrot z funkcji),
       nie „pobrano” z góry.
-- [~] E0-T6 Ikony: `logo.png` i `logo-640.png` usunięte z dysku i historii (2026-10-21); zostaje test wymiarów/rozmiaru ikon w `dist/*/icons`.
-- [ ] E0-T7 Smoke test e2e: załaduj rozszerzenie, otwórz stronę testową, kliknij w popupie, sprawdź pobrany plik.
-- [ ] E0-T8 Unit testy dla `safeJson`, `safeSlice`, `pushLimited`, `deepMerge` (istniejąca logika).
-- [ ] E0-T9 `web-ext` jako devDependency; `npm run lint` = eslint + `web-ext lint --source-dir dist/firefox` (0 errors).
-- [ ] E0-T10 Test porównawczy manifestów `dist/chrome` vs `dist/firefox` (identyczne poza dozwolonymi kluczami).
-- [ ] E0-T11 `scripts/dev-browser.ps1 -Browser chrome|firefox` używa `dist/<target>` po buildzie; Firefox przez `web-ext run`.
-- [ ] E0-T12 Popup: polski komunikat dla `file://` bez zgody („Zezwalaj na dostęp do adresów URL plików”) i dla stron specjalnych.
+- [x] E0-T6 Ikony: `logo.png` i `logo-640.png` usunięte z dysku i historii (2026-10-21); zostaje test wymiarów/rozmiaru ikon w `dist/*/icons`.
+- [x] E0-T7 Smoke test e2e: załaduj rozszerzenie, otwórz stronę testową, kliknij w popupie, sprawdź pobrany plik.
+- [x] E0-T8 Unit testy dla `safeJson`, `safeSlice`, `pushLimited`, `deepMerge` (istniejąca logika).
+- [x] E0-T9 `web-ext` jako devDependency; `npm run lint` = eslint + `web-ext lint --source-dir dist/firefox` (0 errors).
+- [x] E0-T10 Test porównawczy manifestów `dist/chrome` vs `dist/firefox` (identyczne poza dozwolonymi kluczami).
+- [x] E0-T11 `scripts/dev-browser.ps1 -Browser chrome|firefox` używa `dist/<target>` po buildzie; Firefox przez `web-ext run`.
+- [x] E0-T12 Popup: polski komunikat dla `file://` bez zgody („Zezwalaj na dostęp do adresów URL plików”) i dla stron specjalnych.
 
 Testy / Review / QA / Docs / Release
-- [ ] E0-Q1 `npm run lint`, `npm test` i `npm run test:e2e` zielone na czystym klonie (e2e headless-capable).
-- [ ] E0-Q2 QA ręczne Firefox: `web-ext run --source-dir dist/firefox` na fixture'ach — smoke z AC-1.x przechodzi.
-- [ ] E0-R1 Review: brak sekretów, brak `<all_urls>`, każdy `dist/<target>` < 500 KB.
-- [ ] E0-R2 Store review (`pds-store-reviewer`): single purpose w `description`, uzasadnienia uprawnień w README,
+- [x] E0-Q1 `npm run lint`, `npm test` i `npm run test:e2e` zielone na czystym klonie (e2e headless-capable).
+- [x] E0-Q2 QA ręczne Firefox: `web-ext run --source-dir dist/firefox` na fixture'ach — smoke z AC-1.x przechodzi.
+- [x] E0-R1 Review: brak sekretów, brak `<all_urls>`, każdy `dist/<target>` < 500 KB.
+- [x] E0-R2 Store review (`pds-store-reviewer`): single purpose w `description`, uzasadnienia uprawnień w README,
       brak zdalnego kodu, `gecko.id` poprawny.
-- [ ] E0-DOC1 README (developer): Node ≥ 20, komendy, build/pack, unpacked w Chrome, tymczasowe w Firefoksie,
+- [x] E0-DOC1 README (developer): Node ≥ 20, komendy, build/pack, unpacked w Chrome, tymczasowe w Firefoksie,
       sekcja „Uprawnienia” z uzasadnieniem każdego, „klucz `.pem` trzymamy poza repo”.
 
 ---
@@ -100,8 +100,8 @@ Implementacja
       Przy każdym poszerzeniu zakresu danych (E2) — ponowne ujawnienie po aktualizacji (wymóg CWS 2026).
 - [ ] E1-T7 `console-snapshot.js` (fallback bez instalacji) ma działać na tym samym `recorder.js`
       i jasno mówić: „zbieram od teraz; odtwórz problem i wywołaj `PageDebugSnapshot.download()`”.
-- [ ] E1-T8 (z review E0) Prawdziwy wynik zapisu: pobieranie przez `chrome.downloads.download` w tle (permission `downloads`,
-      decyzja użytkownika) i sukces dopiero po `onChanged.state === 'complete'`; dziś `<a download>` w stronie daje fałszywy
+- [ ] E1-T8 (z review E0, **HIGH — potwierdzone re-QA: 3× „Gotowe” bez pliku**) Prawdziwy wynik zapisu: pobieranie przez `chrome.downloads.download` w tle (permission `downloads` —
+      **zatwierdzone przez użytkownika 2026-10-22**) i sukces dopiero po `onChanged.state === 'complete'`; dziś `<a download>` w stronie daje fałszywy
       sukces przy zablokowanych automatycznych pobraniach.
 - [ ] E1-T9 (z review E0) `runInPage` weryfikuje `pds.version` (z `args`) zamiast ufać dowolnemu `window.PageDebugSnapshot`;
       marker instalacji pod `Symbol.for('pds.installed')`.

@@ -1,8 +1,12 @@
 # E0 — Fundament: repo, build, testy, higiena MV3 — stan
 
-faza: docs (re-QA F7/F8/F3 równolegle)
+faza: done
+wersja: 0.2.0
+zipy: dist/page-debug-snapshot-chrome-0.2.0.zip (14 176 B), dist/page-debug-snapshot-firefox-0.2.0.zip (14 279 B)
+tag: v0.2.0
+commit: HASH_PLACEHOLDER
 rozpoczęto: 2026-10-21
-ostatnia aktualizacja: 2026-10-21 23:50
+ostatnia aktualizacja: 2026-10-22
 
 ## Zadania (wg design.md — 20; D1–D13 i S1 zamknięte w Spec/Design)
 
@@ -53,28 +57,28 @@ Grupa E (po T16b)
 
 Fazy po implementacji
 - [x] E0-TEST pds-tester: lint ✓, unit 195/195 (1,5 s — AC-3.2 ✓; 46 s nieodtworzone, prawdopodobnie cold cache), e2e 13/13 ×3, 43/43 AC → docs/epics/E0/test-coverage.md. Werdykt: zielone.
-- [~] E0-R1 pds-reviewer ✓ (approve-with-fixes) ∥ E0-R2 pds-store-reviewer ✓ (would-be-rejected dla dziś; E0 nie blokuje — blokery w E1/E3/E5, docs/epics/E0/store-review.md) ∥ E0-Q1/Q2 pds-qa ✓ **FAIL** (38 PASS / 4 FAIL / 1 BLOCKED) → poprawki F7, F8 → re-QA
+- [~] E0-R1 pds-reviewer ✓ (approve-with-fixes) ∥ E0-R2 pds-store-reviewer ✓ (would-be-rejected dla dziś; E0 nie blokuje — blokery w E1/E3/E5, docs/epics/E0/store-review.md) ∥ E0-Q1/Q2 pds-qa: FAIL (38/4/1) → F7, F8 → **re-QA PASS z uwagami**
 
 ### Findings R1 (pds-reviewer, 2026-10-22) — do poprawki w E0 (grupa F)
 - [x] F1 [medium] ✓ (-Pack → npm run pack; 2 testy) scripts/dev-browser.ps1:44 — regex `'
 ode_modules'` zepsuty w T11 → `-Pack` zawsze pada. Poprawka: `-Pack` deleguje do `npm run pack` (dist ma już tylko osiągalne pliki), usunąć własny filtr i Compress-Archive.
 - [x] F2 [low] .gitignore — `*.xpi`, `web-ext-artifacts/` dodane.
-- [ ] F4 [medium, store] README: dopisać sklepowe (PL+EN) wersje uzasadnień uprawnień z store-review.md — faza Docs.
-- [ ] F5 [low, store] Release: manifest version = wersja release (0.2.0); nic nie było wysłane do sklepów.
+- [x] F4 [medium, store] README: dopisać sklepowe (PL+EN) wersje uzasadnień uprawnień z store-review.md — faza Docs.
+- [x] F5 [low, store] Release: manifest version = wersja release (0.2.0); nic nie było wysłane do sklepów.
 - [x] F6 [high, store + decyzja użytkownika 2026-10-22] ✓ scripts/icons.mjs + icons-script.test.js (3), PNG 139/311/927 B, 200/200 — **Plugin niezależny, bez brandingu Agory**: `gecko.id` → GUID `{799eb178-df9a-41bb-9775-8fc8aff45926}`
   (zrobione), ikony 16/48/128 → generowane skryptem `scripts/icons.mjs` (neutralne, bez tekstu/logo, margines wg CWS), README/docs bez odniesień do organizacji.
 - [x] F7 ✓ (215/215, e2e 13/13, Firefox ręcznie OK) [critical, QA Firefox] `files: ['page/page-debug-snapshot.js']` — Firefox rozwiązuje względem popupu → zrzut nie działa na żadnej stronie.
   Poprawka: wiodący `/` + walker akceptuje root-relative. Luka testów: unit mockują executeScript, e2e tylko Chromium.
-- [x] F8 ✓ (unit; re-QA w przeglądarce w toku) [high, QA Chrome] `file://` bez zgody: `tab.url` undefined → `unknown` → sonda pominięta → `restricted` zamiast `fileAccess`.
+- [x] F8 ✓ (unit + re-QA Chrome stable 155: MESSAGES.fileAccess, po zgodzie sukces) [high, QA Chrome] `file://` bez zgody: `tab.url` undefined → `unknown` → sonda pominięta → `restricted` zamiast `fileAccess`.
   Poprawka: URL z treści błędu Chrome + sonda przy `unknown`.
 - QA pozostałe: czysty klon zielony (200 unit, 13 e2e), dev:chrome ~1 s, dev:firefox ~2,7 s, AC-2.2 OK w obu, zrzut 9 ms;
   baseline 411f60e niemierzalny (stara wersja nie tworzy pliku — inject.js w ISOLATED; fałszywy sukces). AC-5.5 BLOCKED do DOC1.
   qa-evidence: 66 PNG (5 MB) lokalnie, ignorowane; logi/txt/json śledzone.
-- [ ] F3 [medium→QA] fałszywy sukces przy zablokowanych automatycznych pobraniach w Chrome („Blokuj” w „Ta strona chce pobrać wiele plików”) — QA ręczne: dwa kliknięcia bez interakcji ze stroną w zwykłym Chrome; naprawa w E1 (patrz backlog).
+- [x] F3 [→ E1-T8, waga HIGH] re-QA: po zablokowaniu automatycznych pobrań popup 3× „Gotowe”, plik tylko z 1. kliknięcia (dowód requa-chrome-f3.log). [medium→QA] fałszywy sukces przy zablokowanych automatycznych pobraniach w Chrome („Blokuj” w „Ta strona chce pobrać wiele plików”) — QA ręczne: dwa kliknięcia bez interakcji ze stroną w zwykłym Chrome; naprawa w E1 (patrz backlog).
 Poza E0 (dopisane do backlogu): E1 — `downloads` permission + sukces po `onChanged state=complete`; sprawdzanie `pds.version` w `runInPage` (strona może podstawić obiekt → fałszywy sukces); timeout `executeScript` (~15 s) z komunikatem; walker fail-safe na `url(`/`getURL(`. E3 — usunąć global `window.__PAGE_DEBUG_SNAPSHOT__` (pełna paczka dostępna skryptom strony).
 Do decyzji użytkownika: mechanizm pobierania w E1 (`downloads` permission = jedno uprawnienie więcej, ale prawdziwy wynik).
-- [ ] E0-DOC1 README, instrukcja, CHANGELOG; aktualizacja ścieżek w CLAUDE.md i skillach (page-debug-extension → src/)
-- [ ] E0-REL release 0.2.0
+- [x] E0-DOC1 README, INSTRUKCJA-ZGLASZAJACEGO, snapshot-schema v1, CHANGELOG, CLAUDE.md, skille — commit a5996ad; AC-5.5 ✓
+- [x] E0-REL release 0.2.0 (pds-release, 2026-10-22): pre-flight zielony, commit + tag lokalnie, bez push; F5 ✓ (manifest = 0.2.0)
 
 ### Notatki dla kolejnych zadań
 - T16b: popup NIE jest Page w Playwright — sterowanie przez CDP (`Target.sendMessageToTarget` + `Runtime.evaluate`);
@@ -104,6 +108,9 @@ Do decyzji użytkownika: mechanizm pobierania w E1 (`downloads` permission = jed
   e2e używa kopii `dist/chrome` z `host_permissions: ["http://127.0.0.1/*"]` i popupu z `?tabId=`.
   `gecko.id`: użytkownik poda własną wartość (nie `page-debug-snapshot@agora.pl`) — **potrzebne przed E0-T4**.
 
+- 2026-10-22 (bramka Release): **wersja 0.2.0**; **licencja MIT** (LICENSE, package.json); **E1 dodaje `downloads`** (E1-T8).
+  Push po stronie użytkownika (commity do a5996ad wypchnięte; release idzie osobno).
+
 ## Historia faz
 - 2026-10-21 init → spec
 - 2026-10-21 spec.md gotowy (pds-analyst); poprawka orkiestratora: `.pem` leży w root (ignorowany, poza historią), repo wypchnięte na GitHub. Bramka Spec: 7 pytań.
@@ -115,5 +122,10 @@ Do decyzji użytkownika: mechanizm pobierania w E1 (`downloads` permission = jed
   Grupa A: E0-T2 (start), potem E0-T13. Zadania wg design.md (20): T2, T13, T4, T8, T5, T12, T1, T14a, T16a, T17,
   T14b, T3, T6, T10, T15, T9, T16b, T11, T7a, T7b.
 
+## Historia faz (cd.)
+- 2026-10-22 release: wersja 0.2.0, licencja MIT, commit i tag lokalnie; push po stronie użytkownika.
+
 ## Retro
-- (po zamknięciu)
+- Luka testów: unit mockowały `executeScript`, e2e tylko na Chromium — błąd ścieżki pliku w Firefoksie (F7) wyszedł dopiero w ręcznym QA. W E1 dodać e2e/smoke na Firefoksie albo test ścieżek względem roota rozszerzenia.
+- `npm test` ~46 s z fazy implementacji okazało się fałszywym alarmem (zimna pamięć podręczna); realnie ~1,1 s — mierzyć na świeżym przebiegu, zanim zacznie się optymalizować.
+- Równoległe grupy zadań (B, E) działały dobrze; re-QA ograniczone do poprawek (F7/F8/F3) było szybkie i wystarczające.
