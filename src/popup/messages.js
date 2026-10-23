@@ -46,6 +46,9 @@ export const MESSAGES = Object.freeze({
     'Na tej stronie nie da się zapisać paczki. Otwórz stronę, na której widzisz problem, i kliknij ponownie.',
   fileAccess:
     'To jest plik z dysku. Żeby zapisać paczkę, wpisz w pasku adresu chrome://extensions, kliknij „Szczegóły” przy Page Debug Snapshot i włącz „Zezwalaj na dostęp do adresów URL plików”. Potem odśwież stronę i kliknij ponownie.',
+  // Firefox never records file:// pages (QA F-4, decision 2): said before any consent prompt.
+  fileUnsupportedFirefox:
+    'W Firefoksie nagrywanie plików z dysku nie jest obsługiwane. Otwórz stronę przez http:// lub https://.',
   noTab: 'Nie widzę otwartej strony. Kliknij kartę ze stroną i spróbuj ponownie.',
   failed:
     'Nie udało się zapisać paczki. Odśwież stronę i spróbuj ponownie. Jeśli to się powtarza, opisz problem developerowi bez paczki.',

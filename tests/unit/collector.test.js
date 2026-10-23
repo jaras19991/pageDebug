@@ -164,6 +164,28 @@ describe('collector (E1-T3b)', () => {
     expect(JSON.stringify(elements)).not.toContain('tok123');
   });
 
+  it('dom html.outerHTML has no value of password and hidden inputs; the page keeps them (QA F-3)', () => {
+    document.body.insertAdjacentHTML(
+      'beforeend',
+      '<input type="PASSWORD" value="s3cret-upper"><template><input type="hidden" value="tpl-secret"></template>',
+    );
+    const before = document.documentElement.outerHTML;
+    const html = collectDomSnapshot(window, document, deps).html.outerHTML;
+    for (const secret of ['sekret', 'tok123', 's3cret-upper', 'tpl-secret']) {
+      expect(html).not.toContain(secret);
+      expect(document.documentElement.outerHTML).toContain(secret);
+    }
+    expect(html).toContain('name="pass" value="[redacted]"');
+    expect(html).toContain('name="csrf" value="[redacted]"');
+    expect(html).toContain('name="user" value="jan"');
+    expect(document.documentElement.outerHTML).toBe(before);
+  });
+
+  it('dom html.outerHTML without secret inputs equals the page markup', () => {
+    document.body.innerHTML = '<p>bez formularzy</p>';
+    expect(collectDomSnapshot(window, document, deps).html.outerHTML).toBe(document.documentElement.outerHTML);
+  });
+
   it('storage keeps cookies string and local/session maps', () => {
     document.cookie = 'theme=dark';
     localStorage.setItem('k1', 'v1');

@@ -1373,6 +1373,31 @@ function collectEnvironment(win, doc, _deps) {
   };
 }
 
+// The disclosure promises "bez haseł i pól ukrytych" (QA F-3): their value attribute must not
+// reach outerHTML either. Template contents are serialized too, so they are searched as well.
+const SECRET_INPUTS = 'input[type="password" i], input[type="hidden" i]';
+const REDACTED = '[redacted]';
+
+function redactSecretInputs(root) {
+  for (const el of root.querySelectorAll(SECRET_INPUTS)) {
+    if (el.hasAttribute('value')) el.setAttribute('value', REDACTED);
+  }
+  for (const tpl of root.querySelectorAll('template')) {
+    if (tpl.content) redactSecretInputs(tpl.content);
+  }
+}
+
+// Page markup without secret input values; the page itself is never touched. The copy lives in
+// an inert document: no browsing context, so images do not load and custom elements do not upgrade.
+function redactedOuterHTML(doc) {
+  const root = doc.documentElement;
+  if (!doc.querySelector(`${SECRET_INPUTS}, template`)) return root.outerHTML;
+  const inert = doc.implementation.createHTMLDocument('');
+  const copy = inert.importNode(root, true);
+  redactSecretInputs(copy);
+  return copy.outerHTML;
+}
+
 function collectDomSnapshot(win, doc, deps) {
   const { safeSlice } = deps;
   const limits = collectorLimits(deps);
@@ -1399,7 +1424,7 @@ function collectDomSnapshot(win, doc, deps) {
       lang: doc.documentElement.lang || null,
       charset: doc.characterSet,
       compatMode: doc.compatMode,
-      outerHTML: safeSlice(doc.documentElement.outerHTML, limits.html),
+      outerHTML: safeSlice(redactedOuterHTML(doc), limits.html),
     },
     meta: Array.from(doc.querySelectorAll('meta')).map((el) => getElementSummary(el, deps)),
     canonical: doc.querySelector('link[rel="canonical"]')?.href || null,
@@ -1576,7 +1601,9 @@ const { RECORDER_VERSION } = __pds_m5;
 // MAIN-world entry point (E1 D1, D3, D4), bundled into src/content/main-world.js by `npm run gen`.
 // Installs the recorder at document_start, binds the private channel to the ISOLATED bridge and
 // answers its messages: `config` (per-document gate), `collect` (current document as a JSON string),
-// `destroy`. At `pagehide` it hands the buffers over once more (`flush`) so a reload keeps them.
+// `destroy`. At `beforeunload` and `pagehide` it hands the buffers over (`flush`) so a reload or a jump
+// to another site keeps them. F-2: Firefox drops the pagehide copy of a document left for another site,
+// the beforeunload one arrives; neither listener keeps the page out of the bfcache.
 // No extension API in this world: the bridge is the only way to the background.
 
 
@@ -1586,6 +1613,14 @@ function mainTry(fn, fallback) {
   } catch {
     return fallback;
   }
+}
+
+// Changes whenever a buffer gets an entry (counts only grow) or the recorder stops.
+function mainChangeMark(snapshot) {
+  const counts = snapshot && snapshot.counts ? snapshot.counts : {};
+  let total = 0;
+  for (const key of Object.keys(counts)) total += typeof counts[key] === 'number' ? counts[key] : 0;
+  return `${total}|${snapshot && snapshot.stopReason ? snapshot.stopReason : ''}`;
 }
 
 function mainIsDocId(value) {
@@ -1611,6 +1646,7 @@ function bootMain({ win, doc }) {
   let configured = false;
   let recorded = false; // got `record:true`, so this document has data worth flushing
   let closed = false;
+  let flushedMark = null; // change mark of the last copy handed over
 
   const rec = createRecorder({
     win,
@@ -1622,9 +1658,16 @@ function bootMain({ win, doc }) {
   });
   if (!rec.install()) return;
 
-  function onPageHide() {
+  // Hands over a copy of the buffers (also an empty one, so the background knows it arrived) unless
+  // nothing changed since the last copy: pagehide right after beforeunload sends nothing new.
+  function flushBuffers() {
     if (!recorded || closed || !channel) return;
-    mainTry(() => channel.send('flush', { docId, data: { ...rec.snapshot(), docId } }));
+    mainTry(() => {
+      const data = { ...rec.snapshot(), docId };
+      const mark = mainChangeMark(data);
+      if (mark === flushedMark) return;
+      if (channel.send('flush', { docId, data })) flushedMark = mark;
+    });
   }
 
   function teardown() {
@@ -1632,7 +1675,8 @@ function bootMain({ win, doc }) {
     recorded = false;
     if (closed) return;
     closed = true;
-    mainTry(() => apply(removeListener, win, ['pagehide', onPageHide, true]));
+    mainTry(() => apply(removeListener, win, ['pagehide', flushBuffers, true]));
+    mainTry(() => apply(removeListener, win, ['beforeunload', flushBuffers, true]));
     if (channel) channel.close();
   }
 
@@ -1676,7 +1720,9 @@ function bootMain({ win, doc }) {
     },
   });
 
-  if (addListener) mainTry(() => apply(addListener, win, ['pagehide', onPageHide, true]));
+  if (addListener) mainTry(() => apply(addListener, win, ['pagehide', flushBuffers, true]));
+  // Never cancels the unload (no preventDefault, no returnValue): no prompt for the user.
+  if (addListener) mainTry(() => apply(addListener, win, ['beforeunload', flushBuffers, true]));
 }
 
 bootMain({ win: window, doc: document });

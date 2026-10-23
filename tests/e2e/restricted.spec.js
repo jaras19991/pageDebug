@@ -44,22 +44,6 @@ async function openPopup(page) {
   return popup;
 }
 
-// Popup state as recording.js popupState() reads it, through the null-safe openPopup.
-async function readPopupState(page) {
-  const popup = await openPopup(page);
-  try {
-    await popup.waitFor(`!document.getElementById('ready').hidden || !document.getElementById('recording').hidden`);
-    return await popup.evaluate(`({
-      section: !document.getElementById('ready').hidden ? 'ready' : 'recording',
-      status: document.getElementById('status').textContent,
-      statusIsError: document.getElementById('status').classList.contains('error'),
-      recordEnabled: !document.getElementById('record').disabled,
-    })`);
-  } finally {
-    await popup.close();
-  }
-}
-
 async function expectRestricted(url) {
   const page = await ext.context.newPage();
   try {
@@ -100,6 +84,32 @@ async function expectRestricted(url) {
   }
 }
 
+// Forces one more getStatus in an open popup (any storage.session change refreshes it) and
+// reads #status after that answer was applied.
+const COUNT_GET_STATUS = `(() => {
+  window.__pdsGetStatus = 0;
+  const original = chrome.runtime.sendMessage.bind(chrome.runtime);
+  chrome.runtime.sendMessage = (message, ...rest) => {
+    const answer = original(message, ...rest);
+    if (message?.type === 'getStatus') Promise.resolve(answer).finally(() => setTimeout(() => window.__pdsGetStatus++, 0));
+    return answer;
+  };
+})()`;
+
+async function statusAfterNextGetStatus(popup) {
+  try {
+    await popup.evaluate(COUNT_GET_STATUS);
+    await ext.sessionStorage.set('pds:e2e-poke', Date.now());
+    await expect.poll(() => popup.evaluate('window.__pdsGetStatus'), { timeout: 5_000 }).toBeGreaterThan(0);
+    return await popup.evaluate(`({
+      status: document.getElementById('status').textContent,
+      statusIsError: document.getElementById('status').classList.contains('error'),
+    })`);
+  } finally {
+    await ext.sessionStorage.set('pds:e2e-poke', undefined);
+  }
+}
+
 test('chrome://version: restricted message within 2 s, no reload, no permission request', async () => {
   await expectRestricted('chrome://version/');
 });
@@ -130,11 +140,24 @@ test('consent prompt closed without allowing: permissionDenied on reopen, no rel
       .toBe('closed');
     await popup.close();
 
-    const state = await readPopupState(page);
-    expect(state.section).toBe('ready');
-    expect(state.recordEnabled).toBe(true);
-    expect(state.status).toBe(MESSAGES.permissionDenied);
-    expect(state.statusIsError).toBe(true);
+    const reopened = await openPopup(page);
+    try {
+      await reopened.waitFor(`!document.getElementById('ready').hidden && document.getElementById('status').textContent !== ''`);
+      // Let the popup's own refresh after the one-shot lastError was cleared land first.
+      await delay(300);
+      const state = await reopened.evaluate(`({
+        status: document.getElementById('status').textContent,
+        statusIsError: document.getElementById('status').classList.contains('error'),
+        recordEnabled: !document.getElementById('record').disabled,
+      })`);
+      expect(state.recordEnabled).toBe(true);
+      expect(state.status).toBe(MESSAGES.permissionDenied);
+      expect(state.statusIsError).toBe(true);
+      // QA F-1: lastError is one-shot; the text must survive the next getStatus (idle, no lastError).
+      expect(await statusAfterNextGetStatus(reopened)).toEqual({ status: MESSAGES.permissionDenied, statusIsError: true });
+    } finally {
+      await reopened.close();
+    }
 
     expect(loads).toBe(0);
     expect(await ext.sessionStorage.get(PENDING_KEY)).toBeUndefined();

@@ -32,6 +32,9 @@ export function acceptsMessage(chrome, message, sender) {
     const page = typeof sender.url === 'string' ? sender.url.split(/[?#]/)[0] : null;
     return !sender.tab && page === chrome.runtime.getURL('popup/popup.html');
   }
+  // `flush` of a document left for another site comes from a frame pending deletion (frameId ≠ 0);
+  // the handler checks the document's token instead (F-2).
+  if (type === 'flush') return typeof sender.tab?.id === 'number';
   if (BRIDGE_TYPES.has(type)) return typeof sender.tab?.id === 'number' && sender.frameId === 0;
   return false;
 }

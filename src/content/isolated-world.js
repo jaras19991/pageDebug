@@ -270,7 +270,7 @@ const { connectIsolated } = __pds_m0;
 // ISOLATED-world entry point (E1 D1, D3, D4), bundled into src/content/isolated-world.js by `npm run gen`.
 // The bridge: asks the background whether this document is recorded (`hello`) and forwards the answer
 // to MAIN as `config`; relays `collect`/`destroy` from the background to MAIN and `flush`/`stopped`
-// from MAIN to the background. Sees no page JavaScript; the only module that uses the extension API.
+// from MAIN to the background. The document token from `hello` stays here and goes only with `flush`. Sees no page JavaScript; the only module that uses the extension API.
 // When the extension context is gone (update, reload) every call fails and the bridge stays silent.
 
 
@@ -282,6 +282,7 @@ const BRIDGE_RETRY_MS = 500;
 const BRIDGE_MAX_PENDING = 4;
 const BRIDGE_URL_MAX = 4000;
 const BRIDGE_REASON_MAX = 64;
+const BRIDGE_TOKEN_MAX = 128;
 
 function bridgeTry(fn, fallback) {
   try {
@@ -310,6 +311,7 @@ function bootIsolated({ win, doc, api }) {
   const pending = new Map(); // collect id → { respond, timer }
   let seq = 0;
   let docId = null;
+  let token = null; // proves to the background that a flush comes from this document (F-2)
   let finished = false;
 
   async function toBackground(message) {
@@ -346,7 +348,8 @@ function bootIsolated({ win, doc, api }) {
       settle(id, typeof payload === 'string' ? payload : null);
     } else if (type === 'flush') {
       if (!payload || typeof payload !== 'object' || !payload.data || typeof payload.data !== 'object') return;
-      toBackground({ type: 'flush', docId: docId ?? payload.docId, data: payload.data });
+      if (token === null) return;
+      toBackground({ type: 'flush', docId: docId ?? payload.docId, token, data: payload.data });
     } else if (type === 'stopped') {
       const reason = String(payload && payload.reason ? payload.reason : 'unknown').slice(0, BRIDGE_REASON_MAX);
       toBackground({ type: 'stopped', reason });
@@ -368,6 +371,7 @@ function bootIsolated({ win, doc, api }) {
 
   replied.then(async (reply) => {
     if (reply && reply.docId !== undefined) docId = reply.docId;
+    if (reply && typeof reply.token === 'string' && reply.token !== '' && reply.token.length <= BRIDGE_TOKEN_MAX) token = reply.token;
     const config = reply
       ? { record: reply.record === true, docId: reply.docId, deadline: reply.deadline, limitMs: reply.limitMs }
       : { record: false };

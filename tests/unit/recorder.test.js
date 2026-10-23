@@ -38,6 +38,20 @@ function makeWin() {
   return win;
 }
 
+// Stack text under test control (V8 Error.prepareStackTrace), independent of the checkout path (QA F-5).
+const shortStack = () => ['Error', 'stackFromHere', 'wrapper', 'page'].map((fn, i) => (i ? `    at ${fn} (p.js:1:1)` : fn)).join('\n');
+
+function withStack(prepare, fn) {
+  const saved = Object.getOwnPropertyDescriptor(Error, 'prepareStackTrace');
+  Error.prepareStackTrace = prepare;
+  try {
+    fn();
+  } finally {
+    if (saved) Object.defineProperty(Error, 'prepareStackTrace', saved);
+    else delete Error.prepareStackTrace;
+  }
+}
+
 function originalsOf(win) {
   return { fetch: win.fetch, XMLHttpRequest: win.XMLHttpRequest, console: { ...win.console } };
 }
@@ -217,27 +231,49 @@ describe('createRecorder', () => {
   });
 
   it('6000 console.log keep 5000 newest, truncated.consoleLogs true; 10 logs → truncated false', () => {
-    const win = makeWin();
-    const rec = createRecorder({ win });
-    rec.install();
-    rec.setConfig({ record: true, docId: 0 });
-    for (let i = 0; i < 6000; i++) win.console.log(i);
-    const out = rec.exportBuffers();
-    expect(out.consoleLogs).toHaveLength(LIMITS.consoleLogs);
-    expect(out.consoleLogs[0].args).toEqual([1000]);
-    expect(out.consoleLogs.at(-1).args).toEqual([5999]);
-    expect(out.truncated.consoleLogs).toBe(true);
-    expect(out.counts.consoleLogs).toBe(6000);
-    rec.destroy();
+    // Short fixed stacks: the count limit is measured, not the char budget (QA F-5: long checkout paths).
+    withStack(shortStack, () => {
+      const win = makeWin();
+      const rec = createRecorder({ win });
+      rec.install();
+      rec.setConfig({ record: true, docId: 0 });
+      for (let i = 0; i < 6000; i++) win.console.log(i);
+      const out = rec.exportBuffers();
+      expect(out.consoleLogs).toHaveLength(LIMITS.consoleLogs);
+      expect(out.consoleLogs[0].args).toEqual([1000]);
+      expect(out.consoleLogs.at(-1).args).toEqual([5999]);
+      expect(out.truncated.consoleLogs).toBe(true);
+      expect(out.counts.consoleLogs).toBe(6000);
+      rec.destroy();
 
-    const win2 = makeWin();
-    const rec2 = createRecorder({ win: win2 });
-    rec2.install();
-    rec2.setConfig({ record: true, docId: 0 });
-    for (let i = 0; i < 10; i++) win2.console.log(i);
-    expect(rec2.exportBuffers().consoleLogs).toHaveLength(10);
-    expect(rec2.exportBuffers().truncated.consoleLogs).toBe(false);
-    rec2.destroy();
+      const win2 = makeWin();
+      const rec2 = createRecorder({ win: win2 });
+      rec2.install();
+      rec2.setConfig({ record: true, docId: 0 });
+      for (let i = 0; i < 10; i++) win2.console.log(i);
+      expect(rec2.exportBuffers().consoleLogs).toHaveLength(10);
+      expect(rec2.exportBuffers().truncated.consoleLogs).toBe(false);
+      rec2.destroy();
+    });
+  });
+
+  it('documentChars evicts the oldest before maxItems is reached when entries are large', () => {
+    withStack(shortStack, () => {
+      const win = makeWin();
+      const rec = createRecorder({ win, options: { limits: { documentChars: 50_000 } } });
+      rec.install();
+      rec.setConfig({ record: true, docId: 0 });
+      for (let i = 0; i < 1000; i++) win.console.log(`${i}:${'x'.repeat(200)}`);
+      const out = rec.exportBuffers();
+      // Each entry costs > 200 chars, so at most 250 fit, far below maxItems (5000).
+      expect(out.consoleLogs.length).toBeGreaterThan(100);
+      expect(out.consoleLogs.length).toBeLessThan(250);
+      expect(out.consoleLogs.at(-1).args[0].startsWith('999:')).toBe(true);
+      expect(out.consoleLogs[0].args[0].startsWith(`${1000 - out.consoleLogs.length}:`)).toBe(true);
+      expect(out.truncated.consoleLogs).toBe(true);
+      expect(out.counts.consoleLogs).toBe(1000);
+      rec.destroy();
+    });
   });
 
   it('oversized values are capped at entryChars and the document char budget evicts oldest', () => {

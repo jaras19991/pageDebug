@@ -30,6 +30,9 @@ function setup({ granted = [PATTERN, 'https://example.com/*'] } = {}) {
 const bridge = (tabId, url, extra = {}) => ({ tab: { id: tabId, url }, frameId: 0, url, id: 'pds-test-id', ...extra });
 const named = (calls, name) => calls.filter((c) => c.name === name);
 const rec = (e) => e.fake.sessionData.get(KEYS.rec);
+const TOKEN = expect.stringMatching(/^[0-9a-f]{32}$/);
+// The token the background gave a document in its `hello` answer (I2, F-2).
+const tokenOf = (e, docId) => rec(e).docs.find((d) => d.id === docId)?.token;
 
 async function startRecording(e, { requestId = 'r1', tabId = TAB, origin = ORIGIN, pattern = PATTERN } = {}) {
   await e.h.armStart({ requestId, tabId, origin, pattern });
@@ -142,8 +145,8 @@ describe('start', () => {
 
   it('start in another tab ends the previous recording without saving (D1)', async () => {
     await startRecording(env);
-    await env.h.hello({ type: 'hello' }, bridge(TAB, URL_A));
-    await env.h.flush({ type: 'flush', docId: 1, data: { consoleLogs: [{ t: 1 }] } }, bridge(TAB, URL_A));
+    const { token } = await env.h.hello({ type: 'hello' }, bridge(TAB, URL_A));
+    await env.h.flush({ type: 'flush', docId: 1, token, data: { consoleLogs: [{ t: 1 }] } }, bridge(TAB, URL_A));
     const res = await startRecording(env, {
       requestId: 'r2',
       tabId: OTHER_TAB,
@@ -173,13 +176,14 @@ describe('hello (per-document gate, D1)', () => {
     await startRecording(env);
     await env.fake.badges.delete(TAB);
     const first = await env.h.hello({ type: 'hello' }, bridge(TAB, URL_A));
-    expect(first).toEqual({ record: true, docId: 1, deadline: clock.t + RECORDING_LIMIT_MS, limitMs: RECORDING_LIMIT_MS });
+    expect(first).toEqual({ record: true, docId: 1, token: TOKEN, deadline: clock.t + RECORDING_LIMIT_MS, limitMs: RECORDING_LIMIT_MS });
     expect(env.fake.badges.get(TAB).text).toBe('●');
     const second = await env.h.hello({ type: 'hello' }, bridge(TAB, `${ORIGIN}/next`));
     expect(second.docId).toBe(2);
+    expect(second.token).not.toBe(first.token);
     expect(rec(env).docs).toEqual([
-      { id: 1, url: URL_A, flushed: false },
-      { id: 2, url: `${ORIGIN}/next`, flushed: false },
+      { id: 1, url: URL_A, flushed: false, token: first.token },
+      { id: 2, url: `${ORIGIN}/next`, flushed: false, token: second.token },
     ]);
   });
 
@@ -228,9 +232,9 @@ describe('hello (per-document gate, D1)', () => {
 describe('flush (D4)', () => {
   it('flush stores document via store.putDoc and marks flushed (AC-4.4)', async () => {
     await startRecording(env);
-    const { docId } = await env.h.hello({ type: 'hello' }, bridge(TAB, URL_A));
+    const { docId, token } = await env.h.hello({ type: 'hello' }, bridge(TAB, URL_A));
     const data = { consoleLogs: [{ t: 3, level: 'error' }], runtimeErrors: [], network: [], truncated: {} };
-    const res = await env.h.flush({ type: 'flush', docId, data }, bridge(TAB, URL_A));
+    const res = await env.h.flush({ type: 'flush', docId, token, data }, bridge(TAB, URL_A));
     expect(res).toEqual({ ok: true, stored: 'full' });
     expect(await env.store.listDocs()).toEqual([{ id: docId, data }]);
     expect(rec(env).docs[0]).toMatchObject({ id: docId, flushed: true });
@@ -239,11 +243,55 @@ describe('flush (D4)', () => {
   it('flush for an unknown document, another tab or without a recording is ignored', async () => {
     expect((await env.h.flush({ type: 'flush', docId: 1, data: {} }, bridge(TAB, URL_A))).ok).toBe(false);
     await startRecording(env);
-    await env.h.hello({ type: 'hello' }, bridge(TAB, URL_A));
-    expect((await env.h.flush({ type: 'flush', docId: 99, data: {} }, bridge(TAB, URL_A))).ok).toBe(false);
-    expect((await env.h.flush({ type: 'flush', docId: 1, data: {} }, bridge(OTHER_TAB, URL_A))).ok).toBe(false);
-    expect((await env.h.flush({ type: 'flush', docId: 1, data: 'x' }, bridge(TAB, URL_A))).ok).toBe(false);
+    const { token } = await env.h.hello({ type: 'hello' }, bridge(TAB, URL_A));
+    expect((await env.h.flush({ type: 'flush', docId: 99, token, data: {} }, bridge(TAB, URL_A))).ok).toBe(false);
+    expect((await env.h.flush({ type: 'flush', docId: 1, token, data: {} }, bridge(OTHER_TAB, URL_A))).ok).toBe(false);
+    expect((await env.h.flush({ type: 'flush', docId: 1, token, data: 'x' }, bridge(TAB, URL_A))).ok).toBe(false);
     expect(await env.store.listDocs()).toEqual([]);
+  });
+
+  // F-2: Chrome delivers the pagehide flush of a document left for another site from a frame that is
+  // pending deletion (frameId ≠ 0, sender.tab.url already the new site); the token proves the sender.
+  it('flush with the document token is accepted from another frameId and while the tab shows another origin', async () => {
+    await startRecording(env);
+    const { docId, token } = await env.h.hello({ type: 'hello' }, bridge(TAB, URL_A));
+    const leaving = bridge(TAB, URL_A, { frameId: 5, tab: { id: TAB, url: 'http://localhost:8080/sso' }, documentLifecycle: 'pending_deletion' });
+    const res = await env.h.flush({ type: 'flush', docId, token, data: { consoleLogs: [{ t: 1 }] } }, leaving);
+    expect(res).toEqual({ ok: true, stored: 'full' });
+    expect(await env.store.listDocs()).toEqual([{ id: docId, data: { consoleLogs: [{ t: 1 }] } }]);
+    expect(rec(env).docs[0]).toMatchObject({ id: docId, flushed: true });
+    // A browser that reports the new address in sender.url: the token still decides.
+    const moved = bridge(TAB, 'http://localhost:8080/sso');
+    expect((await env.h.flush({ type: 'flush', docId, token, data: { consoleLogs: [] } }, moved)).ok).toBe(true);
+  });
+
+  it('flush without the token, with a wrong one or with the token of another document is rejected', async () => {
+    await startRecording(env);
+    const first = await env.h.hello({ type: 'hello' }, bridge(TAB, URL_A));
+    const second = await env.h.hello({ type: 'hello' }, bridge(TAB, `${ORIGIN}/next`));
+    for (const token of [undefined, null, '', 'x'.repeat(32), second.token, { toString: () => first.token }]) {
+      expect((await env.h.flush({ type: 'flush', docId: first.docId, token, data: {} }, bridge(TAB, URL_A))).ok).toBe(false);
+    }
+    expect((await env.h.flush({ type: 'flush', docId: second.docId, token: first.token, data: {} }, bridge(TAB, URL_A))).ok).toBe(false);
+    expect(await env.store.listDocs()).toEqual([]);
+    expect(rec(env).docs.map((d) => d.flushed)).toEqual([false, false]);
+  });
+
+  it('a repeated flush of the same document (incremental) overwrites its copy', async () => {
+    await startRecording(env);
+    const { docId, token } = await env.h.hello({ type: 'hello' }, bridge(TAB, URL_A));
+    await env.h.flush({ type: 'flush', docId, token, data: { consoleLogs: [{ t: 1 }] } }, bridge(TAB, URL_A));
+    await env.h.flush({ type: 'flush', docId, token, data: { consoleLogs: [{ t: 1 }, { t: 2 }] } }, bridge(TAB, URL_A));
+    expect(await env.store.listDocs()).toEqual([{ id: docId, data: { consoleLogs: [{ t: 1 }, { t: 2 }] } }]);
+    expect(tokenOf(env, docId)).toBe(token);
+  });
+
+  it('a token from an earlier recording is not valid in the next one', async () => {
+    await startRecording(env);
+    const old = await env.h.hello({ type: 'hello' }, bridge(TAB, URL_A));
+    await startRecording(env, { requestId: 'r2' });
+    await env.h.hello({ type: 'hello' }, bridge(TAB, URL_A));
+    expect((await env.h.flush({ type: 'flush', docId: old.docId, token: old.token, data: {} }, bridge(TAB, URL_A))).ok).toBe(false);
   });
 
   it('bridgeError marks the document as not recorded', async () => {
@@ -325,8 +373,9 @@ describe('getStatus', () => {
 describe('cleanup', () => {
   it('onTabRemoved for recording tab unregisters and clears state; other tab ignored (AC-2.6)', async () => {
     await startRecording(env);
-    await env.h.hello({ type: 'hello' }, bridge(TAB, URL_A));
-    await env.h.flush({ type: 'flush', docId: 1, data: { consoleLogs: [] } }, bridge(TAB, URL_A));
+    const { token } = await env.h.hello({ type: 'hello' }, bridge(TAB, URL_A));
+    await env.h.flush({ type: 'flush', docId: 1, token, data: { consoleLogs: [] } }, bridge(TAB, URL_A));
+    expect(await env.store.listDocs()).toHaveLength(1);
 
     await env.h.onTabRemoved(OTHER_TAB);
     expect(rec(env)).toBeDefined();
@@ -398,7 +447,7 @@ describe('time limit (D10, AC-1.9)', () => {
     await startRecording(env);
     expect(rec(env)).toMatchObject({ limitMs: 3000, deadline: clock.t + 3000 });
     const hello = await env.h.hello({ type: 'hello' }, bridge(TAB, URL_A));
-    expect(hello).toEqual({ record: true, docId: 1, deadline: clock.t + 3000, limitMs: 3000 });
+    expect(hello).toEqual({ record: true, docId: 1, token: TOKEN, deadline: clock.t + 3000, limitMs: 3000 });
   });
 
   it('getStatus after deadline returns stopped/time-limit and unregisters scripts once (AC-1.9)', async () => {

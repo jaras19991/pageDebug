@@ -113,9 +113,11 @@ describe('router sender check (D2)', () => {
     for (const type of ['hello', 'flush', 'stopped', 'bridgeError']) {
       expect(accepts({ type }, BRIDGE_SENDER), type).toBe(true);
       expect(accepts({ type }, POPUP_SENDER), type).toBe(false);
-      expect(accepts({ type }, { ...BRIDGE_SENDER, frameId: 3 }), type).toBe(false);
+      // flush: a document left for another site sends it from a frame pending deletion (F-2); its token decides.
+      expect(accepts({ type }, { ...BRIDGE_SENDER, frameId: 3 }), type).toBe(type === 'flush');
       expect(accepts({ type }, { ...BRIDGE_SENDER, id: 'evil' }), type).toBe(false);
     }
+    expect(accepts({ type: 'flush' }, { ...BRIDGE_SENDER, tab: undefined })).toBe(false);
     expect(accepts({ type: 'toString' }, POPUP_SENDER)).toBe(false);
     expect(accepts(null, POPUP_SENDER)).toBe(false);
     expect(accepts({ type: 'getStatus' }, undefined)).toBe(false);
@@ -215,7 +217,7 @@ describe('popup ↔ background through the real router', () => {
     await popup.onRecord();
     await env.settle();
     const hello = await env.fromPage({ type: 'hello' });
-    expect(hello).toEqual({ record: true, docId: 1, deadline: T0 + 600_000, limitMs: 600_000 });
+    expect(hello).toEqual({ record: true, docId: 1, token: expect.stringMatching(/^[0-9a-f]{32}$/), deadline: T0 + 600_000, limitMs: 600_000 });
     env.page.docId = hello.docId;
     env.page.logs = ['Nie działa koszyk'];
     await env.settle();

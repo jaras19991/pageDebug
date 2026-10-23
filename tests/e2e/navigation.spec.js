@@ -159,6 +159,26 @@ test('navigation to localhost (other origin): popup shows otherOrigin; save keep
   for (const doc of json.documents) expect(String(doc.url).startsWith(`${server.url}/`)).toBe(true);
 });
 
+// F-2: a jump straight to another host (an SSO redirect, an external link) lost document 0. Chrome sends its
+// pagehide flush from a frame pending deletion (frameId ≠ 0): the background checks the document token. Firefox
+// drops that pagehide copy, so MAIN also flushes at beforeunload (checked by hand in Firefox, no e2e harness there).
+test('direct navigation to another host: entries of document 0 are saved, no "not received" note', async () => {
+  const page = await openPage(`${server.url}/basic.html`);
+  await startRecording(page);
+  const marker = unique('before-redirect');
+  await page.evaluate((m) => console.log(m), marker);
+  await page.goto(`http://localhost:${server.port}/basic.html`);
+
+  const state = await popupState(page);
+  expect(state.note).toBe(MESSAGES.otherOrigin);
+  const { json } = await saveRecording(page);
+  expect(logsWith(json, marker)).toHaveLength(1);
+  expect(json.documents[0]).toMatchObject({ flushed: true, recorded: true });
+  expect(String(json.documents[0].url).startsWith(`${server.url}/`)).toBe(true);
+  expect(json.notes.join('\n')).not.toContain('was not received');
+  expect(JSON.stringify(json)).not.toContain(`localhost:${server.port}`);
+});
+
 // F-e1-2: the save hang seen in T19b (about 1 in 8) did not reproduce in ~350 stop/save runs, alone or
 // under load. If it comes back, compare with a parallel e2e run rebuilding dist/chrome under this browser.
 test('service worker stop during recording: entries logged after it are saved', async () => {

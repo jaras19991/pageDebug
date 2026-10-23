@@ -52,7 +52,7 @@ function attachChrome(win, reply = defaultReply) {
 }
 
 function defaultReply(msg) {
-  if (msg.type === 'hello') return { record: true, docId: 1, deadline: Date.now() + 600000, limitMs: 600000 };
+  if (msg.type === 'hello') return { record: true, docId: 1, token: 'f0e1d2c3b4a5968778695a4b3c2d1e0f', deadline: Date.now() + 600000, limitMs: 600000 };
   return { ok: true };
 }
 
@@ -121,6 +121,40 @@ describe('MAIN + ISOLATED entries', () => {
     expect(flushes[0].data).toMatchObject({ docId: 1, protocol: PROTOCOL });
     expect(flushes[0].data.consoleLogs).toHaveLength(1);
     expect(typeof flushes[0].data.timeOrigin).toBe('number');
+  });
+
+  it('flush carries the token from the hello answer; MAIN never sees it (F-2)', async () => {
+    const token = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6';
+    const { win, sent } = await startPage({ reply: (m) => (m.type === 'hello' ? { ...defaultReply(m), token } : { ok: true }) });
+    win.console.log('z tokenem');
+    win.dispatchEvent(new win.Event('pagehide'));
+    await settle();
+    const [flush] = sent.filter((m) => m.type === 'flush');
+    expect(flush.token).toBe(token);
+    expect(JSON.stringify(flush.data)).not.toContain(token);
+  });
+
+  // F-2: Firefox drops the pagehide copy of a document left for another site; the beforeunload one arrives.
+  it('beforeunload hands the buffers over without cancelling the unload; pagehide adds only what is new', async () => {
+    const { win, sent } = await startPage();
+    const flushes = () => sent.filter((m) => m.type === 'flush');
+    win.console.log('przed przekierowaniem');
+    const event = new win.Event('beforeunload', { cancelable: true });
+    win.dispatchEvent(event);
+    await settle();
+    expect(event.defaultPrevented).toBe(false);
+    expect(flushes()).toHaveLength(1);
+    expect(flushes()[0].data.consoleLogs).toHaveLength(1);
+    win.dispatchEvent(new win.Event('pagehide'));
+    await settle();
+    expect(flushes()).toHaveLength(1);
+    // bfcache: back on the page, a new entry, pagehide again → a fresh copy of the same document.
+    win.console.log('po powrocie');
+    win.dispatchEvent(new win.Event('pagehide'));
+    await settle();
+    expect(flushes()).toHaveLength(2);
+    expect(flushes()[1]).toMatchObject({ docId: 1 });
+    expect(flushes()[1].data.consoleLogs).toHaveLength(2);
   });
 
   it('no flush when the document is not recorded', async () => {

@@ -19,11 +19,19 @@ const MAX_DOCS = 100;
 const MAX_URL_LENGTH = 2048;
 const MAX_REASON_LENGTH = 64;
 const REC_VERSION = 1;
+const TOKEN_BYTES = 16;
 
 const ok = (startedAt) => ({ ok: true, startedAt });
 const fail = (reason) => ({ ok: false, reason });
 const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const capUrl = (url) => (typeof url === 'string' ? url.slice(0, MAX_URL_LENGTH) : null);
+
+// Per-document secret handed to the bridge in the `hello` answer and required on `flush` (F-2).
+function newDocToken() {
+  const bytes = new Uint8Array(TOKEN_BYTES);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
 
 /**
  * Limit for a new recording (D10): the test-only override from `pds:test:recordingLimitMs`
@@ -209,8 +217,9 @@ export function createRecordingHandlers({
 
     /**
      * Per-document gate (D1). Answer for the bridge, forwarded to MAIN as `config`:
-     * `{ record: true, docId, deadline, limitMs }`, or `{ record: false, … }` when the recording
+     * `{ record: true, docId, token, deadline, limitMs }`, or `{ record: false, … }` when the recording
      * is over (the document keeps its channel for collect), or `{ record: false }` otherwise.
+     * `token` stays in the bridge (not sent to MAIN) and authenticates the document's `flush`.
      */
     async hello(_msg, sender) {
       if (!isBridge(sender)) return { record: false };
@@ -221,9 +230,10 @@ export function createRecordingHandlers({
         const docId = cur.docSeq + 1;
         const due = isDue(cur);
         const record = cur.status === 'recording' && !due;
-        const doc = { id: docId, url: capUrl(senderUrl(sender)), flushed: false };
+        const token = newDocToken();
+        const doc = { id: docId, url: capUrl(senderUrl(sender)), flushed: false, token };
         if (!record) doc.recorded = false;
-        reply = { record, docId, deadline: cur.deadline, limitMs: cur.limitMs };
+        reply = { record, docId, token, deadline: cur.deadline, limitMs: cur.limitMs };
         const next = { ...cur, docSeq: docId, docs: [...cur.docs, doc].slice(-MAX_DOCS) };
         if (due) stopped = asStopped(next);
         return stopped ?? next;
@@ -249,12 +259,19 @@ export function createRecordingHandlers({
       return { ok: true };
     },
 
-    /** One-time dump of a document's buffers at pagehide (D4). */
+    /**
+     * Copy of a document's buffers (D4): periodically while it changes and at pagehide; a later copy
+     * overwrites. Authenticated by the document's token, not by frame and origin: a document left for
+     * another site sends its pagehide flush from a frame pending deletion (Chrome: frameId ≠ 0, tab URL
+     * already the new site), F-2.
+     */
     async flush(msg, sender) {
-      if (!isBridge(sender) || !isPlainObject(msg?.data)) return fail('rejected');
+      if (typeof sender?.tab?.id !== 'number' || sender.id !== chrome.runtime.id) return fail('rejected');
+      if (!isPlainObject(msg?.data) || typeof msg.token !== 'string' || msg.token === '') return fail('rejected');
       const docId = msg.docId;
       const rec = await store.getRec();
-      if (!matchesRecording(rec, sender) || !rec.docs.some((d) => d.id === docId)) return fail('rejected');
+      const known = rec?.tabId === sender.tab.id ? rec.docs.find((d) => d.id === docId) : null;
+      if (!known || known.token !== msg.token) return fail('rejected');
       const { stored } = await store.putDoc(docId, msg.data);
       await store.updateRec((cur) =>
         cur?.requestId === rec.requestId

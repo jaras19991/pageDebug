@@ -25,9 +25,19 @@ export const DOWNLOAD_TIMEOUT_MS = 60_000;
 const START_FAILURES = new Set(['permissionDenied', 'recordFailed', 'restricted', 'fileAccess', 'failed']);
 const COLLECT_FAILURES = new Set(['pageBusy', 'failed']);
 const STATUS_ERRORS = new Set(['saveCancelled', 'downloadFailed', 'pageBusy', 'permissionDenied', 'recordFailed', 'restricted', 'failed']);
-// Save verdicts stay until the next user action or a new lastError (AC-2.4): after its own
-// collect timeout the background goes saving -> recording without lastError, which says nothing new.
-const STICKY_OUTCOMES = new Set(['pageBusy', 'failed', 'downloadFailed', 'saveCancelled']);
+// Error verdicts stay until the next user action or a new lastError (AC-1.4, AC-2.4): a state change
+// without lastError says nothing new — after a refused consent the background goes starting -> idle
+// (QA F-1), after its own collect timeout saving -> recording.
+const STICKY_OUTCOMES = new Set([
+  'pageBusy',
+  'failed',
+  'downloadFailed',
+  'saveCancelled',
+  'permissionDenied',
+  'recordFailed',
+  'restricted',
+  'fileAccess',
+]);
 
 class TimeoutError extends Error {}
 
@@ -86,6 +96,9 @@ export function createController(api) {
     const kind = classifyUrl(tab.url);
     if (kind === 'restricted') return 'restricted';
     const isFirefox = isFirefoxRuntime(api);
+    // Firefox grants file:///* as "all sites" but never injects into files (QA F-4, decision 2):
+    // say so before any consent prompt instead of a recording that cannot happen.
+    if (kind === 'file' && isFirefox) return 'fileUnsupportedFirefox';
     if (kind === 'web' || kind === 'file') {
       // Only an explicit "no" from Chrome's probe blocks a file page (E0 behaviour).
       if (kind === 'file' && !isFirefox && (await isFileAccessAllowed(api)) === false) return 'fileAccess';

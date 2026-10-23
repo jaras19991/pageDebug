@@ -152,6 +152,17 @@ describe('assemblePackage', () => {
     expect(pkg.consoleLogs[0].doc).toBe(1);
   });
 
+  it('document tokens of the background (F-2) never reach the package', () => {
+    const token = 'c0ffee00c0ffee00c0ffee00c0ffee00';
+    const pkg = assemblePackage({
+      meta: meta(),
+      current: current(),
+      priorDocs: [prior()],
+      docs: [{ id: 0, url: 'http://127.0.0.1:8080/lost.html', flushed: false, token }, { id: 1, flushed: true, token }, { id: 2, flushed: false, token }],
+    });
+    expect(JSON.stringify(pkg)).not.toContain(token);
+  });
+
   it('known document marked not recorded or with bridgeError → recorded false and a note, also for the current one', () => {
     const pkg = assemblePackage({
       meta: meta(),

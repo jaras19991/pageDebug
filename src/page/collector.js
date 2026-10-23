@@ -95,6 +95,31 @@ export function collectEnvironment(win, doc, _deps) {
   };
 }
 
+// The disclosure promises "bez haseł i pól ukrytych" (QA F-3): their value attribute must not
+// reach outerHTML either. Template contents are serialized too, so they are searched as well.
+const SECRET_INPUTS = 'input[type="password" i], input[type="hidden" i]';
+const REDACTED = '[redacted]';
+
+function redactSecretInputs(root) {
+  for (const el of root.querySelectorAll(SECRET_INPUTS)) {
+    if (el.hasAttribute('value')) el.setAttribute('value', REDACTED);
+  }
+  for (const tpl of root.querySelectorAll('template')) {
+    if (tpl.content) redactSecretInputs(tpl.content);
+  }
+}
+
+// Page markup without secret input values; the page itself is never touched. The copy lives in
+// an inert document: no browsing context, so images do not load and custom elements do not upgrade.
+function redactedOuterHTML(doc) {
+  const root = doc.documentElement;
+  if (!doc.querySelector(`${SECRET_INPUTS}, template`)) return root.outerHTML;
+  const inert = doc.implementation.createHTMLDocument('');
+  const copy = inert.importNode(root, true);
+  redactSecretInputs(copy);
+  return copy.outerHTML;
+}
+
 export function collectDomSnapshot(win, doc, deps) {
   const { safeSlice } = deps;
   const limits = collectorLimits(deps);
@@ -121,7 +146,7 @@ export function collectDomSnapshot(win, doc, deps) {
       lang: doc.documentElement.lang || null,
       charset: doc.characterSet,
       compatMode: doc.compatMode,
-      outerHTML: safeSlice(doc.documentElement.outerHTML, limits.html),
+      outerHTML: safeSlice(redactedOuterHTML(doc), limits.html),
     },
     meta: Array.from(doc.querySelectorAll('meta')).map((el) => getElementSummary(el, deps)),
     canonical: doc.querySelector('link[rel="canonical"]')?.href || null,

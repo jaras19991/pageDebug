@@ -49,6 +49,7 @@ describe('MESSAGES', () => {
         'stoppedByLimit',
         'saving',
         'saved',
+        'fileUnsupportedFirefox',
         ...OUTCOMES,
       ].sort(),
     );
@@ -121,6 +122,12 @@ describe('MESSAGES', () => {
   it('fileAccess message names the Chrome setting', () => {
     expect(MESSAGES.fileAccess).toContain('chrome://extensions');
     expect(MESSAGES.fileAccess).toContain('Zezwalaj na dostęp do adresów URL plików');
+  });
+
+  it('fileUnsupportedFirefox tells to open the page over http(s), verbatim (QA F-4)', () => {
+    expect(MESSAGES.fileUnsupportedFirefox).toBe(
+      'W Firefoksie nagrywanie plików z dysku nie jest obsługiwane. Otwórz stronę przez http:// lub https://.',
+    );
   });
 
   it('permissionDenied says recording needs consent', () => {

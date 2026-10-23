@@ -152,14 +152,33 @@ describe('popup controller: opening', () => {
     expect(t.named('permissions.request')).toHaveLength(0);
   });
 
-  it('file page with access (or in Firefox) is recordable with file:///* pattern', async () => {
-    for (const options of [{ fileAccess: true }, { firefox: true }]) {
-      const t = setup({ url: 'file:///C:/bug.html', ...options });
-      await t.controller.init();
-      expect(t.last().section).toBe('ready');
-      t.controller.onRecord();
-      expect(t.named('permissions.request')[0].args[0]).toEqual({ origins: ['file:///*'] });
-    }
+  it('file page with access in Chrome is recordable with file:///* pattern', async () => {
+    const t = setup({ url: 'file:///C:/bug.html', fileAccess: true });
+    await t.controller.init();
+    expect(t.last().section).toBe('ready');
+    t.controller.onRecord();
+    expect(t.named('permissions.request')[0].args[0]).toEqual({ origins: ['file:///*'] });
+  });
+
+  it('Firefox file page → fileUnsupportedFirefox, no consent prompt, no armStart (QA F-4)', async () => {
+    const t = setup({ url: 'file:///C:/bug.html', firefox: true });
+    await t.controller.init();
+    expect(t.last()).toMatchObject({
+      section: null,
+      statusText: MESSAGES.fileUnsupportedFirefox,
+      isError: true,
+      buttons: { record: false, save: false },
+    });
+    await t.controller.onRecord();
+    await t.controller.onSave();
+    expect(t.named('permissions.request')).toHaveLength(0);
+    expect(t.sent()).toEqual([]);
+  });
+
+  it('Firefox web page is still recordable', async () => {
+    const t = setup({ firefox: true });
+    await t.controller.init();
+    expect(t.last()).toMatchObject({ section: 'ready', buttons: { record: true } });
   });
 
   it('getStatus not answered in 15 s → failed', async () => {
@@ -231,6 +250,53 @@ describe('popup controller: Nagrywaj', () => {
       buttons: { record: true },
     });
   });
+
+  it('permissionDenied stays when the background goes starting → idle without lastError (QA F-1)', async () => {
+    const t = setup();
+    const { document } = new JSDOM(html).window;
+    let answer;
+    const grant = t.chrome.permissions.request;
+    t.chrome.permissions.request = () => new Promise((resolve) => (answer = resolve));
+    await t.controller.init();
+    const pending = t.controller.onRecord();
+    // armStart wrote pds:pending: the background now reports this tab as starting.
+    t.bg.status = idle({ state: 'starting' });
+    t.changed();
+    await flush();
+    // "Zabroń": the popup disarms, the background drops the request and says idle, no lastError.
+    t.bg.status = idle();
+    answer(false);
+    await pending;
+    t.changed();
+    await flush();
+    expect(t.sent('getStatus').length).toBeGreaterThanOrEqual(3);
+    expect(t.sent('armStart')).toHaveLength(1);
+    expect(t.sent('disarm')).toHaveLength(1);
+    applyModel(document, t.last());
+    expect(document.getElementById('status').textContent).toBe(MESSAGES.permissionDenied);
+    expect(document.getElementById('status').classList.contains('error')).toBe(true);
+    // The next user action clears it.
+    t.chrome.permissions.request = grant;
+    const again = t.controller.onRecord();
+    expect(t.last().statusText).toBe(MESSAGES.starting);
+    await again;
+  });
+
+  it.each(['recordFailed', 'restricted', 'fileAccess'])(
+    'start verdict %s survives a later state change without lastError',
+    async (reason) => {
+      const t = setup({ handlers: { start: () => ({ ok: false, reason }) } });
+      await t.controller.init();
+      t.bg.status = idle({ state: 'starting' });
+      t.changed();
+      await flush();
+      await t.controller.onRecord();
+      t.bg.status = idle();
+      t.changed();
+      await flush();
+      expect(t.last()).toMatchObject({ section: 'ready', statusText: MESSAGES[reason], isError: true });
+    },
+  );
 
   it('start is idempotent: a repeated click in the same popup reuses the requestId', async () => {
     const t = setup({ permissionAnswer: false });

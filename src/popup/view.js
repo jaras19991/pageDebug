@@ -3,7 +3,7 @@
 import { MESSAGES, messageFor } from './messages.js';
 
 // Targets known at popup open that never reach the background (AC-1.7).
-const BLOCKED_TARGETS = new Set(['restricted', 'fileAccess', 'noTab']);
+const BLOCKED_TARGETS = new Set(['restricted', 'fileAccess', 'fileUnsupportedFirefox', 'noTab']);
 
 function model(section, opts = {}) {
   const { since = '', hint = false, note = '', statusText = '', isError = false } = opts;
@@ -15,7 +15,7 @@ const isErrorOutcome = (outcome) => !!outcome && outcome.kind !== 'saved';
 
 /**
  * @param {object | null} status  getStatus answer from the background (null until known)
- * @param {{ target: 'web' | 'restricted' | 'fileAccess' | 'noTab',
+ * @param {{ target: 'web' | 'restricted' | 'fileAccess' | 'fileUnsupportedFirefox' | 'noTab',
  *           busy?: 'starting' | 'saving' | null,
  *           outcome?: { kind: string, fileName?: string } | null }} ctx
  * @returns {{ section: 'ready' | 'recording' | null, since: string, hint: boolean, note: string,

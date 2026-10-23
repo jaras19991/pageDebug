@@ -1,7 +1,9 @@
 // MAIN-world entry point (E1 D1, D3, D4), bundled into src/content/main-world.js by `npm run gen`.
 // Installs the recorder at document_start, binds the private channel to the ISOLATED bridge and
 // answers its messages: `config` (per-document gate), `collect` (current document as a JSON string),
-// `destroy`. At `pagehide` it hands the buffers over once more (`flush`) so a reload keeps them.
+// `destroy`. At `beforeunload` and `pagehide` it hands the buffers over (`flush`) so a reload or a jump
+// to another site keeps them. F-2: Firefox drops the pagehide copy of a document left for another site,
+// the beforeunload one arrives; neither listener keeps the page out of the bfcache.
 // No extension API in this world: the bridge is the only way to the background.
 
 import { isInstalled, createRecorder } from './recorder.js';
@@ -16,6 +18,14 @@ function mainTry(fn, fallback) {
   } catch {
     return fallback;
   }
+}
+
+// Changes whenever a buffer gets an entry (counts only grow) or the recorder stops.
+function mainChangeMark(snapshot) {
+  const counts = snapshot && snapshot.counts ? snapshot.counts : {};
+  let total = 0;
+  for (const key of Object.keys(counts)) total += typeof counts[key] === 'number' ? counts[key] : 0;
+  return `${total}|${snapshot && snapshot.stopReason ? snapshot.stopReason : ''}`;
 }
 
 function mainIsDocId(value) {
@@ -41,6 +51,7 @@ export function bootMain({ win, doc }) {
   let configured = false;
   let recorded = false; // got `record:true`, so this document has data worth flushing
   let closed = false;
+  let flushedMark = null; // change mark of the last copy handed over
 
   const rec = createRecorder({
     win,
@@ -52,9 +63,16 @@ export function bootMain({ win, doc }) {
   });
   if (!rec.install()) return;
 
-  function onPageHide() {
+  // Hands over a copy of the buffers (also an empty one, so the background knows it arrived) unless
+  // nothing changed since the last copy: pagehide right after beforeunload sends nothing new.
+  function flushBuffers() {
     if (!recorded || closed || !channel) return;
-    mainTry(() => channel.send('flush', { docId, data: { ...rec.snapshot(), docId } }));
+    mainTry(() => {
+      const data = { ...rec.snapshot(), docId };
+      const mark = mainChangeMark(data);
+      if (mark === flushedMark) return;
+      if (channel.send('flush', { docId, data })) flushedMark = mark;
+    });
   }
 
   function teardown() {
@@ -62,7 +80,8 @@ export function bootMain({ win, doc }) {
     recorded = false;
     if (closed) return;
     closed = true;
-    mainTry(() => apply(removeListener, win, ['pagehide', onPageHide, true]));
+    mainTry(() => apply(removeListener, win, ['pagehide', flushBuffers, true]));
+    mainTry(() => apply(removeListener, win, ['beforeunload', flushBuffers, true]));
     if (channel) channel.close();
   }
 
@@ -106,7 +125,9 @@ export function bootMain({ win, doc }) {
     },
   });
 
-  if (addListener) mainTry(() => apply(addListener, win, ['pagehide', onPageHide, true]));
+  if (addListener) mainTry(() => apply(addListener, win, ['pagehide', flushBuffers, true]));
+  // Never cancels the unload (no preventDefault, no returnValue): no prompt for the user.
+  if (addListener) mainTry(() => apply(addListener, win, ['beforeunload', flushBuffers, true]));
 }
 
 bootMain({ win: window, doc: document });

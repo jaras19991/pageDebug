@@ -159,7 +159,7 @@ describe('popup ↔ background (contract for E1-T1c)', () => {
     const popup = env.openPopup();
     const hello = await recordFromPopup(popup);
 
-    expect(hello).toEqual({ record: true, docId: 1, deadline: T0 + 600_000, limitMs: 600_000 });
+    expect(hello).toEqual({ record: true, docId: 1, token: expect.stringMatching(/^[0-9a-f]{32}$/), deadline: T0 + 600_000, limitMs: 600_000 });
     expect(named('permissions.request').map((c) => c.args[0])).toEqual([{ origins: [PATTERN] }]);
     expect(named('tabs.reload')).toHaveLength(1);
     expect(env.models.some((m) => m.statusText === MESSAGES.starting)).toBe(true);
@@ -240,7 +240,7 @@ describe('popup ↔ background (contract for E1-T1c)', () => {
     await env.chrome.storage.session.set({ [KEYS.testLimit]: 3000 });
     const popup = env.openPopup();
     const hello = await recordFromPopup(popup);
-    expect(hello).toEqual({ record: true, docId: 1, deadline: T0 + 3000, limitMs: 3000 });
+    expect(hello).toEqual({ record: true, docId: 1, token: expect.stringMatching(/^[0-9a-f]{32}$/), deadline: T0 + 3000, limitMs: 3000 });
     popup.destroy();
     env.page.logs = ['przed limitem'];
 
