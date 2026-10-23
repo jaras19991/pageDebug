@@ -140,15 +140,17 @@ describe('installErrorHooks', () => {
 
   it('uses add/removeEventListener captured at install even if the page patches them later', () => {
     install();
-    const desc = Object.getOwnPropertyDescriptor(win, 'removeEventListener');
+    // In jsdom removeEventListener is an own accessor of window: restoring its descriptor would keep the stub,
+    // so the original function is assigned back through the setter (no leak into the next tests).
+    const original = win.removeEventListener;
     win.removeEventListener = () => {};
     try {
       restore();
       restore = null;
     } finally {
-      if (desc) Object.defineProperty(win, 'removeEventListener', desc);
-      else delete win.removeEventListener;
+      win.removeEventListener = original;
     }
+    expect(win.removeEventListener).toBe(original);
     win.dispatchEvent(new win.ErrorEvent('error', { message: 'after' }));
     expect(records).toHaveLength(0);
   });

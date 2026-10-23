@@ -1,7 +1,7 @@
 // Shared constants of the page recorder (E1 D5/D6). RECORDER_VERSION must equal `version` in
 // src/manifest.base.json (guarded by tests/unit/recorder.test.js), so a release has to run `npm run gen`.
 
-export const RECORDER_VERSION = '0.3.0';
+export const RECORDER_VERSION = '0.4.0';
 
 // Version of the MAIN <-> ISOLATED message protocol; 2 = `collect` result with steps, vitals, documentStatus
 // (E2 D8). Mirrored by RESULT_PROTOCOL in src/lib/save.js.

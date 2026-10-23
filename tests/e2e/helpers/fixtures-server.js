@@ -3,7 +3,8 @@
 // for manual QA in Firefox (default port 8080).
 //
 // Dynamic routes (E2-T13):
-//   /status/<200-599>?body=json|text|token|png|page&type=<mime>&delay=<ms>   response with that status
+//   /status/<200-599>?body=json|text|token|png|page&type=<mime>&delay=<ms>&size=<chars>   response with that status
+//                      (size pads a json/text body to at least that many characters, max 100000)
 //   /seq/<name>        200 → 500 → 404 → 200 … per name; /seq/<name>?reset → 204, starts over
 //   /stream/500        500 text/plain that never ends (a chunk every 100 ms until the client goes away)
 //   /echo/headers?id=  stores the request headers under id; GET /echo/last?id= returns them (AC-4.9)
@@ -19,6 +20,7 @@ const HOST = '127.0.0.1';
 const DEFAULT_ROOT = fileURLToPath(new URL('../../fixtures/pages/', import.meta.url));
 const VENDOR_DIR = fileURLToPath(new URL('../../../node_modules/web-vitals/dist/', import.meta.url));
 const MAX_DELAY_MS = 30_000;
+const MAX_PAD = 100_000; // /status ?size=
 const MAX_KEYS = 200; // /seq names and /echo ids kept per server
 const MAX_KEY_LENGTH = 64;
 
@@ -49,6 +51,9 @@ const MIME = {
 const ROUTE_HEADERS = {
   '/csp-strict.html': { 'Content-Security-Policy': "script-src 'self'" },
 };
+
+// Padding that does not look like a secret: a long run of one character would be masked as a token by the recorder.
+const filler = (n) => 'lorem ipsum dolor '.repeat(Math.ceil(n / 18)).slice(0, n);
 
 function send(res, status, body, headers = {}) {
   res.writeHead(status, { 'Cache-Control': 'no-store', ...headers });
@@ -139,7 +144,15 @@ function createHandler(root) {
       if (!(code >= 200 && code <= 599)) return badRequest(res, 'status must be 200..599');
       const kind = params.get('body') ?? 'json';
       if (!Object.hasOwn(STATUS_BODIES, kind)) return badRequest(res, `unknown body '${kind}'`);
-      const [type, body] = STATUS_BODIES[kind](code);
+      let [type, body] = STATUS_BODIES[kind](code);
+      const size = Number(params.get('size') ?? 0);
+      if (!Number.isInteger(size) || size < 0 || size > MAX_PAD) return badRequest(res, `size must be an integer 0..${MAX_PAD}`);
+      if (size > body.length && (kind === 'json' || kind === 'text') && size > body.length + 9) {
+        // json: pad inside the object so the body stays valid JSON; text: trailing filler.
+        body = kind === 'json'
+          ? JSON.stringify({ ...JSON.parse(body), pad: filler(size - body.length - 9) })
+          : body + ' ' + filler(size - body.length - 1);
+      }
       if (!(await wait(delay, res))) return;
       return send(res, code, body, { 'Content-Type': params.get('type')?.slice(0, 200) || type });
     }

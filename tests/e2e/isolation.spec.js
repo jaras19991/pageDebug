@@ -307,7 +307,7 @@ test('csp-strict page is recorded', async () => {
 
     const { fileName, json } = await saveRecording(page);
     expect(fileName).toMatch(FILE_NAME_RE);
-    expect(json.schemaVersion).toBe(2);
+    expect(json.schemaVersion).toBe(3);
     expect(consoleEntriesWith(json, 'csp-strict fixture loaded')).toHaveLength(1);
     expect(consoleEntriesWith(json, text)).toHaveLength(1);
   });

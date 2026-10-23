@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: CLS</title>
+  <style>
+    body { margin: 0; font: 16px Arial, sans-serif; }
+    .block { height: 160px; margin: 0; padding: 8px; background: #def; border-bottom: 2px solid #89c; }
+    #banner { height: 260px; background: #fc0; }
+  </style>
+</head>
+<body>
+  <!-- E2 AC-5.1/5.2: a 260 px banner appears above the content 300 ms after load, so every block moves: CLS well above 0.1. -->
+  <div id="b1" class="block">Blok pierwszy</div>
+  <div id="b2" class="block">Blok drugi</div>
+  <div id="b3" class="block">Blok trzeci</div>
+  <div id="b4" class="block">Blok czwarty</div>
+  <script>
+    window.__bannerShown = new Promise((resolve) => {
+      setTimeout(() => {
+        const banner = document.createElement('div');
+        banner.id = 'banner';
+        banner.textContent = 'Baner';
+        document.body.insertBefore(banner, document.getElementById('b1'));
+        // Two frames later the shift is in the layout-shift entries.
+        requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 100)));
+      }, 300);
+    });
+  </script>
+</body>
+</html>

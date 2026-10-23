@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: steps</title>
+  <style>body { font: 16px Arial, sans-serif; } input, button, [contenteditable] { display: block; margin: 6px 0; padding: 6px; } #rich { border: 1px solid #888; min-height: 24px; width: 260px; }</style>
+</head>
+<body>
+  <h1>Strona testowa: kroki</h1>
+  <button id="btn" type="button">Zapisz szkic</button>
+  <form id="f" action="/never-sent">
+    <input id="email" type="email" name="email" aria-label="E-mail">
+    <input id="name" type="text" name="name" aria-label="Imię">
+    <input id="pass" type="password" name="pass" aria-label="Hasło">
+    <label><input id="chk" type="checkbox" name="agree"> Zgoda</label>
+    <div id="rich" contenteditable="true" aria-label="Notatka"></div>
+    <button id="go" type="submit">Wyślij</button>
+  </form>
+  <button id="push" type="button">Zmień adres</button>
+  <a id="next" href="steps-2.html">Dalej</a>
+  <a id="blocked" href="steps-2.html">Zablokowany link</a>
+  <button id="stopper" type="button">Bez propagacji</button>
+  <script>
+    // E2-TEST4: the form is never sent over the network and nothing typed is logged (AC-3.4 greps the package for the values).
+    document.getElementById('f').addEventListener('submit', (event) => {
+      event.preventDefault();
+      window.__submitted = true;
+    });
+    document.getElementById('push').addEventListener('click', () => history.pushState({ step: 1 }, '', '?step=1'));
+
+    // AC-3.7: what the page itself can observe about its clicks. #blocked prevents the default, #stopper stops propagation;
+    // window.__seen holds what the bubble listener on document saw, window.__seenCapture what the capture listener on window saw.
+    window.__seen = [];
+    window.__seenCapture = [];
+    document.getElementById('blocked').addEventListener('click', (event) => event.preventDefault());
+    document.getElementById('stopper').addEventListener('click', (event) => event.stopPropagation());
+    document.addEventListener('click', (event) => window.__seen.push({ id: event.target.id, defaultPrevented: event.defaultPrevented }));
+    window.addEventListener('click', (event) => window.__seenCapture.push({ id: event.target.id, defaultPrevented: event.defaultPrevented }), true);
+
+    // p95 of the time between the browser's timestamp of a real click and the first page listener on window.
+    // The recorder listens before the page, so its cost is inside this latency.
+    window.__latency = [];
+    window.addEventListener('click', (event) => {
+      if (event.target.id === 'btn') window.__latency.push(performance.now() - event.timeStamp);
+    }, true);
+  </script>
+</body>
+</html>

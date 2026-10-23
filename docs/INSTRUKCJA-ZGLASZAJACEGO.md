@@ -8,12 +8,20 @@ na Twoim komputerze. Plik wysyłasz osobie, która ma problem naprawić. Dodatek
 Przed rozpoczęciem nagrywania dodatek pokazuje listę danych. Do pliku trafią:
 
 - adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu
+- lista Twoich działań na stronie: w co kliknąłeś i na jakie podstrony przeszedłeś (bez tego, co wpisałeś)
 - logi konsoli i błędy
 - zapytania sieciowe strony: adresy, nagłówki i wysyłana treść (mogą zawierać dane logowania) oraz adresy wczytanych plików
+- fragmenty odpowiedzi serwera, gdy coś się nie uda
 - treść i struktura strony, w tym wartości wpisane w formularze (bez haseł i pól ukrytych)
+- zdjęcie ekranu w chwili zapisu (patrz niżej)
 - ciasteczka i dane zapisane przez stronę (mogą zawierać dane logowania)
 
 Plik zostaje na Twoim dysku, rozszerzenie niczego nie wysyła.
+
+**Uwaga na zdjęcie ekranu.** Przy zapisie dodatek robi jedno zdjęcie tej części strony, którą widzisz na ekranie. Widać na nim wszystko,
+co tam jest — także to, co wpisałeś w pola (na przykład adres e-mail albo numer karty). Hasła są na nim ukryte (kropki). Zanim klikniesz
+„Zapisz paczkę”, zamknij lub usuń z ekranu rzeczy, których nie chcesz pokazywać. Zdjęcie robi się tylko wtedy, gdy oglądasz stronę,
+którą nagrywałeś; w przeciwnym razie plik powstanie bez zdjęcia.
 
 Plik może zawierać Twoje dane osobowe i dane logowania — wyślij go tylko developerowi. Klikając „Nagrywaj”, zgadzasz się na zapisanie tych danych w pliku.
 
@@ -43,10 +51,10 @@ Pomoże Ci w tym osoba, która dała Ci ten dodatek. Dostaniesz od niej folder (
 4. Gdy przeglądarka zapyta o zgodę na dostęp do tej strony, kliknij „Zezwól”. Okno z dodatkiem zamknie się samo.
    To pytanie pojawia się tylko za pierwszym razem dla danej strony.
    ![krok 4](img/krok-4.png)
-5. Poczekaj, aż strona odświeży się sama. Od tej chwili dodatek nagrywa. Zrób na stronie dokładnie to, po czym pojawia się problem.
+5. Poczekaj, aż strona odświeży się sama. Od tej chwili dodatek nagrywa. Zrób na stronie dokładnie to, po czym pojawia się problem. Dodatek zapamięta, w co klikasz, ale nie to, co wpisujesz.
    Nagrywanie trwa najwyżej 10 minut.
    ![krok 5](img/krok-5.png)
-6. Kliknij ponownie ikonę dodatku, potem „Zapisz paczkę”. Poczekaj na zielony tekst
+6. Zostań na tej samej stronie, kliknij ponownie ikonę dodatku, potem „Zapisz paczkę”. Poczekaj na zielony tekst
    „Zapisano plik … — znajdziesz go w pobranych plikach.”
    ![krok 6](img/krok-6.png)
 7. Otwórz folder z pobranymi plikami, znajdź plik, którego nazwa zaczyna się od `page-debug-snapshot-`, i wyślij go tak,
@@ -80,6 +88,7 @@ Inne komunikaty:
   — odśwież stronę (klawisz F5) i spróbuj jeszcze raz od kroku 2. Jeśli nadal tak jest, opisz problem własnymi słowami
   i dopisz, że zapisanie pliku się nie udało.
 - Nie widzisz ikony dodatku w Firefoksie — dodatek zniknął po zamknięciu przeglądarki; dodaj go ponownie według części „Zanim zaczniesz”.
+- W Firefoksie plik jest bez zdjęcia ekranu, jeśli strona odświeżyła się, gdy okno dodatku było otwarte — zamknij okno dodatku, otwórz je jeszcze raz i kliknij „Zapisz paczkę”.
 - Nie możesz znaleźć pliku — w przeglądarce użyj skrótu `Ctrl+J` (otwiera listę pobranych plików).
 
 Po zapisaniu pliku dodatek niczego już na tej stronie nie nagrywa. Zgodę na dostęp do strony możesz cofnąć:

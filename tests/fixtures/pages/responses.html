@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: responses</title>
+</head>
+<body>
+  <h1>Strona testowa: odpowiedzi serwera</h1>
+  <script>
+    // E2-TEST3 (AC-4.5, 4.6, 4.9): what the page itself reads must not change because the extension reads a clone.
+    // Everything is started by the test via window.runResponses() / window.echoRequests(id); results in window.__results.
+    window.__results = {};
+
+    window.runResponses = async () => {
+      const r = window.__results;
+
+      // 500 JSON: the page reads it after the fetch resolved; bodyUsed must still be false then.
+      const json500 = await fetch('/status/500?body=json');
+      r.json500 = { status: json500.status, bodyUsedBefore: json500.bodyUsed };
+      r.json500.data = await json500.json();
+      r.json500.bodyUsedAfter = json500.bodyUsed;
+
+      // 200 JSON and 500 PNG: no preview expected for either.
+      const ok = await fetch('/status/200?body=json');
+      r.json200 = await ok.json();
+      const png = await fetch('/status/500?body=png');
+      r.png500 = { type: png.headers.get('content-type'), bytes: (await png.arrayBuffer()).byteLength };
+
+      // XHR with blob and arraybuffer responses on a 500: the page gets the bytes untouched.
+      const xhrBinary = (responseType) => new Promise((resolve) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', '/status/500?body=png');
+        xhr.responseType = responseType;
+        xhr.onloadend = () => resolve(xhr);
+        xhr.send();
+      });
+      const blobXhr = await xhrBinary('blob');
+      r.xhrBlob = { status: blobXhr.status, size: blobXhr.response.size, type: blobXhr.response.type };
+      const bufferXhr = await xhrBinary('arraybuffer');
+      r.xhrBuffer = { status: bufferXhr.status, bytes: bufferXhr.response.byteLength };
+
+      // XHR text on a 500 JSON.
+      r.xhrText = await new Promise((resolve) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', '/status/500?body=json');
+        xhr.onloadend = () => resolve({ status: xhr.status, text: xhr.responseText });
+        xhr.send();
+      });
+
+      // Endless 500 stream: read the first chunks, keep reading for 2.5 s (longer than the recorder's 2 s), then cancel.
+      const stream = await fetch('/stream/500');
+      const reader = stream.body.getReader();
+      const decoder = new TextDecoder();
+      let text = '';
+      const deadline = performance.now() + 2500;
+      while (performance.now() < deadline) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+      }
+      await reader.cancel();
+      r.stream = { status: stream.status, chunks: text.split('\n').filter(Boolean).length };
+      return r;
+    };
+
+    // The same requests, once with and once without the extension: the server stores the headers it saw.
+    window.echoRequests = async (id) => {
+      await fetch(`/echo/headers?id=${id}-fetch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Pds-Test': 'abc', Authorization: 'Bearer pds-echo-test' },
+        body: JSON.stringify({ hello: 'world' }),
+      });
+      await new Promise((resolve) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', `/echo/headers?id=${id}-xhr`);
+        xhr.setRequestHeader('X-Pds-Test', 'xyz');
+        xhr.setRequestHeader('Content-Type', 'text/plain');
+        xhr.onloadend = resolve;
+        xhr.send('plain body');
+      });
+    };
+  </script>
+</body>
+</html>

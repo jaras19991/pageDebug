@@ -1,0 +1,565 @@
+{
+  "schemaVersion": 3,
+  "extensionVersion": "0.3.0",
+  "source": "extension",
+  "collectedAt": "2026-10-23T14:30:16.374Z",
+  "recordingStartedAt": "2026-10-23T14:30:13.749Z",
+  "recordingStoppedReason": null,
+  "timeOrigin": 1792765815348.2,
+  "overview": {
+    "runtimeErrors": 1,
+    "consoleErrors": 0,
+    "failedRequests": 3,
+    "steps": 20,
+    "poorVitals": 0,
+    "screenshot": true
+  },
+  "limits": {
+    "consoleLogs": 5000,
+    "runtimeErrors": 1000,
+    "network": 5000,
+    "steps": 2000,
+    "entryChars": 40000,
+    "stackChars": 16000,
+    "responseBodyChars": 4096,
+    "responseBodyTotalChars": 262144,
+    "screenshotBytes": 307200,
+    "longTasks": 20
+  },
+  "truncated": {
+    "consoleLogs": false,
+    "runtimeErrors": false,
+    "network": false,
+    "steps": false,
+    "responseBodies": false
+  },
+  "documents": [
+    {
+      "id": 0,
+      "url": "http://127.0.0.1:8090/steps.html?step=1",
+      "timeOrigin": 1792765813769.7,
+      "navigationType": "reload",
+      "status": 200,
+      "recorded": true,
+      "flushed": true,
+      "current": false,
+      "counts": {
+        "consoleLogs": 0,
+        "runtimeErrors": 1,
+        "network": 3,
+        "steps": 19
+      },
+      "kept": {
+        "consoleLogs": 0,
+        "runtimeErrors": 1,
+        "network": 3,
+        "steps": 19
+      }
+    },
+    {
+      "id": 1,
+      "url": "http://127.0.0.1:8090/steps-2.html",
+      "timeOrigin": 1792765815348.2,
+      "navigationType": "navigate",
+      "status": 200,
+      "recorded": true,
+      "flushed": true,
+      "current": true,
+      "counts": {
+        "consoleLogs": 0,
+        "runtimeErrors": 0,
+        "network": 0,
+        "steps": 1
+      },
+      "kept": {
+        "consoleLogs": 0,
+        "runtimeErrors": 0,
+        "network": 0,
+        "steps": 1
+      }
+    }
+  ],
+  "notes": [
+    "Recording started at 2026-10-23T14:30:13.749Z (page reloaded); earlier data is not included.",
+    "LCP, CLS and INP are values at the time of saving; they could still grow."
+  ],
+  "steps": [
+    {
+      "t": 20.899999976158142,
+      "doc": 0,
+      "type": "navigate",
+      "url": "http://127.0.0.1:8090/steps.html",
+      "via": "reload"
+    },
+    {
+      "t": 383.7999999523163,
+      "doc": 0,
+      "selector": "#btn",
+      "text": "Zapisz szkic",
+      "type": "click"
+    },
+    {
+      "t": 423.6999999284744,
+      "doc": 0,
+      "selector": "#email",
+      "type": "click"
+    },
+    {
+      "t": 447.6999999284744,
+      "doc": 0,
+      "inputType": "email",
+      "selector": "#email",
+      "type": "input",
+      "valueLength": 15
+    },
+    {
+      "t": 577.5999999046326,
+      "doc": 0,
+      "selector": "#name",
+      "type": "click"
+    },
+    {
+      "t": 584.0999999046326,
+      "doc": 0,
+      "inputType": "text",
+      "selector": "#name",
+      "type": "input",
+      "valueLength": 12
+    },
+    {
+      "t": 646.5999999046326,
+      "doc": 0,
+      "selector": "#pass",
+      "type": "click"
+    },
+    {
+      "t": 652.3999999761581,
+      "doc": 0,
+      "inputType": "password",
+      "selector": "#pass",
+      "type": "input"
+    },
+    {
+      "t": 696.5,
+      "doc": 0,
+      "selector": "#chk",
+      "type": "click"
+    },
+    {
+      "t": 696.5,
+      "doc": 0,
+      "inputType": "checkbox",
+      "selector": "#chk",
+      "type": "input",
+      "valueLength": 2
+    },
+    {
+      "t": 696.5999999046326,
+      "doc": 0,
+      "checked": true,
+      "inputType": "checkbox",
+      "selector": "#chk",
+      "type": "change"
+    },
+    {
+      "t": 716.2999999523163,
+      "doc": 0,
+      "selector": "#rich",
+      "type": "click"
+    },
+    {
+      "t": 721,
+      "doc": 0,
+      "inputType": "contenteditable",
+      "selector": "#rich",
+      "type": "input",
+      "valueLength": 20
+    },
+    {
+      "t": 797.5999999046326,
+      "doc": 0,
+      "key": "Tab",
+      "selector": "#rich",
+      "type": "key"
+    },
+    {
+      "t": 826.5,
+      "doc": 0,
+      "selector": "#push",
+      "text": "Zmień adres",
+      "type": "click"
+    },
+    {
+      "t": 827,
+      "doc": 0,
+      "type": "navigate",
+      "url": "http://127.0.0.1:8090/steps.html?step=1",
+      "via": "pushState"
+    },
+    {
+      "t": 1346.1999999284744,
+      "doc": 0,
+      "selector": "#go",
+      "text": "Wyślij",
+      "type": "click"
+    },
+    {
+      "t": 1346.5999999046326,
+      "doc": 0,
+      "selector": "#f",
+      "type": "submit"
+    },
+    {
+      "t": 1576.6999999284744,
+      "doc": 0,
+      "selector": "#next",
+      "text": "Dalej",
+      "type": "click"
+    },
+    {
+      "t": 34.700000047683716,
+      "doc": 1,
+      "type": "navigate",
+      "url": "http://127.0.0.1:8090/steps-2.html",
+      "via": "navigate"
+    }
+  ],
+  "runtimeErrors": [
+    {
+      "t": 849.6999999284744,
+      "doc": 0,
+      "colno": 140,
+      "filename": "",
+      "lineno": 1,
+      "message": "Uncaught Error: boom po kliknięciu",
+      "stack": "Error: boom po kliknięciu\n    at eval (eval at evaluate (:370:30), <anonymous>:1:140)",
+      "type": "error"
+    }
+  ],
+  "network": [
+    {
+      "t": 837.5999999046326,
+      "doc": 0,
+      "durationMs": 2.9,
+      "error": null,
+      "method": "GET",
+      "ok": false,
+      "redirected": false,
+      "requestBody": null,
+      "requestHeaders": {},
+      "responseHeaders": {
+        "cache-control": "no-store",
+        "connection": "keep-alive",
+        "content-type": "application/json; charset=utf-8",
+        "date": "Fri, 23 Oct 2026 14:30:14 GMT",
+        "keep-alive": "timeout=5",
+        "transfer-encoding": "chunked"
+      },
+      "sizeBytes": 35,
+      "status": 500,
+      "statusText": "Internal Server Error",
+      "type": "fetch",
+      "url": "http://127.0.0.1:8090/status/500?body=json",
+      "responseBodyPreview": "{\"error\":\"status 500\",\"status\":500}",
+      "responseBodyTruncated": false
+    },
+    {
+      "t": 838.5,
+      "doc": 0,
+      "durationMs": 3.2,
+      "error": null,
+      "method": "GET",
+      "ok": false,
+      "redirected": false,
+      "requestBody": null,
+      "requestHeaders": {},
+      "responseHeaders": {
+        "cache-control": "no-store",
+        "connection": "keep-alive",
+        "content-type": "application/json; charset=utf-8",
+        "date": "Fri, 23 Oct 2026 14:30:14 GMT",
+        "keep-alive": "timeout=5",
+        "transfer-encoding": "chunked"
+      },
+      "sizeBytes": 230,
+      "status": 401,
+      "statusText": "Unauthorized",
+      "type": "fetch",
+      "url": "http://127.0.0.1:8090/status/401?body=token",
+      "responseBodyPreview": "{\"error\":\"expired\",\"access_token\":\"[redacted:key-token]\"}\nAuthorization: Bearer [redacted:bearer]",
+      "responseBodyTruncated": false
+    },
+    {
+      "t": 838.8,
+      "doc": 0,
+      "durationMs": 2.8,
+      "error": null,
+      "initiatorType": "img",
+      "method": "GET",
+      "ok": false,
+      "redirected": null,
+      "requestBody": null,
+      "requestHeaders": {},
+      "responseHeaders": {},
+      "sizeBytes": 9,
+      "status": 404,
+      "statusText": null,
+      "type": "img",
+      "url": "http://127.0.0.1:8090/missing.png"
+    }
+  ],
+  "vitals": [
+    {
+      "doc": 0,
+      "TTFB": {
+        "available": true,
+        "finalized": true,
+        "rating": "good",
+        "t": 2.4,
+        "value": 2.4
+      },
+      "FCP": {
+        "available": true,
+        "finalized": true,
+        "rating": "good",
+        "t": 44,
+        "value": 44
+      },
+      "LCP": {
+        "available": true,
+        "finalized": true,
+        "rating": "good",
+        "selector": "html > body > h1",
+        "t": 44,
+        "value": 44
+      },
+      "CLS": {
+        "available": true,
+        "finalized": true,
+        "rating": "good",
+        "sources": [],
+        "t": null,
+        "value": 0
+      },
+      "INP": {
+        "available": true,
+        "eventType": "pointerdown",
+        "finalized": true,
+        "inputDelay": 0.3,
+        "interactions": 55,
+        "presentation": 15.6,
+        "processing": 0.1,
+        "rating": "good",
+        "selector": "#email",
+        "t": 422.5,
+        "value": 16
+      },
+      "longTasks": {
+        "available": true,
+        "items": []
+      }
+    },
+    {
+      "doc": 1,
+      "TTFB": {
+        "available": true,
+        "value": 22.4,
+        "rating": "good",
+        "t": 22.4,
+        "finalized": true
+      },
+      "FCP": {
+        "available": true,
+        "value": 76,
+        "rating": "good",
+        "t": 76,
+        "finalized": true
+      },
+      "LCP": {
+        "available": true,
+        "value": 76,
+        "rating": "good",
+        "t": 76,
+        "finalized": false,
+        "selector": "html > body > h1"
+      },
+      "CLS": {
+        "available": true,
+        "value": 0,
+        "rating": "good",
+        "t": null,
+        "finalized": false,
+        "sources": []
+      },
+      "INP": {
+        "available": false,
+        "reason": "no-interaction"
+      },
+      "longTasks": {
+        "available": true,
+        "items": []
+      }
+    }
+  ],
+  "screenshots": [
+    {
+      "t": 1002.8,
+      "doc": 1,
+      "reason": "save",
+      "mime": "image/jpeg",
+      "width": 1100,
+      "height": 700,
+      "bytes": 11638,
+      "attachment": "screenshot-0"
+    }
+  ],
+  "consoleLogs": [],
+  "environment": {
+    "timestamp": "2026-10-23T14:30:16.369Z",
+    "location": {
+      "href": "http://127.0.0.1:8090/steps-2.html",
+      "origin": "http://127.0.0.1:8090",
+      "protocol": "http:",
+      "host": "127.0.0.1:8090",
+      "hostname": "127.0.0.1",
+      "port": "8090",
+      "pathname": "/steps-2.html",
+      "search": "",
+      "hash": ""
+    },
+    "document": {
+      "title": "PDS fixture: steps 2",
+      "referrer": "http://127.0.0.1:8090/steps.html?step=1",
+      "readyState": "complete",
+      "visibilityState": "visible",
+      "lastModified": "10/23/2026 16:30:16"
+    },
+    "navigator": {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+      "language": "pl-PL",
+      "languages": [
+        "pl-PL",
+        "pl",
+        "en-US",
+        "en"
+      ],
+      "cookieEnabled": true,
+      "onLine": true,
+      "platform": "Win32",
+      "hardwareConcurrency": 32,
+      "deviceMemory": 32
+    },
+    "screen": {
+      "width": 1100,
+      "height": 700,
+      "availWidth": 1100,
+      "availHeight": 700,
+      "colorDepth": 24,
+      "pixelDepth": 24
+    },
+    "viewport": {
+      "innerWidth": 1100,
+      "innerHeight": 700,
+      "outerWidth": 1296,
+      "outerHeight": 854,
+      "devicePixelRatio": 1,
+      "scrollX": 0,
+      "scrollY": 0
+    }
+  },
+  "performance": {
+    "timeOrigin": 1792765815348.2,
+    "navigation": {
+      "name": "http://127.0.0.1:8090/steps-2.html",
+      "entryType": "navigation",
+      "startTime": 0,
+      "duration": 36,
+      "initiatorType": "navigation",
+      "nextHopProtocol": "http/1.1",
+      "renderBlockingStatus": "non-blocking",
+      "workerStart": 0,
+      "redirectStart": 0,
+      "redirectEnd": 0,
+      "fetchStart": 20.5,
+      "domainLookupStart": 20.5,
+      "domainLookupEnd": 20.5,
+      "connectStart": 20.5,
+      "secureConnectionStart": 0,
+      "connectEnd": 20.5,
+      "requestStart": 21.300000071525574,
+      "responseStart": 22.40000009536743,
+      "responseEnd": 22.700000047683716,
+      "domInteractive": 35.60000002384186,
+      "domContentLoadedEventStart": 35.60000002384186,
+      "domContentLoadedEventEnd": 35.60000002384186,
+      "domComplete": 36,
+      "loadEventStart": 36,
+      "loadEventEnd": 36,
+      "transferSize": 541,
+      "encodedBodySize": 241,
+      "decodedBodySize": 241,
+      "type": "navigate"
+    },
+    "resources": []
+  },
+  "storage": {
+    "cookies": "",
+    "localStorage": {},
+    "sessionStorage": {}
+  },
+  "dom": {
+    "counts": {
+      "totalElements": 7,
+      "scripts": 0,
+      "stylesheets": 0,
+      "images": 0,
+      "links": 0,
+      "iframes": 0,
+      "forms": 0
+    },
+    "html": {
+      "doctype": {
+        "name": "html",
+        "publicId": "",
+        "systemId": ""
+      },
+      "lang": "pl",
+      "charset": "UTF-8",
+      "compatMode": "CSS1Compat",
+      "outerHTML": "<html lang=\"pl\"><head>\n  <meta charset=\"utf-8\">\n  <title>PDS fixture: steps 2</title>\n</head>\n<body>\n  <h1>Strona testowa: kroki, druga strona</h1>\n  <button id=\"second\" type=\"button\">Drugi przycisk</button>\n\n\n</body></html>"
+    },
+    "meta": [
+      {
+        "tagName": "META",
+        "id": null,
+        "className": null,
+        "name": null,
+        "type": null,
+        "src": null,
+        "href": null,
+        "text": "",
+        "attributes": {
+          "charset": "utf-8"
+        }
+      }
+    ],
+    "canonical": null,
+    "hreflangs": [],
+    "scripts": [],
+    "stylesheets": [],
+    "images": [],
+    "iframes": [],
+    "forms": [],
+    "rootMarkers": {
+      "bodyClassName": null,
+      "htmlClassName": null,
+      "dataAttributesOnHtml": {
+        "lang": "pl"
+      },
+      "dataAttributesOnBody": {}
+    }
+  },
+  "attachments": {
+    "screenshot-0": "data:image/jpeg;base64,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AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/2Q=="
+  }
+}

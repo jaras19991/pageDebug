@@ -1,0 +1,10 @@
+<!doctype html><html lang="pl"><head><meta charset="utf-8"><title>QA: logowanie</title>
+<style>body{font:18px Arial;margin:30px;background:#f4f4f8} input{display:block;margin:10px 0;padding:8px;font-size:20px;width:320px}</style></head>
+<body><h1>Logowanie (strona testowa QA)</h1>
+<label>E-mail <input id="email" type="email" autocomplete="off"></label>
+<label>Hasło <input id="pw" type="password" autocomplete="off"></label>
+<label>Token (ukryty) <input id="hid" type="hidden" value="HIDDEN-CSRF-777"></label>
+<label>Notatka <input id="note" type="text" autocomplete="off"></label>
+<button id="login" type="button">Zaloguj</button>
+<script>document.getElementById('login').addEventListener('click',()=>fetch('/status/401?body=json'));</script>
+</body></html>

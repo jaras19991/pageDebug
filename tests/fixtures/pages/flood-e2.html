@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: flood E2</title>
+  <script>
+    // E2-TEST6: what E2 added to the flood of E1 (flood.html): error responses with big bodies and many steps.
+    // Called by e2e via page.evaluate. Clicks come from the test as trusted input (only trusted clicks are steps).
+
+    // n sequential fetches of a 500 JSON of `size` characters; the body is read by the page. Returns the number done.
+    window.floodErrors = async (n, size = 5000) => {
+      let done = 0;
+      for (let i = 0; i < n; i++) {
+        await fetch(`/status/500?body=json&size=${size}&i=${i}`).then((r) => r.text()).catch(() => {});
+        done++;
+      }
+      return done;
+    };
+
+    // n × console.log of `pad` characters, to push the package towards its size limit.
+    window.floodConsole = (n, pad = 0) => {
+      const filler = pad > 0 ? ' ' + 'x'.repeat(pad) : '';
+      for (let i = 0; i < n; i++) console.log(`flood ${i}${filler}`);
+      return n;
+    };
+
+    const sorted = (values) => [...values].sort((a, b) => a - b);
+    const stats = (samples) => {
+      const s = sorted(samples);
+      const at = (q) => s[Math.min(s.length - 1, Math.ceil(q * s.length) - 1)];
+      return { n: s.length, median: at(0.5), p95: at(0.95), min: s[0], max: s[s.length - 1] };
+    };
+
+    // Time to the response (headers) of each of n sequential fetches of a 500 JSON, then the time to read the body, in ms.
+    window.timedErrorFetch = async (n, warmup = 10) => {
+      const response = [];
+      const total = [];
+      for (let i = 0; i < n + warmup; i++) {
+        const t0 = performance.now();
+        const res = await fetch(`/status/500?body=json&timed=${i}`);
+        const t1 = performance.now();
+        await res.text();
+        const t2 = performance.now();
+        if (i >= warmup) {
+          response.push(t1 - t0);
+          total.push(t2 - t0);
+        }
+      }
+      return { response: stats(response), total: stats(total) };
+    };
+
+    window.ping = () => new Promise((r) => setTimeout(() => r('pong'), 0));
+  </script>
+</head>
+<body>
+  <h1>Strona testowa: zalew danych E2</h1>
+  <button id="target" type="button" style="width: 160px; height: 40px">Klik</button>
+</body>
+</html>

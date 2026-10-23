@@ -72,6 +72,23 @@ describe('popup.html', () => {
     expect(document.querySelector('#ready .actions #record')).not.toBeNull();
   });
 
+  it('status message sits above both sections, so "Zapisano…" is visible without scrolling at 360×600 (QA F-1)', () => {
+    const status = document.getElementById('status');
+    for (const id of ['ready', 'recording']) {
+      expect(status.compareDocumentPosition(document.getElementById(id)) & 4, id).toBe(4); // FOLLOWING
+    }
+    expect(status.parentElement).toBe(document.body);
+    const css = document.querySelector('style').textContent.replace(/\s+/g, ' ');
+    expect(css).toMatch(/#status:empty \{[^}]*display: none;/); // no empty gap above the disclosure
+  });
+
+  it('README warns that the screenshot shows typed data and hides passwords (QA F-3)', () => {
+    const readme = readFileSync(README_PATH, 'utf8').replace(/\r\n/g, '\n');
+    const section = readme.match(/^## Znane ograniczenia\n([\s\S]*?)(?=^## |(?![\s\S]))/m)[1];
+    const item = section.split(/\n(?=- )/).find((entry) => entry.includes('Zrzut ekranu'));
+    expect(item?.replace(/\s+/g, ' ')).toMatch(/wpisane w pola .*hasła są ukryte/);
+  });
+
   it('README activeTab line mentions screenshot in PL and EN', () => {
     const readme = readFileSync(README_PATH, 'utf8').replace(/\r\n/g, '\n');
     const section = readme.match(/^## Uprawnienia\n([\s\S]*?)(?=^## |(?![\s\S]))/m)[1];

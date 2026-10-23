@@ -25,9 +25,10 @@ describe('filterPorcelain', () => {
     expect(filterPorcelain(text, [])).toBe(text);
   });
 
+  // Spawns real `git status`; on /mnt/c (WSL, NTFS) in a full parallel run it can exceed the 5 s default.
   it('gitStatus returns a string without docs/ lines in this checkout', () => {
     const s = gitStatus();
     if (s === null) return; // not a git checkout
     expect(s.split('\n').some((l) => /^.. "?docs\//.test(l))).toBe(false);
-  });
+  }, 30000);
 });

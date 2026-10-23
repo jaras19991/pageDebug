@@ -1,0 +1,3 @@
+/* E2-TEST3: stylesheet (200) that pulls a font (200); the font file is not a real font, only its request counts. */
+@font-face { font-family: 'PdsTest'; src: url('/fonts/pds-test.woff2') format('woff2'); }
+body { font-family: 'PdsTest', Arial, sans-serif; }

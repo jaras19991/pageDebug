@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: network</title>
+  <link rel="stylesheet" href="/network-e2.css">
+</head>
+<body>
+  <h1>Strona testowa: sieć</h1>
+  <p>Tekst w kroju z pliku.</p>
+  <img id="missing-img" src="/img/missing-e2.png" alt="brak">
+  <img id="cross-img" alt="obcy origin">
+  <script src="/missing-e2.js"></script>
+  <script>
+    // E2-TEST3 (AC-4.1–4.4, 4.7): every kind of request in one page. `window.__done` resolves when the fetch,
+    // the XHR and both images have finished. /seq/<name> is triggered by the test (window.runSeq), not at load,
+    // because the reload that starts recording would run it twice.
+    const cross = document.getElementById('cross-img');
+    const imageDone = (img) => new Promise((resolve) => {
+      if (img.complete && img.src) return resolve();
+      img.addEventListener('load', resolve, { once: true });
+      img.addEventListener('error', resolve, { once: true });
+    });
+    // Second origin: the same server under localhost (no Timing-Allow-Origin, so status and size stay hidden).
+    cross.src = `http://localhost:${location.port}/img/hero.png?cross=1`;
+
+    const fetchDone = fetch('/status/500?body=json').then((r) => r.text()).catch(() => {});
+    const xhrDone = new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', '/status/401?body=token');
+      xhr.onloadend = () => resolve(xhr.status);
+      xhr.send();
+    });
+    window.__done = Promise.all([fetchDone, xhrDone, imageDone(document.getElementById('missing-img')), imageDone(cross)]);
+
+    window.runSeq = async (name) => {
+      const statuses = [];
+      for (let i = 0; i < 3; i++) statuses.push((await fetch(`/seq/${name}`)).status);
+      return statuses;
+    };
+  </script>
+</body>
+</html>

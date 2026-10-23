@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: INP</title>
+</head>
+<body>
+  <h1>Strona testowa: wolna interakcja</h1>
+  <button id="slow" type="button">Wolny przycisk</button>
+  <p id="result">brak</p>
+  <script>
+    // E2 AC-5.2: the click handler blocks the main thread for 300 ms, so INP is at least 300 ms.
+    document.getElementById('slow').addEventListener('click', () => {
+      const end = performance.now() + 300;
+      while (performance.now() < end) { /* busy */ }
+      document.getElementById('result').textContent = 'gotowe';
+    });
+  </script>
+</body>
+</html>

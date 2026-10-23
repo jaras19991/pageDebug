@@ -661,6 +661,22 @@ describe('fetch hook: error response body preview', () => {
     expect(cloned).toBe(0);
   });
 
+  it('ctx.canAttach() false → error body never cloned nor read (L2)', async () => {
+    const { ctx, attached } = bodyCtx(win, { canAttach: () => false });
+    installFetchHook(ctx);
+    let cloned = 0;
+    next = () => {
+      const r = new Response('{"e":1}', { status: 500, headers: { 'content-type': 'application/json' } });
+      const clone = r.clone.bind(r);
+      r.clone = () => { cloned++; return clone(); };
+      return r;
+    };
+    await win.fetch('/x');
+    await flush();
+    expect(cloned).toBe(0);
+    expect(attached).toHaveLength(0);
+  });
+
   it('after restore() a pending read does not attach', async () => {
     const { ctx, attached } = bodyCtx(win);
     const restore = installFetchHook(ctx);

@@ -78,13 +78,17 @@
       cursor: default;
     }
 
+    /* Above the sections, so "Zapisano…" and errors are never below the long disclosure (QA F-1, 360×600). */
     #status {
-      margin-top: 12px;
+      margin: 0 0 10px;
       font-size: 12px;
       line-height: 1.4;
-      min-height: 18px;
       color: #0a7f39;
       word-break: break-word;
+    }
+
+    #status:empty {
+      display: none;
     }
 
     #status.error {
@@ -94,6 +98,7 @@
 </head>
 <body>
   <h1>Page Debug Snapshot</h1>
+  <div id="status" role="status" aria-live="polite"></div>
 
   <!-- Section visibility, dynamic texts and handlers live in popup.js (static texts mirror messages.js). -->
   <section id="ready" hidden>
@@ -105,7 +110,7 @@
       <li>zapytania sieciowe strony: adresy, nagłówki i wysyłana treść (mogą zawierać dane logowania) oraz adresy wczytanych plików</li>
       <li>fragmenty odpowiedzi serwera, gdy coś się nie uda</li>
       <li>treść i struktura strony, w tym wartości wpisane w formularze (bez haseł i pól ukrytych)</li>
-      <li>zrzut widocznej części strony w chwili zapisu</li>
+      <li>zrzut ekranu w chwili zapisu — widać na nim wszystko, co jest na ekranie, także dane wpisane w pola (np. e-mail, numer karty); hasła są ukryte</li>
       <li>ciasteczka i dane zapisane przez stronę (mogą zawierać dane logowania)</li>
     </ul>
     <p id="noUpload">Plik zostaje na Twoim dysku, rozszerzenie niczego nie wysyła.</p>
@@ -124,8 +129,6 @@
       <button id="save" type="button">Zapisz paczkę</button>
     </div>
   </section>
-
-  <div id="status" role="status" aria-live="polite"></div>
 
   <script type="module" src="popup.js"></script>
 </body>

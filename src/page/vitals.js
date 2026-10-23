@@ -70,6 +70,8 @@ export function captureVitalsIntrinsics(win) {
     performance: perf,
     getEntriesByType: vitalsObsTry(() => perf.getEntriesByType, undefined),
     getVisibilityState: vitalsObsGetter(win.Document, 'visibilityState'),
+    // Speculation Rules prerender: the document is 'hidden' until activation (absent where unsupported).
+    getPrerendering: vitalsObsGetter(win.Document, 'prerendering'),
   };
 }
 
@@ -89,9 +91,11 @@ export function installVitals({ win, doc, now, selectorOf, intrinsics = {}, acce
     return typeof sel === 'string' ? sel : null;
   };
   const visibility = () => vitalsObsTry(() => (I.getVisibilityState ? call(I.getVisibilityState, doc) : doc.visibilityState), 'visible');
+  const prerendering = () => vitalsObsTry(() => (I.getPrerendering ? call(I.getPrerendering, doc) : doc.prerendering) === true, false);
 
   let active = true;
-  let firstHidden = visibility() === 'hidden' ? 0 : Infinity;
+  // As web-vitals: a prerendered page is hidden until activation, which is not "hidden at start".
+  let firstHidden = visibility() === 'hidden' && !prerendering() ? 0 : Infinity;
   let fcp = null;
   let lcp = null;
   let shifts = [];

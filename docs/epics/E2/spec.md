@@ -97,9 +97,11 @@ odpowiedzi błędu nie jest czytana. *Jak to wyglądało* — brak zrzutu ekranu
   i fazy `inputDelay`/`processing`/`presentation`, `value` ≥ 300 (e2e Chromium).
 - **AC-5.3** Długie zadania: fixture blokuje wątek na 200 ms w nazwanej funkcji skryptu `heavy.js` → paczka ma wpis long
   task z `t`, czasem trwania i URL-em skryptu `heavy.js`; maks. 20 najdłuższych (e2e Chromium ≥ 123).
-- **AC-5.4** Firefox (≥ 128): `TTFB`, `FCP`, `LCP` obecne; `CLS`, `INP` i long tasks mają `available: false`
+- **AC-5.4** Firefox (≥ 128): `TTFB`, `FCP`, `LCP` obecne; `CLS` i long tasks mają `available: false`
   i `reason: "unsupported-browser"` — nie `0`, nie brak klucza (QA ręczne + unit z atrapą bez typów wpisów). Analogicznie
-  long tasks w Chrome 121–122 (unit).
+  long tasks w Chrome 121–122 (unit). **Korekta wg PB-3 (Docs, po QA F-4):** `INP` w Firefoksie ma prawdziwą wartość (FF 158
+  udostępnia `interactionId`; dostępność ustala wykrywanie funkcji) — to jest PASS; `INP` ma `available: false`
+  (`unsupported-browser`) tylko w przeglądarce bez wpisów `event` z `interactionId`. Sprawdzone na Firefoksie 158; 128–157 nie.
 - **AC-5.5** Brak interakcji po starcie nagrania → `INP` ma `available: false`, `reason: "no-interaction"` (unit).
 - **AC-5.6** Wartości zebrane, gdy strona była widoczna w chwili zapisu, mają `finalized: false` i notatkę w `notes`,
   że LCP/CLS/INP mogły jeszcze rosnąć; karta w tle od startu dokumentu → `reason: "hidden-at-start"` dla LCP/FCP (unit).
@@ -131,6 +133,9 @@ odpowiedzi błędu nie jest czytana. *Jak to wyglądało* — brak zrzutu ekranu
 - **AC-7.2** Kolejność kluczy w zapisanym JSON (czytanie od góry): nagłówek → `documents` → `notes` → `steps` →
   `runtimeErrors` → `network` → `vitals` → `screenshots` → `consoleLogs` → `environment` → `performance` → `storage` →
   `dom` (ostatni, z `outerHTML`) (unit na `Object.keys` po `JSON.parse`). Treść zrzutu nie poprzedza żadnej sekcji tekstowej.
+  **Dopisek (PB-2):** po `dom` następuje jeszcze `attachments` (dane binarne zrzutu w base64), a `overview` otwiera plik
+  zaraz po nagłówku; `dom` jest ostatnią sekcją *tekstową*. Kolejność w kodzie: nagłówek → `overview` → `limits` → `truncated` →
+  `documents` → `notes` → `steps` → … → `dom` → `attachments`.
 - **AC-7.3** Scenariusz „60 s”: QA otwiera paczkę z `E2-Q1` w edytorze tekstu bez jq i odpowiada z czasem: ostatni krok przed
   pierwszym błędem, pierwsze zapytanie ≥ 400, metryka z `rating: "poor"`, obraz ekranu — każde ≤ 60 s (QA ręczne, czasy w raporcie).
 - **AC-7.4** `schemaVersion` zgodny z decyzją (pyt. 5); `docs/snapshot-schema.md` ma sekcję nowej wersji i tabelę migracji;

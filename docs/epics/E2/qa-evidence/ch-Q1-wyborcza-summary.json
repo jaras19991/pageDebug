@@ -1,0 +1,134 @@
+{
+ "url": "https://wyborcza.pl/0,0.html",
+ "bytes": 1205294,
+ "overview": {
+  "runtimeErrors": 1,
+  "consoleErrors": 0,
+  "failedRequests": 0,
+  "steps": 1,
+  "poorVitals": 0,
+  "screenshot": true
+ },
+ "network": {
+  "nw": 85,
+  "noStatusPct": 77.6,
+  "byType": {
+   "script": 34,
+   "other": 4,
+   "xhr": 4,
+   "css": 4,
+   "fetch": 7,
+   "img": 24,
+   "font": 8
+  }
+ },
+ "vitals": {
+  "TTFB": {
+   "available": true,
+   "value": 172.9,
+   "rating": "good",
+   "t": 172.9,
+   "finalized": true
+  },
+  "FCP": {
+   "available": true,
+   "value": 488,
+   "rating": "good",
+   "t": 488,
+   "finalized": true
+  },
+  "LCP": {
+   "available": true,
+   "value": 488,
+   "rating": "good",
+   "t": 488,
+   "finalized": false,
+   "selector": "html > body > div:nth-of-type(5) > div > div > div > div > div:nth-of-type(1) > div > div > div > div > figure > a > picture > img",
+   "url": "https://bi.im-g.pl/im/7e/2c/1f/z32686206NWC.jpg?timestamp=1792764831175y1uhr"
+  },
+  "CLS": {
+   "available": true,
+   "value": 0.008,
+   "rating": "good",
+   "t": 1673.9,
+   "finalized": false,
+   "sources": [
+    {
+     "selector": "html > body > div:nth-of-type(5) > div > div",
+     "value": 0.008,
+     "t": 1673.9
+    },
+    {
+     "selector": "html > body > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)",
+     "value": 0.008,
+     "t": 1673.9
+    },
+    {
+     "selector": "html > body > div:nth-of-type(4)",
+     "value": 0.008,
+     "t": 1673.9
+    },
+    {
+     "selector": "html > body > div:nth-of-type(2) > div",
+     "value": 0.008,
+     "t": 1673.9
+    }
+   ]
+  },
+  "INP": {
+   "available": false,
+   "reason": "no-interaction"
+  },
+  "longTasks": 3,
+  "topLongTask": {
+   "t": 976.3999999761581,
+   "duration": 205.79999995231628,
+   "blockingDuration": 153.8,
+   "scripts": [
+    {
+     "url": "https://cdn.cookielaw.org/scripttemplates/202609.2.0/otBannerSdk.js",
+     "function": "",
+     "invoker": "DOMWindow.onDOMContentLoaded",
+     "duration": 180.89999997615814
+    }
+   ]
+  }
+ },
+ "screenshots": [
+  {
+   "t": 8494,
+   "doc": 0,
+   "reason": "save",
+   "mime": "image/jpeg",
+   "width": 1280,
+   "height": 800,
+   "bytes": 119076,
+   "attachment": "screenshot-0"
+  }
+ ],
+ "sectionChars": {
+  "schemaVersion": 1,
+  "extensionVersion": 7,
+  "source": 11,
+  "collectedAt": 26,
+  "recordingStartedAt": 26,
+  "recordingStoppedReason": 4,
+  "timeOrigin": 13,
+  "overview": 99,
+  "limits": 204,
+  "truncated": 96,
+  "documents": 295,
+  "notes": 172,
+  "steps": 91,
+  "runtimeErrors": 98,
+  "network": 35488,
+  "vitals": 1591,
+  "screenshots": 125,
+  "consoleLogs": 7311,
+  "environment": 957,
+  "performance": 31310,
+  "storage": 1683,
+  "dom": 905533,
+  "attachments": 158810
+ }
+}

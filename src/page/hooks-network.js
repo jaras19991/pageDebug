@@ -164,8 +164,10 @@ function makeTools(ctx) {
     ctx.attach(entry, fields, fields.responseBodyPreview.length);
   };
 
+  // `ctx.canAttach()` false (no budget left for previews, recorder not recording): no clone, no read.
+  const canAttach = () => typeof ctx.canAttach !== 'function' || safe(() => ctx.canAttach() !== false, false);
   const wantsBody = (status, headers) => typeof ctx.attach === 'function' && typeof status === 'number'
-    && status >= 400 && isTextual(contentTypeOf(headers));
+    && status >= 400 && isTextual(contentTypeOf(headers)) && canAttach();
 
   return {
     I, win, safe, isOn, now, emit, json, resolveUrl, headersToObject, bodyPreview, later, cancelLater, then,

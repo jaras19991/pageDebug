@@ -3,7 +3,11 @@
 // never change propagation or defaultPrevented); a Proxy `apply` on History.prototype.pushState/replaceState.
 // Privacy at the source: no field value is ever read into a record — only `inputType`, `valueLength`, `checked`,
 // a whitelisted `key` and a short label of clicked buttons/links. Only trusted events are recorded.
+// Navigate URLs are masked (maskSecrets) before they reach a record; consecutive replaceState calls with no
+// other step in between are one step (search-as-you-type, AC-3.3).
 // Top-level helpers carry the `steps` prefix (D6: all page modules end up in one IIFE).
+
+import { maskSecrets } from '../lib/mask-secrets.js';
 
 export const STEP_TEXT_MAX_CHARS = 80;
 export const STEP_URL_MAX_CHARS = 4000;
@@ -88,13 +92,16 @@ export function installStepsHook({ win, doc: _doc, now, record, selectorOf, intr
   // Last recorded `input` step and its element (AC-3.3); any other step ends the coalescing.
   let lastInput = null;
   let lastNavigate = null;
+  // Last recorded entry of any type: a replaceState right after a replaceState step updates that step.
+  let lastEntry = null;
 
   const is = (value, Ctor) => !!Ctor && value instanceof Ctor;
   const attr = (el, name) => call(I.getAttribute, el, name);
   const tagOf = (el) => String(read(I.getTagName, el, 'tagName')).toLowerCase();
 
-  function emit(entry) {
-    lastInput = null;
+  function emit(entry, { keepInput = false } = {}) {
+    if (!keepInput) lastInput = null;
+    lastEntry = entry;
     record('steps', entry);
   }
 
@@ -130,11 +137,13 @@ export function installStepsHook({ win, doc: _doc, now, record, selectorOf, intr
     return flag === '' || flag === 'true' || flag === 'plaintext-only' ? host : null;
   }
 
-  // { el, inputType, valueLength? } of an input target; never the value itself.
+  // { el, inputType, valueLength? } of an input target (null for none/checkbox/radio); never the value itself.
   function fieldOf(target) {
     if (is(target, I.HTMLInputElement)) {
       const inputType = String(read(I.getInputType, target, 'type'));
       if (inputType === 'password') return { el: target, inputType };
+      // Checkbox/radio: `value` is a fixed token ("on"), its length means nothing; the change step carries `checked` (QA F-5).
+      if (inputType === 'checkbox' || inputType === 'radio') return null;
       return { el: target, inputType, valueLength: String(read(I.getInputValue, target, 'value')).length };
     }
     if (is(target, I.HTMLTextAreaElement)) {
@@ -211,11 +220,18 @@ export function installStepsHook({ win, doc: _doc, now, record, selectorOf, intr
   }
 
   function navigate(via, t) {
-    let url = String(win.location.href);
+    let url = maskSecrets(String(win.location.href).slice(0, STEP_URL_MAX_CHARS)).text;
     if (url.length > STEP_URL_MAX_CHARS) url = url.slice(0, STEP_URL_MAX_CHARS);
     if (lastNavigate && lastNavigate.url === url && t - lastNavigate.t <= STEPS_NAVIGATE_DEDUP_MS) return;
     lastNavigate = { url, t };
-    emit({ t, type: 'navigate', url, via });
+    const replace = via === 'replaceState';
+    if (replace && lastEntry && lastEntry.type === 'navigate' && lastEntry.via === 'replaceState') {
+      lastEntry.url = url;
+      lastEntry.t = t;
+      return;
+    }
+    // replaceState keeps the input coalescing: typing that rewrites `?q=` stays one input step.
+    emit({ t, type: 'navigate', url, via }, { keepInput: replace });
   }
 
   const handlers = {
@@ -287,6 +303,7 @@ export function installStepsHook({ win, doc: _doc, now, record, selectorOf, intr
     } finally {
       stepsActive.delete(win);
       lastInput = null;
+      lastEntry = null;
     }
   };
 }

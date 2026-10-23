@@ -3,7 +3,8 @@
 // Static texts (disclosure, notices) are duplicated in popup.html; a unit test keeps them equal.
 export const MESSAGES = Object.freeze({
   // Ready state: what lands in the file, shown above the "Nagrywaj" button (E1 AC-1.1, E2 AC-1.1:
-  // steps, server responses on errors and the screenshot).
+  // steps, server responses on errors and the screenshot). QA F-3: the screenshot item says plainly that typed data
+  // is on the image (field masking on the image comes in E3).
   disclosureTitle: 'Do pliku trafią:',
   disclosureItems: Object.freeze([
     'adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu',
@@ -12,7 +13,7 @@ export const MESSAGES = Object.freeze({
     'zapytania sieciowe strony: adresy, nagłówki i wysyłana treść (mogą zawierać dane logowania) oraz adresy wczytanych plików',
     'fragmenty odpowiedzi serwera, gdy coś się nie uda',
     'treść i struktura strony, w tym wartości wpisane w formularze (bez haseł i pól ukrytych)',
-    'zrzut widocznej części strony w chwili zapisu',
+    'zrzut ekranu w chwili zapisu — widać na nim wszystko, co jest na ekranie, także dane wpisane w pola (np. e-mail, numer karty); hasła są ukryte',
     'ciasteczka i dane zapisane przez stronę (mogą zawierać dane logowania)',
   ]),
   noUpload: 'Plik zostaje na Twoim dysku, rozszerzenie niczego nie wysyła.',

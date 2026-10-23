@@ -1,8 +1,10 @@
 # E2 — Kompletność danych — stan
 
-faza: test
+faza: done
 rozpoczęto: 2026-10-23
-ostatnia aktualizacja: 2026-10-23 (bramka spec)
+ostatnia aktualizacja: 2026-10-23 (release v0.4.0, done)
+wersja: 0.4.0
+zip: dist/page-debug-snapshot-chrome-0.4.0.zip, dist/page-debug-snapshot-firefox-0.4.0.zip
 
 ## Zadania (z backlogu; design doprecyzuje)
 - [ ] E2-IN1..IN5 wejście z E1 (LOW / nice-to-have)
@@ -45,10 +47,26 @@ ostatnia aktualizacja: 2026-10-23 (bramka spec)
     Do review: stopped po stop od tła (idempotencja), stop przed config.
   - T7b ✓ (4 testy): konsola v3 (interactionsSince, screenshots [] + notatka, notatka INP), console-snapshot.js 147 KB.
   - E: [ ] TEST2 · [ ] TEST3 · [ ] TEST4 · [ ] TEST5 · [ ] TEST6
+  - Testy (pds-tester, iteracja 1): 32 nowe e2e (vitals 6, network 7, steps 5, screenshot 7, popup-live 1, perf-e2 6); unit 976/976; e2e 71/72; repeat 3–5× bez flaky; TEST2 wyrocznia web-vitals zgodna 1:1. 8 testów E1 zaktualizowanych do v3. hooks-errors wyciek naprawiony; package.test current() v3.
+    **E2-F2 (czerwony):** perf-e2.spec.js:191 — truncated.responseBodies=true bez notatki, gdy budżet odcina podglądy po stronie strony (package.js ~l.297–300). Plus flaky unit git-status.test (timeout 5 s na /mnt/c).
+    Środowisko e2e: linuksowy chromium bez libnss3/libnspr4/libasound (apt zablokowany) → e2e poza sandboxem przez cmd.exe + Windows node.
+    npm audit: 3 high (node-forge ← adbkit ← web-ext; fix = downgrade web-ext 5.1.0, breaking) → decyzja użytkownika.
+    AC bez e2e → QA: 1.6, 2.2, 5.4–5.6, 5.8, 7.3, 7.5 (FQ-4/7/8/12), password na zrzucie (FQ-6).
+  - E2-F2 ✓ (3 testy): notatka „Older response previews were removed…” zawsze przy truncated.responseBodies; git-status timeout 30 s. Po poprawce: unit 979/979, lint 0, gen --check 0, **e2e 72/72 (2,2 min)**; wyrocznia LCP 1228/1228, CLS 0,133, INP 312/312.
+  - Review (pds-reviewer): approve-with-fixes, 0 critical/high, 3 medium + 3 low; manifesty bez zmian. Store review: bez nowego blokera (F3→E3, F4→E5 otwarte od E1), docs/epics/E2/store-review.md.
+    **E2-F3 (decyzja orkiestratora — poprawki teraz):** M1 vitals.js prerender (firstHidden z `prerendering`); M2 recorder.js budżet podglądów FIFO (zostają najnowsze, D3); M3 hooks-steps.js URL w krokach przez maskSecrets + scalanie kolejnych replaceState bez zerowania koalescencji input; L1 setConfig record:false w stanie stopped → destroy; L2 hooks-network canAttach() przed klonem.
+    E2-F3 ✓ (10 testów): M1–M3, L1, L2 wdrożone; npm test 988/988, gen --check 0; build + e2e po QA (QA używa dist). L2: canAttach false tylko gdy nie nagrywa / budżet 0 (po M2 budżet nie „wyczerpuje się”).
+  - QA (pds-qa): PASS z uwagami — 43 AC: 33 PASS (3 częściowe: 2.2, 5.6, 7.3), 0 FAIL, 1 BLOCKED (1.6 — wymaga 0.4.0), 10 tylko unit/e2e; FQ-1..12 FF 158: PASS poza FQ-7 BLOCKED, FQ-8 częściowy. Realne portale: wyborcza.pl (1,2 MB, CWV z atrybucją, zrzut 119 KB, 77% sieci bez statusu — CDN, F-2 LOW), agora.pl. Raport: qa-report.md.
+    **E2-F4:** F-3 (decyzja użytkownika) ostrzeżenie w ujawnieniu: zrzut pokazuje wszystko, co widać, także wpisane dane; F-1 popup FF 360×600 — „Zapisano…” przycięty pod listą; F-5 checkbox valueLength:2.
+    E2-F4 ✓ (6 unit + 1 e2e): tekst ujawnienia zrzutu („…widać na nim wszystko, co jest na ekranie, także dane wpisane w pola (np. e-mail, numer karty); hasła są ukryte”), #status nad sekcjami (F-1), checkbox/radio tylko checked (F-5) + reguła walidatora. npm test 994/994, lint 0, gen --check 0, build OK, **e2e 73/73**.
+    Poza zakresem → E3: input type=file zapisuje długość „C:\fakepath\…”.
+    → E3: przełącznik „Dołącz zrzut” + maskowanie pól na obrazie (F-3). → Docs: AC-5.4/skill cwv-capture (FF ma INP, F-4); F-6 obraz w attachments (E4 viewer).
+    Do ręcznej weryfikacji przez człowieka: uśpienie komputera (AC-2.2/FQ-8), aktualizacja 0.3.0→0.4.0 z nagraniem (AC-1.6/FQ-7), klik myszą w popup FF + HiDPI, AC-7.3 stoperem.
+    → E3 (backlog): L3 maskSecrets — sessid/sessionid, `Basic <b64>`, pary XML (obok `klucz: wartość` i liczb JSON); pełna redakcja URL-i (network, documents, LCP, longTasks).
   - [-] E2-T2 webRequest (odrzucone, D2)
-- [ ] E2-TEST1..TEST3 testy
-- [ ] E2-R1 review, E2-Q1 QA, store review
-- [ ] E2-DOC1 docs (schemaVersion 3)
+- [x] E2-TEST1..TEST6 testy (unit 979, e2e 72)
+- [x] E2-R1 review (approve-with-fixes → F3), E2-Q1 QA (PASS z uwagami → F4), store review (bez nowego blokera)
+- [x] E2-DOC1 docs: README, INSTRUKCJA-ZGLASZAJACEGO, snapshot-schema.md (zgodny z F1–F4), CHANGELOG 0.4.0 (data w Release), spec AC-5.4/AC-7.2; łatki do 4 skilli wprowadzone (zgoda użytkownika)
 
 ## Blokery
 - (brak)
@@ -56,12 +74,18 @@ ostatnia aktualizacja: 2026-10-23 (bramka spec)
 ## Decyzje użytkownika
 - 2026-10-23: bramka Spec — przyjęte wszystkie 8 rekomendacji (zrzut tylko przy Zapisz, JPEG w JSON ≤300 KB; body ≥400 tekst 4 KB/256 KB; webRequest warunkowo bez ostrzeżenia i bez host permissions; schemaVersion 3; overview; etykieta ≤80; iframe tylko błędy)
 - 2026-10-23: bramka Design — PB-1 (A) unsupported-browser w FF bez webRequest; PB-2 (A) attachments po dom; PB-3 PASS; D1, D4, entryChars 40k zaakceptowane
+- 2026-10-23: QA F-3 (zrzut pokazuje wpisane dane) — ostrzeżenie w ujawnieniu teraz, przełącznik „Dołącz zrzut” + maskowanie pól w E3
+- 2026-10-23: bramka Release — zgoda na v0.4.0 + commit + tag (bez pusha); łatki do 4 skilli zaakceptowane
 
 ## Historia faz
 - 2026-10-23 init → spec
 - 2026-10-23 spec → design (bramka: zatwierdzono)
 - 2026-10-23 design → implement (bramka: zatwierdzono)
 - 2026-10-23 implement → test (grupy A–D + F1; grupa E = e2e TEST2..6 → pds-tester)
+- 2026-10-23 test → review-qa (1 iteracja poprawek: F2)
+- 2026-10-23 review-qa → docs (poprawki F3 review, F4 QA; e2e 73/73)
+- 2026-10-23 docs → release (bramka: zatwierdzono)
+- 2026-10-23 release → done (v0.4.0; unit 994, lint 0, gen --check 0, e2e 73/73; dist/page-debug-snapshot-{chrome,firefox}-0.4.0.zip; notatka docs/releases/0.4.0.md)
 
 ## Retro
 - …

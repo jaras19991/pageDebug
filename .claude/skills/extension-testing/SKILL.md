@@ -52,6 +52,12 @@ Harness: `tests/e2e/helpers/launch.js` + `helpers/recording.js` + `helpers/downl
 **Nie uruchamiaj dwóch przebiegów e2e naraz bez `PDS_E2E_NO_BUILD=1`** — drugi przebieg przebudowuje `dist/chrome` pod działającą
 przeglądarką pierwszego (losowe porażki, ~50% w takim scenariuszu). Zbuduj raz, potem uruchamiaj z flagą.
 
+**WSL:** linuksowy Chromium z Playwrighta wymaga `libnss3`, `libnspr4`, `libasound2` (apt w sandboxie bywa zablokowany). Wtedy e2e
+uruchamia się Node'em z Windows przez `cmd.exe /c "npm run test:e2e"` (poza sandboxem). Unit/lint działają linuksowym node, jeśli w
+`node_modules` są linuksowe binarki `rolldown`/`lightningcss` — nie rób `npm ci` z WSL (usunie windowsowe). Zrzut ekranu: nie porównuj
+wymiarów z `devicePixelRatio` przy emulowanym `deviceScaleFactor` (spike E2-T0). Firefox: spike w `tests/e2e/spike-e2/firefox.spike.mjs`,
+reszta — ręczne QA (FQ-*).
+
 ### `launchWithExtension({ distDir?, headless?, downloadDir? })`
 `chromium.launchPersistentContext` z `channel: 'chromium'` (nowy headless; `PDS_E2E_HEADED=1` pokazuje okno), argumenty
 `--disable-extensions-except`, `--load-extension`, `--enable-unsafe-extension-debugging` (CDP `Extensions`). Zwraca

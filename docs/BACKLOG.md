@@ -163,11 +163,11 @@ Implementacja
 
 Testy / Review / QA / Docs / Release
 - [x] E2-TEST1 Unit: korelacja webRequest ↔ MAIN przy wielu identycznych URL w krótkim czasie.
-- [ ] E2-TEST2 E2E: strona testowa z wymuszonym CLS i wolnym LCP → metryki i atrybucja w paczce.
-- [ ] E2-TEST3 E2E: 404 na obrazku i 500 na fetch → oba mają status w paczce.
-- [ ] E2-R1 Review: permission `webRequest` uzasadnione w manifeście i README; brak wartości inputów w krokach.
-- [ ] E2-Q1 QA: na realnej stronie (np. dowolny portal) paczka ma CWV, statusy, screenshot, kroki.
-- [ ] E2-DOC1 Aktualizacja `docs/snapshot-schema.md` (schemaVersion **3**, jeśli zmiana łamiąca; v2 zajęło E1).
+- [x] E2-TEST2 E2E: strona testowa z wymuszonym CLS i wolnym LCP → metryki i atrybucja w paczce.
+- [x] E2-TEST3 E2E: 404 na obrazku i 500 na fetch → oba mają status w paczce.
+- [x] E2-R1 Review: permission `webRequest` uzasadnione w manifeście i README; brak wartości inputów w krokach.
+- [x] E2-Q1 QA: na realnej stronie (np. dowolny portal) paczka ma CWV, statusy, screenshot, kroki.
+- [x] E2-DOC1 Aktualizacja `docs/snapshot-schema.md` (schemaVersion **3**, jeśli zmiana łamiąca; v2 zajęło E1).
 
 ---
 

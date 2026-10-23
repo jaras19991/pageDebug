@@ -13,7 +13,7 @@ description: Jak zbierać Core Web Vitals (LCP, CLS, INP, FCP, TTFB) i long task
 | **FCP** | `PerformanceObserver` type `paint`, entry `first-contentful-paint` | tak | od razu po pojawieniu |
 | **LCP** | type `largest-contentful-paint` — **ostatni** wpis wygrywa | tak | po pierwszej interakcji użytkownika lub przy ukryciu strony |
 | **CLS** | type `layout-shift`, suma wpisów bez `hadRecentInput`, w oknach sesyjnych (5 s gap / 1 s max) — **największe okno** | tak | przy ukryciu strony (raportuj bieżącą wartość przy zapisie) |
-| **INP** | type `event` z `durationThreshold: 16`, bierz ~p98 (dla < 50 interakcji: max) z `interactionId > 0` | tak (tylko w Chrome ≥ 96; bufor ograniczony) | przy ukryciu; raportuj bieżącą |
+| **INP** | type `event` z `durationThreshold: 16`, bierz ~p98 (dla < 50 interakcji: max) z `interactionId > 0` | tak (Chrome ≥ 96 i Firefox 158 — sprawdzone; bufor ograniczony) | przy ukryciu; raportuj bieżącą |
 | **Long tasks / LoAF** | type `long-animation-frame` (Chrome ≥ 123) lub `longtask` | `long-animation-frame` tak | — |
 
 Progi (good / needs-improvement / poor): LCP 2500/4000 ms · CLS 0.1/0.25 · INP 200/500 ms ·
@@ -71,8 +71,9 @@ zamroził stronę”. Bez LoAF (starszy Chrome): `longtask` z `attribution[0].co
 
 ## Firefox
 
-Firefox dostarcza TTFB, FCP i LCP (od 122). **Nie** dostarcza `layout-shift` (CLS), `interactionId`
-w `event` (INP) ani `long-animation-frame`. `web-vitals` po prostu nie wywoła callbacka — pole w paczce
+Firefox dostarcza TTFB, FCP i LCP (od 122). **Nie** dostarcza `layout-shift` (CLS), `longtask` ani
+`long-animation-frame`. Firefox 158 **ma** `event` z `interactionId`, więc INP działa (spike E2-T0, QA E2 F-4).
+Dostępność ustalaj wykrywaniem funkcji (`PerformanceObserver.supportedEntryTypes`), nigdy po UA. `web-vitals` po prostu nie wywoła callbacka — pole w paczce
 będzie `undefined`. `summary.md` i viewer mają wtedy pisać „niedostępne w tej przeglądarce”, a nie zostawiać
 pustej komórki ani „0”. Zapisz `navigator.userAgent` w `environment` — developer musi wiedzieć, czemu brak.
 

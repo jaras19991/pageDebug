@@ -201,6 +201,36 @@ describe('installStepsHook', () => {
     ]);
   });
 
+  it('checkbox/radio: input event adds no step, change carries checked only, never valueLength (QA F-5)', () => {
+    install();
+    const box = document.querySelector('[data-testid="terms"]');
+    box.checked = true;
+    fire(box, 'input');
+    fire(box, 'change');
+    const radio = document.getElementById('r1');
+    radio.checked = true;
+    fire(radio, 'input');
+    fire(radio, 'change');
+    const steps = nonNavigate();
+    expect(steps).toEqual([
+      { t: expect.any(Number), type: 'change', selector: 'input[data-testid="terms"]', inputType: 'checkbox', checked: true },
+      { t: expect.any(Number), type: 'change', selector: '#r1', inputType: 'radio', checked: true },
+    ]);
+    for (const s of steps) expect('valueLength' in s).toBe(false);
+  });
+
+  it('typing after a checkbox input still opens a new input step for the text field (QA F-5)', () => {
+    install();
+    const box = document.querySelector('[data-testid="terms"]');
+    fire(box, 'input');
+    const email = document.getElementById('email');
+    email.value = 'ab';
+    fire(email, 'input');
+    expect(nonNavigate()).toEqual([
+      { t: expect.any(Number), type: 'input', selector: expect.any(String), inputType: 'email', valueLength: 2 },
+    ]);
+  });
+
   it('submit records form selector', () => {
     install();
     const form = document.getElementById('loginForm');
@@ -228,6 +258,62 @@ describe('installStepsHook', () => {
       ['hashchange', origin + '/steps/two#frag'],
     ]);
     expect(history.state).toBe(null);
+    history.replaceState(null, '', base);
+  });
+
+  it('search-as-you-type: 18 chars with replaceState ?q= give 1 input + 1 navigate (AC-3.3)', () => {
+    install();
+    const base = window.location.href;
+    const email = document.getElementById('email');
+    const text = 'jan.kowal@mail.com';
+    for (const ch of text) {
+      email.value += ch;
+      fire(email, 'input', {}, window.InputEvent);
+      history.replaceState(null, '', '/search?q=' + encodeURIComponent(email.value));
+    }
+    const after = nonNavigate();
+    const navs = steps().filter((s) => s.type === 'navigate').slice(1);
+    expect(after).toHaveLength(1);
+    expect(after[0]).toMatchObject({ type: 'input', valueLength: 18 });
+    expect(navs).toHaveLength(1);
+    expect(navs[0]).toMatchObject({ via: 'replaceState', url: window.location.origin + '/search?q=' + encodeURIComponent(text) });
+    expect(navs[0].t).toBe(clock);
+    history.replaceState(null, '', base);
+  });
+
+  it('replaceState after another step is a new navigate step; pushState is never merged', () => {
+    install();
+    const base = window.location.href;
+    history.replaceState(null, '', '/a');
+    history.replaceState(null, '', '/b');
+    fire(document.getElementById('login'), 'click', {}, window.MouseEvent);
+    history.replaceState(null, '', '/c');
+    history.pushState(null, '', '/d');
+    history.pushState(null, '', '/e');
+    const origin = window.location.origin;
+    expect(steps().slice(1).map((s) => [s.type, s.via, s.url])).toEqual([
+      ['navigate', 'replaceState', origin + '/b'],
+      ['click', undefined, undefined],
+      ['navigate', 'replaceState', origin + '/c'],
+      ['navigate', 'pushState', origin + '/d'],
+      ['navigate', 'pushState', origin + '/e'],
+    ]);
+    history.replaceState(null, '', base);
+  });
+
+  it('navigate url is masked: access_token in the fragment and query never appears in plain text', () => {
+    install();
+    const base = window.location.href;
+    history.pushState(null, '', '/cb?code=1&session=s3cr3tSess#access_token=SECRET123abc&state=x');
+    window.dispatchEvent(new window.HashChangeEvent('hashchange'));
+    const navs = steps().filter((s) => s.type === 'navigate').slice(1);
+    expect(navs.length).toBeGreaterThan(0);
+    for (const nav of navs) {
+      expect(nav.url).not.toContain('SECRET123abc');
+      expect(nav.url).not.toContain('s3cr3tSess');
+      expect(nav.url).toContain('access_token=[redacted:key-token]');
+      expect(nav.url).toContain('code=1');
+    }
     history.replaceState(null, '', base);
   });
 

@@ -27,7 +27,7 @@ test.afterAll(async () => {
 
 const count = (entries, text) => entries.filter((e) => JSON.stringify(e).includes(text)).length;
 
-test('console fallback: script prints the Polish hint, download() yields schemaVersion 2 source console (AC-7.2, AC-7.3)', async () => {
+test('console fallback: script prints the Polish hint, download() yields schemaVersion 3 source console (AC-7.2, AC-7.3)', async () => {
   const context = await browser.newContext({ acceptDownloads: true });
   try {
     const page = await context.newPage();
@@ -42,7 +42,7 @@ test('console fallback: script prints the Polish hint, download() yields schemaV
 
     await page.evaluate(() => console.log('fb-marker'));
     const pkg = await page.evaluate(() => globalThis.PageDebugSnapshot.snapshot());
-    expect(pkg.schemaVersion).toBe(2);
+    expect(pkg.schemaVersion).toBe(3);
     expect(pkg.source).toBe('console');
     expect(pkg.documents.length).toBe(1);
     expect(count(pkg.consoleLogs, 'fb-marker')).toBe(1);
@@ -60,7 +60,7 @@ test('console fallback: script prints the Polish hint, download() yields schemaV
     expect(download.suggestedFilename()).toMatch(/^page-debug-snapshot-\d+\.json$/);
     expect(download.suggestedFilename()).toBe(fileName);
     const saved = JSON.parse(await readFile(await download.path(), 'utf8'));
-    expect(saved.schemaVersion).toBe(2);
+    expect(saved.schemaVersion).toBe(3);
     expect(saved.source).toBe('console');
     expect(count(saved.consoleLogs, 'fb-marker')).toBe(1);
 

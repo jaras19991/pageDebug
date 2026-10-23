@@ -49,7 +49,7 @@ function current(over = {}) {
     ...buffers({
       logs: [log(5, 'cur-b'), log(2, 'cur-a')],
       errors: [{ t: 3, type: 'error', message: 'boom', filename: 'http://127.0.0.1:8080/form.html', lineno: 1, colno: 2, stack: 'Error: boom' }],
-      network: [{ t: 4, type: 'fetch', method: 'POST', url: 'http://127.0.0.1:8080/api/fail', status: 500, statusText: 'Internal Server Error', ok: false, redirected: false, durationMs: 1.5, requestHeaders: {}, responseHeaders: {}, requestBody: '{"a":1}', error: null }],
+      network: [{ t: 4, type: 'fetch', method: 'POST', url: 'http://127.0.0.1:8080/api/fail', status: 500, statusText: 'Internal Server Error', ok: false, redirected: false, durationMs: 1.5, sizeBytes: 23, requestHeaders: {}, responseHeaders: {}, requestBody: '{"a":1}', error: null }],
     }),
     ...over,
   };
@@ -522,6 +522,30 @@ describe('assemblePackage v3 (E2-T10a)', () => {
     expect(pkg.truncated.responseBodies).toBe(true);
   });
 
+  it('truncated.responseBodies from a document buffer only (no cut in the package) still gets the note; validator passes', () => {
+    // E2-F2: the 256 KB budget was applied in the page, the package itself drops nothing.
+    const network = [fetchEntry(1, { status: 500, ok: false, responseBodyPreview: 'x'.repeat(100), responseBodyTruncated: false })];
+    const pkg = assemblePackage({ meta: meta(), current: current({ network, truncated: { responseBodies: true } }), priorDocs: [] });
+    expect(pkg.truncated.responseBodies).toBe(true);
+    expect(pkg.network[0].responseBodyPreview).toBe('x'.repeat(100));
+    expect(pkg.notes.filter((n) => /response preview/i.test(n) && /262144/.test(n))).toHaveLength(1);
+    assertValidSnapshot(pkg);
+  });
+
+  it('both page-side and package-side preview cuts → a single response preview note', () => {
+    const body = 'x'.repeat(4000);
+    const network = Array.from({ length: 70 }, (_, i) => fetchEntry(i, { status: 500, ok: false, responseBodyPreview: body, responseBodyTruncated: false }));
+    const pkg = assemblePackage({ meta: meta(), current: current({ network, truncated: { responseBodies: true } }), priorDocs: [] });
+    expect(pkg.truncated.responseBodies).toBe(true);
+    expect(pkg.notes.filter((n) => /response preview/i.test(n))).toHaveLength(1);
+  });
+
+  it('no preview cut anywhere → no response preview note', () => {
+    const pkg = assemblePackage({ meta: meta(), current: current(), priorDocs: [] });
+    expect(pkg.truncated.responseBodies).toBe(false);
+    expect(pkg.notes.some((n) => /response preview/i.test(n))).toBe(false);
+  });
+
   it('unmasked token in preview is masked by second pass and capped at responseBodyChars', () => {
     // AC-4.7
     const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U';
@@ -598,7 +622,8 @@ describe('fixture v2.json (migration v2 → v3)', () => {
       }
     }
     expect(keysAndTypes(fixture.consoleLogs[0])).toEqual(keysAndTypes(pkg.consoleLogs[0]));
-    expect(keysAndTypes(fixture.network[0])).toEqual(keysAndTypes(pkg.network[0]));
+    // v3 adds sizeBytes to every network record (docs/snapshot-schema.md); all v2 keys keep their types.
+    expect({ ...keysAndTypes(fixture.network[0]), sizeBytes: 'number' }).toEqual(keysAndTypes(pkg.network[0]));
     const fixtureError = fixture.runtimeErrors.find((r) => r.type === 'error');
     expect(keysAndTypes(fixtureError)).toEqual(keysAndTypes(pkg.runtimeErrors[0]));
   });

@@ -23,9 +23,9 @@
       return done;
     };
 
-    // One console.log whose argument serializes to well over 10 000 chars of JSON.
+    // One console.log whose argument serializes to well over 40 000 chars of JSON (the E2 entryChars limit; 10 000 in E1).
     window.bigLog = () => {
-      const big = { kind: 'big-log', items: Array.from({ length: 500 }, (_, i) => ({ i, text: 'y'.repeat(40) })) };
+      const big = { kind: 'big-log', items: Array.from({ length: 1500 }, (_, i) => ({ i, text: 'y'.repeat(40) })) };
       console.log(big);
       return JSON.stringify(big).length;
     };

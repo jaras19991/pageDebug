@@ -24,16 +24,16 @@ Każda zmiana struktury musi być jawna i wersjonowana, inaczej któryś z nich 
    (bool). Developer ma wiedzieć, że czegoś brakuje.
 5. **Redakcja** zostawia ślad: pole zastąpione → `"[redacted:<reguła>]"` (string), nigdy `null`
    (null = „nie było”). Zbiorczy raport w `redaction` (liczby, bez wartości).
-6. **Brak danych binarnych w JSON** poza małymi rzeczami. Screenshot → osobny plik w zipie
-   (`screenshot.jpg`), w JSON tylko `screenshots: [{ t, file, reason }]`.
+6. **Brak danych binarnych w JSON** poza małymi rzeczami. Do E3 zrzut leży w `attachments['screenshot-0']`
+   (data URL base64, ostatni klucz paczki, po `dom`); w `screenshots[]` tylko metadane
+   `{ t, doc, reason, mime, width, height, bytes, attachment }`. Osobny plik w zipie (`screenshot.jpg`) dopiero od E3/E4.
 
 ## Docelowa struktura (kierunek dla E1–E4; pola oznaczone epikiem, w którym się pojawiają)
 
-**Stan: v2 jest zrealizowane w E1** (aktualny opis pól: `docs/snapshot-schema.md`; fixture `tests/fixtures/snapshots/v2.json`; składa ją
-`assemblePackage` z `src/lib/package.js`). Poniższy szkic to kierunek: pola z oznaczeniem E2/E3/E4 jeszcze nie istnieją. E1 dodało też
-`documents[]` (id, url, timeOrigin, navigationType, recorded, flushed, current, counts, kept) i `recordingStoppedReason`, których szkic nie
-pokazuje. Pola dodane w E2 (`steps`, `vitals`, `screenshots`, `status`…) to zmiana niełamiąca → wpis w dokumentacji; **v3 dopiero, jeśli E2
-zmieni istniejące pole lub jego semantykę** (np. kształt `network[]`, jednostki).
+**Stan: aktualna wersja to 3 (E2, release 0.4.0).** Pola i kolejność kluczy: `docs/snapshot-schema.md`; walidator (unit i e2e):
+`tests/helpers/snapshot-validator.js`; fixture `tests/fixtures/snapshots/v3.json` (generowany z `assemblePackage`, `src/lib/package.js`).
+Poniższy szkic to kierunek: pola z oznaczeniem E3/E4 jeszcze nie istnieją; E1/E2 dodały m.in. `documents[]`, `recordingStoppedReason`,
+`overview`, `steps`, `vitals`, `screenshots`, `attachments`, których szkic nie pokazuje w pełni.
 
 ```jsonc
 {
@@ -92,7 +92,7 @@ zmieni istniejące pole lub jego semantykę** (np. kształt `network[]`, jednost
     "sessionStorage": {}
   },
 
-  "screenshots": [{ "t": 4000, "file": "screenshot.jpg", "reason": "save|error" }],  // E2
+  "screenshots": [{ "t": 4000, "file": "screenshot.jpg", "reason": "save|error" }],  // E3+ (w v3: metadane + attachment, bajty w attachments)
 
   "redaction": { "rulesVersion": 1, "masked": { "storage": 3, "network.headers": 2, "console": 1 } },  // E3
 
@@ -106,7 +106,7 @@ zmieni istniejące pole lub jego semantykę** (np. kształt `network[]`, jednost
 snapshot-<host>-<YYYYMMDD-HHMMSS>.zip
 ├── snapshot.json
 ├── summary.md          // E4 — generowany z snapshot.json tym samym modułem co viewer/MCP
-└── screenshot.jpg      // E2 — opcjonalny
+└── screenshot.jpg      // E3+ — opcjonalny (w v3 w attachments)
 ```
 
 ## Checklist przy zmianie schematu

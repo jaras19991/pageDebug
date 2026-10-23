@@ -123,6 +123,21 @@ describe('fixtures server', () => {
     expect((await fetch(`${server.url}/status/500?body=nope`)).status).toBe(400);
   });
 
+  it('status route ?size pads json (still valid JSON) and text bodies, rejects out-of-range sizes (E2-TEST6)', async () => {
+    server = await startFixtureServer();
+    const json = await fetch(`${server.url}/status/500?body=json&size=5000`);
+    const text = await json.text();
+    expect(text.length).toBe(5000);
+    expect(JSON.parse(text)).toMatchObject({ error: 'status 500', status: 500 });
+
+    const plain = await fetch(`${server.url}/status/404?body=text&size=3000`);
+    expect((await plain.text()).length).toBe(3000);
+
+    expect((await fetch(`${server.url}/status/500?size=-1`)).status).toBe(400);
+    expect((await fetch(`${server.url}/status/500?size=100001`)).status).toBe(400);
+    expect((await fetch(`${server.url}/status/500?size=abc`)).status).toBe(400);
+  });
+
   it('delay route waits ≥ ms', async () => {
     server = await startFixtureServer();
     for (const path of ['/status/200?delay=300', '/img/hero.png?delay=300']) {

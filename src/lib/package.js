@@ -295,7 +295,8 @@ export function assemblePackage({ meta, current, priorDocs = [], docs = [] }) {
   }
   const bodiesOver = limitResponseBodies(out.network, limits);
   truncated.responseBodies = bodiesOver || ordered.some((d) => d.truncated.responseBodies);
-  if (bodiesOver) {
+  // One note whether the budget was applied here or already in the page (document buffer flag).
+  if (truncated.responseBodies) {
     notes.push(`Older response previews were removed to fit the total limit of ${limits.responseBodyTotalChars} characters.`);
   }
 

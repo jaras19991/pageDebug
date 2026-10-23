@@ -423,6 +423,21 @@ describe('createRecorder', () => {
     expect(rec.exportBuffers().consoleLogs).toEqual([]);
   });
 
+  it('stop before config, then setConfig({record:false}) destroys and clears (L1)', () => {
+    const win = makeWin();
+    const rec = createRecorder({ win });
+    rec.install();
+    win.console.log('before config');
+    rec.stop('user');
+    expect(rec.exportBuffers().consoleLogs).toHaveLength(1);
+    rec.setConfig({ record: false, docId: 4 });
+    expect(rec.exportBuffers().consoleLogs).toEqual([]);
+    expect(rec.snapshot().vitals).toBeNull();
+    rec.setConfig({ record: true, docId: 5 });
+    expect(rec.isActive).toBe(false);
+    expect(rec.docId).toBeNull();
+  });
+
   it('snapshot returns the flat current-document shape consumed by assemblePackage', () => {
     const win = makeWin();
     const rec = createRecorder({ win });
@@ -609,7 +624,7 @@ describe('createRecorder — E2 hooks (E2-T9a)', () => {
     expect(onStopped).toHaveBeenCalledWith('time-limit');
   });
 
-  it('attach over the response-body budget drops the field and sets truncated.responseBodies', async () => {
+  it('attach over the response-body budget keeps the newest previews: the oldest lose the field, truncated.responseBodies (D3)', async () => {
     vi.useRealTimers();
     const { win, rec } = startRich({ limits: { responseBodyTotalChars: 10_000 } });
     rec.setConfig({ record: true, docId: 0 });
@@ -619,12 +634,50 @@ describe('createRecorder — E2 hooks (E2-T9a)', () => {
     for (let i = 0; i < 50 && rec.snapshot().truncated.responseBodies !== true; i++) await new Promise((r) => setTimeout(r, 10));
     const snap = rec.snapshot();
     const previews = snap.network.map((n) => n.responseBodyPreview);
-    expect(previews[0].length).toBeLessThanOrEqual(LIMITS.responseBodyChars);
-    expect(previews[0].length).toBeGreaterThan(4000);
     expect(previews.filter((p) => typeof p === 'string')).toHaveLength(2);
-    expect(snap.network[2]).not.toHaveProperty('responseBodyPreview');
-    expect(snap.network[2]).not.toHaveProperty('responseBodyTruncated');
+    expect(snap.network[0]).not.toHaveProperty('responseBodyPreview');
+    expect(snap.network[0]).not.toHaveProperty('responseBodyTruncated');
+    for (const n of snap.network.slice(1)) {
+      expect(n.responseBodyPreview.length).toBeLessThanOrEqual(LIMITS.responseBodyChars);
+      expect(n.responseBodyPreview.length).toBeGreaterThan(4000);
+      expect(n.responseBodyTruncated).toBe(true);
+    }
     expect(snap.truncated.responseBodies).toBe(true);
+    rec.destroy();
+  });
+
+  it('response-body budget FIFO: many previews keep the total within the budget and the newest one always present', async () => {
+    vi.useRealTimers();
+    const { win, rec } = startRich({ limits: { responseBodyTotalChars: 100 } });
+    rec.setConfig({ record: true, docId: 0 });
+    let n = 0;
+    win.fetch.mockImplementation(async () => new Response(`{"n":${n++},"pad":"${'x'.repeat(30)}"}`, { status: 500, headers: { 'content-type': 'application/json' } }));
+    for (let i = 0; i < 10; i++) await win.fetch(`/api/${i}`);
+    for (let i = 0; i < 50 && rec.snapshot().network.at(-1).responseBodyPreview === undefined; i++) await new Promise((r) => setTimeout(r, 10));
+    const snap = rec.snapshot();
+    const kept = snap.network.filter((e) => typeof e.responseBodyPreview === 'string');
+    expect(kept.reduce((sum, e) => sum + e.responseBodyPreview.length, 0)).toBeLessThanOrEqual(100);
+    expect(kept.length).toBe(2);
+    expect(snap.network.at(-1).responseBodyPreview).toContain('"n":9');
+    expect(snap.truncated.responseBodies).toBe(true);
+    rec.destroy();
+  });
+
+  it('no response-body budget → canAttach false, the error response is never cloned (L2)', async () => {
+    vi.useRealTimers();
+    // The hook clones through the Response.prototype.clone captured at install.
+    const cloneSpy = vi.spyOn(Response.prototype, 'clone');
+    const { win, rec } = startRich({ limits: { responseBodyTotalChars: 0 } });
+    rec.setConfig({ record: true, docId: 0 });
+    win.fetch.mockImplementation(async () => new Response('{"e":1}', { status: 500, headers: { 'content-type': 'application/json' } }));
+    try {
+      await win.fetch('/api/x');
+      await new Promise((r) => setTimeout(r, 20));
+      expect(cloneSpy).not.toHaveBeenCalled();
+    } finally {
+      cloneSpy.mockRestore();
+    }
+    expect(rec.snapshot().network[0]).not.toHaveProperty('responseBodyPreview');
     rec.destroy();
   });
 

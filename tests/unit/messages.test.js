@@ -95,7 +95,7 @@ describe('MESSAGES', () => {
       'zapytania sieciowe strony: adresy, nagłówki i wysyłana treść (mogą zawierać dane logowania) oraz adresy wczytanych plików',
       'fragmenty odpowiedzi serwera, gdy coś się nie uda',
       'treść i struktura strony, w tym wartości wpisane w formularze (bez haseł i pól ukrytych)',
-      'zrzut widocznej części strony w chwili zapisu',
+      'zrzut ekranu w chwili zapisu — widać na nim wszystko, co jest na ekranie, także dane wpisane w pola (np. e-mail, numer karty); hasła są ukryte',
       'ciasteczka i dane zapisane przez stronę (mogą zawierać dane logowania)',
     ]);
     expect(MESSAGES.noUpload).toBe('Plik zostaje na Twoim dysku, rozszerzenie niczego nie wysyła.');
@@ -107,8 +107,21 @@ describe('MESSAGES', () => {
     expect(steps).toContain('co klikasz');
     expect(steps).toContain('na jakich stronach');
     expect(steps).toMatch(/bez treści, które wpisujesz/);
-    expect(items.some((item) => item.includes('zrzut widocznej części strony w chwili zapisu'))).toBe(true);
+    expect(items.some((item) => item.startsWith('zrzut ekranu w chwili zapisu'))).toBe(true);
     expect(items.some((item) => item.includes('odpowiedzi serwera') && item.includes('gdy coś się nie uda'))).toBe(true);
+  });
+
+  it('screenshot item says plainly that typed data is on the image and passwords are hidden (QA F-3)', () => {
+    const shot = MESSAGES.disclosureItems.find((item) => item.startsWith('zrzut'));
+    expect(shot).toContain('wszystko, co jest na ekranie');
+    expect(shot).toContain('dane wpisane w pola');
+    expect(shot).toMatch(/e-mail/);
+    expect(shot).toMatch(/numer karty/);
+    expect(shot).toMatch(/hasła są ukryte$/);
+    expect(shot.length).toBeLessThanOrEqual(160);
+    for (const word of ['screenshot', 'viewport', 'input', 'canvas', 'JPEG', 'pikseli']) {
+      expect(shot.toLowerCase(), word).not.toContain(word.toLowerCase());
+    }
   });
 
   it('consent notice (store review F2) warns about personal data and ties "Nagrywaj" to consent, verbatim', () => {

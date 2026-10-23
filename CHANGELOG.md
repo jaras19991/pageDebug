@@ -4,6 +4,39 @@ Format: [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/). Wpisy per epik
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-23
+
+### E2 — Kompletność danych: kroki, CWV, statusy, zrzut (schemat paczki v3)
+
+#### Dodano
+- `steps[]` — kroki zgłaszającego: `click` (selektor CSS, `text` ≤ 80 znaków), `input`/`change` (`inputType`, `valueLength`; nigdy wartość), `submit`, `key` (tylko Enter/Escape/Tab/strzałki), `navigate` (`url`, `via`); kolejne wpisywanie w to samo pole i kolejne `replaceState` są scalane.
+- `vitals[]` — TTFB, FCP, LCP, CLS, INP z `rating` i atrybucją (LCP: `selector`/`url`; CLS: `sources`; INP: `selector`, `eventType`, `inputDelay`/`processing`/`presentation`) oraz do 20 najdłuższych `longTasks` ze skryptem; niedostępna metryka to `{ available: false, reason }`.
+- `network[]` obejmuje zasoby strony (`img`, `script`, `css`, `font`, `other`) ze `status`, `sizeBytes`, `statusUnavailable?`; `documents[].status` (status HTTP dokumentu).
+- `responseBodyPreview` / `responseBodyTruncated` — fragment treści odpowiedzi `fetch`/XHR ze statusem ≥ 400 i treścią tekstową (≤ 4096 znaków na wpis, ≤ 262 144 łącznie, zostają najnowsze; `truncated.responseBodies` + notatka).
+- Zrzut ekranu widocznej części karty przy „Zapisz paczkę” (`screenshots[]` + `attachments`, JPEG ≤ 300 KB jako base64), tylko dla aktywnej karty na origin nagrania; notatka z powodem, gdy zrzutu nie ma.
+- `overview` (liczby na górze pliku), `frame` w błędach z iframe'ów tego samego originu, `Error.cause` (do 5 poziomów), `stack` ≤ 16 000 znaków, nowe `limits` (`steps`, `stackChars`, `responseBodyChars`, `responseBodyTotalChars`, `screenshotBytes`, `longTasks`) i `truncated.steps`, `truncated.responseBodies`.
+- Ujawnienie w popupie rozszerzone do 8 pozycji (kroki, fragmenty odpowiedzi, zrzut); popup odświeża stan przy nawigacji karty (`otherOrigin`).
+- Walidator schematu `tests/helpers/snapshot-validator.js` i fixture `tests/fixtures/snapshots/v3.json`; fixture'y e2e (CWV, sieć, kroki, zrzut), wyrocznia `web-vitals` w testach (devDependency, nie trafia do `dist`).
+
+#### Zmieniono
+- **Schemat paczki v2 → v3 jest łamiący**: nowa kolejność kluczy (`overview` → `notes` → `steps` → `runtimeErrors` → `network` → … → `dom` → `attachments`), nowe znaczenie `network[].type` i `limits.network`, `limits.entryChars` 40 000; migracja v2 → v3 w `docs/snapshot-schema.md`.
+- Protokół tło ↔ strona w wersji 2; tło zatrzymuje recorder poleceniem `stop`; `schemaVersion: 3` także w fallbacku konsolowym (`console-snapshot.js`, `INP` tylko z interakcji po wklejeniu).
+- Brak uprawnień dodanych względem 0.3.0 (zrzut używa `activeTab`; statusy z Resource Timing, `webRequest` odrzucono).
+
+#### Naprawiono
+- Status `0` nie jest zapisywany gołym zerem: `fetch` `no-cors` to `status: null` + `statusUnavailable: "cross-origin"`, inne niewyjaśnione `0` to `unknown`.
+- Brak sekcji strony w paczce zawsze ma notatkę („Section … was not received from the page.”); `truncated.responseBodies` zawsze ma notatkę.
+- Budżet podglądów odpowiedzi zachowuje najnowsze podglądy zamiast najstarszych.
+- Metryki: strona prerenderowana (`prerendering`) nie jest już traktowana jako ukryta od startu (nie dostaje fałszywego `hidden-at-start`).
+- `steps[].url` przechodzi przez maskowanie tokenów; checkbox/radio nie mają `valueLength`.
+- Popup (Firefox): komunikat „Zapisano plik …” nie jest przycięty pod listą ujawnienia.
+- Wyciek `removeEventListener` między testami `hooks-errors`; timeout testów na `/mnt/c`.
+
+#### Bezpieczeństwo
+- Kroki nie zawierają wartości pól ani długości haseł; `url` kroków i podglądy odpowiedzi mają zamaskowane tokeny (`[redacted:<reguła>]`: JWT, `Bearer`, wartości przy kluczach wrażliwych).
+- Zrzut powstaje tylko na origin nagrania, przy aktywnej karcie, na jawne „Zapisz paczkę”; ostrzeżenie w ujawnieniu: na zrzucie widać wszystko z ekranu, także dane wpisane w pola (hasła są ukryte).
+- Znane ograniczenia: **zrzut nie jest maskowany** (przełącznik i maskowanie pól — E3); maskowanie w podglądach jest regułowe (nie łapie `klucz: wartość`, `sessid`, `Basic <b64>`, liczb JSON przy kluczach wrażliwych — E3); zasoby cross-origin (CDN) bez statusu; Firefox 158: brak `CLS` i `longTasks`, `activeTab` cofany przy przeładowaniu (brak zrzutu); `input type=file` zapisuje długość `C:\fakepath\…` (E3); do ręcznej weryfikacji: uśpienie komputera, aktualizacja 0.3.0 → 0.4.0 z nagraniem.
+
 ## [0.3.0] - 2026-10-23
 
 ### E1 — Model nagrywania: dane od startu strony (schemat paczki v2)

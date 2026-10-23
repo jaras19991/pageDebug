@@ -64,7 +64,7 @@ test('flood: big log is capped to {truncated, preview}; 200 fetches all kept, tr
   const page = await recordedFloodPage();
   try {
     const bigChars = await page.evaluate(() => globalThis.bigLog());
-    expect(bigChars).toBeGreaterThan(10000);
+    expect(bigChars).toBeGreaterThan(40000); // above limits.entryChars (40 000 since E2)
     expect(await page.evaluate(() => globalThis.floodFetch(200))).toBe(200);
     const { json } = await saveRecording(page);
 

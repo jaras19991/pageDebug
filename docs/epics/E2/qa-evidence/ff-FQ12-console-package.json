@@ -1,0 +1,484 @@
+{
+  "schemaVersion": 3,
+  "extensionVersion": "0.3.0",
+  "source": "console",
+  "collectedAt": "2026-10-23T14:08:44.813Z",
+  "recordingStartedAt": "2026-10-23T14:08:41.795Z",
+  "recordingStoppedReason": null,
+  "timeOrigin": 1792764521259,
+  "overview": {
+    "runtimeErrors": 0,
+    "consoleErrors": 0,
+    "failedRequests": 2,
+    "steps": 1,
+    "poorVitals": 0,
+    "screenshot": false
+  },
+  "limits": {
+    "consoleLogs": 5000,
+    "runtimeErrors": 1000,
+    "network": 5000,
+    "steps": 2000,
+    "entryChars": 40000,
+    "stackChars": 16000,
+    "responseBodyChars": 4096,
+    "responseBodyTotalChars": 262144,
+    "screenshotBytes": 307200,
+    "longTasks": 20
+  },
+  "truncated": {
+    "consoleLogs": false,
+    "runtimeErrors": false,
+    "network": false,
+    "steps": false,
+    "responseBodies": false
+  },
+  "documents": [
+    {
+      "id": 0,
+      "url": "http://localhost:8092/basic.html",
+      "timeOrigin": 1792764521259,
+      "navigationType": "navigate",
+      "status": 200,
+      "recorded": true,
+      "flushed": true,
+      "current": true,
+      "counts": {
+        "consoleLogs": 1,
+        "runtimeErrors": 0,
+        "network": 5,
+        "steps": 1
+      },
+      "kept": {
+        "consoleLogs": 1,
+        "runtimeErrors": 0,
+        "network": 5,
+        "steps": 1
+      }
+    }
+  ],
+  "notes": [
+    "Recording started when the script was pasted at 2026-10-23T14:08:41.795Z; earlier data is not included.",
+    "LCP, CLS and INP are values at the time of saving; they could still grow.",
+    "Screenshots are not available without the extension.",
+    "INP covers only interactions after the script was pasted."
+  ],
+  "steps": [
+    {
+      "t": 537,
+      "doc": 0,
+      "type": "navigate",
+      "url": "http://localhost:8092/basic.html",
+      "via": "navigate"
+    }
+  ],
+  "runtimeErrors": [],
+  "network": [
+    {
+      "t": 7,
+      "doc": 0,
+      "type": "img",
+      "method": "GET",
+      "url": "http://localhost:8092/favicon.ico",
+      "status": 404,
+      "statusText": null,
+      "ok": false,
+      "redirected": null,
+      "durationMs": 10,
+      "sizeBytes": 9,
+      "requestHeaders": {},
+      "responseHeaders": {},
+      "requestBody": null,
+      "error": null,
+      "initiatorType": "other"
+    },
+    {
+      "t": 528,
+      "doc": 0,
+      "type": "script",
+      "method": "GET",
+      "url": "http://127.0.0.1:8093/console-snapshot.js",
+      "status": null,
+      "statusUnavailable": "cross-origin",
+      "statusText": null,
+      "ok": null,
+      "redirected": null,
+      "durationMs": 3,
+      "sizeBytes": null,
+      "requestHeaders": {},
+      "responseHeaders": {},
+      "requestBody": null,
+      "error": null,
+      "initiatorType": "script"
+    },
+    {
+      "t": 2040,
+      "doc": 0,
+      "type": "script",
+      "method": "GET",
+      "url": "http://127.0.0.1:8093/qa-run.js",
+      "status": null,
+      "statusUnavailable": "cross-origin",
+      "statusText": null,
+      "ok": null,
+      "redirected": null,
+      "durationMs": 2,
+      "sizeBytes": null,
+      "requestHeaders": {},
+      "responseHeaders": {},
+      "requestBody": null,
+      "error": null,
+      "initiatorType": "script"
+    },
+    {
+      "t": 2042,
+      "doc": 0,
+      "type": "fetch",
+      "method": "GET",
+      "url": "http://localhost:8092/status/500?body=json",
+      "status": 500,
+      "statusText": "Internal Server Error",
+      "ok": false,
+      "redirected": false,
+      "durationMs": 1,
+      "sizeBytes": 35,
+      "requestHeaders": {},
+      "responseHeaders": {
+        "cache-control": "no-store",
+        "connection": "keep-alive",
+        "content-type": "application/json; charset=utf-8",
+        "date": "Fri, 23 Oct 2026 14:08:43 GMT",
+        "keep-alive": "timeout=5",
+        "transfer-encoding": "chunked"
+      },
+      "requestBody": null,
+      "error": null,
+      "responseBodyPreview": "{\"error\":\"status 500\",\"status\":500}",
+      "responseBodyTruncated": false
+    },
+    {
+      "t": 3550,
+      "doc": 0,
+      "type": "script",
+      "method": "GET",
+      "url": "http://127.0.0.1:8093/qa-dl.js",
+      "status": null,
+      "statusUnavailable": "cross-origin",
+      "statusText": null,
+      "ok": null,
+      "redirected": null,
+      "durationMs": 1,
+      "sizeBytes": null,
+      "requestHeaders": {},
+      "responseHeaders": {},
+      "requestBody": null,
+      "error": null,
+      "initiatorType": "script"
+    }
+  ],
+  "vitals": [
+    {
+      "doc": 0,
+      "TTFB": {
+        "available": true,
+        "value": 1,
+        "rating": "good",
+        "t": 1,
+        "finalized": true
+      },
+      "FCP": {
+        "available": true,
+        "value": 13,
+        "rating": "good",
+        "t": 13,
+        "finalized": true
+      },
+      "LCP": {
+        "available": true,
+        "value": 13,
+        "rating": "good",
+        "t": 13,
+        "finalized": false,
+        "selector": "html > body > h1"
+      },
+      "CLS": {
+        "available": false,
+        "reason": "unsupported-browser"
+      },
+      "INP": {
+        "available": false,
+        "reason": "no-interaction"
+      },
+      "longTasks": {
+        "available": false,
+        "reason": "unsupported-browser"
+      }
+    }
+  ],
+  "screenshots": [],
+  "consoleLogs": [
+    {
+      "t": 2042,
+      "doc": 0,
+      "level": "log",
+      "args": [
+        "after paste"
+      ],
+      "stack": "@http://127.0.0.1:8093/qa-run.js:1:9"
+    }
+  ],
+  "environment": {
+    "timestamp": "2026-10-23T14:08:44.810Z",
+    "location": {
+      "href": "http://localhost:8092/basic.html",
+      "origin": "http://localhost:8092",
+      "protocol": "http:",
+      "host": "localhost:8092",
+      "hostname": "localhost",
+      "port": "8092",
+      "pathname": "/basic.html",
+      "search": "",
+      "hash": ""
+    },
+    "document": {
+      "title": "PDS fixture: basic",
+      "referrer": "",
+      "readyState": "complete",
+      "visibilityState": "visible",
+      "lastModified": "10/23/2026 16:08:44"
+    },
+    "navigator": {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
+      "language": "pl",
+      "languages": [
+        "pl",
+        "en-US",
+        "en"
+      ],
+      "cookieEnabled": true,
+      "onLine": true,
+      "platform": "Win32",
+      "hardwareConcurrency": 32,
+      "deviceMemory": null
+    },
+    "screen": {
+      "width": 3440,
+      "height": 1440,
+      "availWidth": 3440,
+      "availHeight": 1392,
+      "colorDepth": 24,
+      "pixelDepth": 24
+    },
+    "viewport": {
+      "innerWidth": 1280,
+      "innerHeight": 955,
+      "outerWidth": 1296,
+      "outerHeight": 1048,
+      "devicePixelRatio": 1,
+      "scrollX": 0,
+      "scrollY": 0
+    }
+  },
+  "performance": {
+    "timeOrigin": 1792764521259,
+    "navigation": {
+      "name": "http://localhost:8092/basic.html",
+      "entryType": "navigation",
+      "startTime": 0,
+      "duration": 7,
+      "initiatorType": "navigation",
+      "nextHopProtocol": "http/1.1",
+      "workerStart": 0,
+      "redirectStart": 0,
+      "redirectEnd": 0,
+      "fetchStart": -1,
+      "domainLookupStart": 1,
+      "domainLookupEnd": 1,
+      "connectStart": 1,
+      "secureConnectionStart": 0,
+      "connectEnd": 1,
+      "requestStart": 1,
+      "responseStart": 1,
+      "responseEnd": 1,
+      "domInteractive": 6,
+      "domContentLoadedEventStart": 6,
+      "domContentLoadedEventEnd": 6,
+      "domComplete": 7,
+      "loadEventStart": 7,
+      "loadEventEnd": 7,
+      "transferSize": 1299,
+      "encodedBodySize": 999,
+      "decodedBodySize": 999,
+      "type": "navigate"
+    },
+    "resources": [
+      {
+        "name": "http://localhost:8092/favicon.ico",
+        "entryType": "resource",
+        "initiatorType": "other",
+        "startTime": 7,
+        "duration": 10,
+        "transferSize": 0,
+        "encodedBodySize": 9,
+        "decodedBodySize": 9,
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": null,
+        "responseEnd": 17
+      },
+      {
+        "name": "http://127.0.0.1:8093/console-snapshot.js",
+        "entryType": "resource",
+        "initiatorType": "script",
+        "startTime": 528,
+        "duration": 3,
+        "transferSize": 0,
+        "encodedBodySize": 0,
+        "decodedBodySize": 0,
+        "nextHopProtocol": "",
+        "renderBlockingStatus": null,
+        "responseEnd": 531
+      },
+      {
+        "name": "http://127.0.0.1:8093/qa-run.js",
+        "entryType": "resource",
+        "initiatorType": "script",
+        "startTime": 2040,
+        "duration": 2,
+        "transferSize": 0,
+        "encodedBodySize": 0,
+        "decodedBodySize": 0,
+        "nextHopProtocol": "",
+        "renderBlockingStatus": null,
+        "responseEnd": 2042
+      },
+      {
+        "name": "http://localhost:8092/status/500?body=json",
+        "entryType": "resource",
+        "initiatorType": "fetch",
+        "startTime": 2042,
+        "duration": 1,
+        "transferSize": 335,
+        "encodedBodySize": 35,
+        "decodedBodySize": 35,
+        "nextHopProtocol": "http/1.1",
+        "renderBlockingStatus": null,
+        "responseEnd": 2043
+      },
+      {
+        "name": "http://127.0.0.1:8093/qa-dl.js",
+        "entryType": "resource",
+        "initiatorType": "script",
+        "startTime": 3550,
+        "duration": 1,
+        "transferSize": 0,
+        "encodedBodySize": 0,
+        "decodedBodySize": 0,
+        "nextHopProtocol": "",
+        "renderBlockingStatus": null,
+        "responseEnd": 3551
+      }
+    ]
+  },
+  "storage": {
+    "cookies": "",
+    "localStorage": {},
+    "sessionStorage": {}
+  },
+  "dom": {
+    "counts": {
+      "totalElements": 12,
+      "scripts": 4,
+      "stylesheets": 0,
+      "images": 0,
+      "links": 0,
+      "iframes": 0,
+      "forms": 0
+    },
+    "html": {
+      "doctype": {
+        "name": "html",
+        "publicId": "",
+        "systemId": ""
+      },
+      "lang": "pl",
+      "charset": "UTF-8",
+      "compatMode": "CSS1Compat",
+      "outerHTML": "<html lang=\"pl\" data-t=\"object:version,start,stop,download,snapshot\"><head>\n  <meta charset=\"utf-8\">\n  <title>PDS fixture: basic</title>\n  <script>\n    // AC-2.3: record every node added to the DOM after load, so e2e can check that the\n    // extension injects no <script src=\"chrome-extension://...\"> and leaves nothing behind.\n    window.__added = [];\n    new MutationObserver((records) => {\n      for (const record of records) {\n        for (const node of record.addedNodes) {\n          window.__added.push({\n            nodeName: node.nodeName,\n            src: node.nodeType === 1 ? node.getAttribute('src') : null,\n            id: node.nodeType === 1 ? node.id : null,\n          });\n        }\n      }\n    }).observe(document.documentElement, { childList: true, subtree: true });\n    console.log('basic fixture loaded');\n  </script>\n</head>\n<body>\n  <h1>Strona testowa</h1>\n  <p id=\"content\">Syntetyczna treść do testów rozszerzenia Page Debug Snapshot.</p>\n  <button id=\"action\" type=\"button\">Kliknij</button>\n\n\n</body><script src=\"http://127.0.0.1:8093/console-snapshot.js\"></script><script src=\"http://127.0.0.1:8093/qa-run.js\"></script><script src=\"http://127.0.0.1:8093/qa-dl.js\"></script></html>"
+    },
+    "meta": [
+      {
+        "tagName": "META",
+        "id": null,
+        "className": null,
+        "name": null,
+        "type": null,
+        "src": null,
+        "href": null,
+        "text": "",
+        "attributes": {
+          "charset": "utf-8"
+        }
+      }
+    ],
+    "canonical": null,
+    "hreflangs": [],
+    "scripts": [
+      {
+        "src": null,
+        "type": null,
+        "async": false,
+        "defer": false,
+        "textLength": 681,
+        "id": null,
+        "attributes": {}
+      },
+      {
+        "src": "http://127.0.0.1:8093/console-snapshot.js",
+        "type": null,
+        "async": true,
+        "defer": false,
+        "textLength": 0,
+        "id": null,
+        "attributes": {
+          "src": "http://127.0.0.1:8093/console-snapshot.js"
+        }
+      },
+      {
+        "src": "http://127.0.0.1:8093/qa-run.js",
+        "type": null,
+        "async": true,
+        "defer": false,
+        "textLength": 0,
+        "id": null,
+        "attributes": {
+          "src": "http://127.0.0.1:8093/qa-run.js"
+        }
+      },
+      {
+        "src": "http://127.0.0.1:8093/qa-dl.js",
+        "type": null,
+        "async": true,
+        "defer": false,
+        "textLength": 0,
+        "id": null,
+        "attributes": {
+          "src": "http://127.0.0.1:8093/qa-dl.js"
+        }
+      }
+    ],
+    "stylesheets": [],
+    "images": [],
+    "iframes": [],
+    "forms": [],
+    "rootMarkers": {
+      "bodyClassName": null,
+      "htmlClassName": null,
+      "dataAttributesOnHtml": {
+        "lang": "pl",
+        "data-t": "object:version,start,stop,download,snapshot"
+      },
+      "dataAttributesOnBody": {}
+    }
+  },
+  "attachments": {}
+}

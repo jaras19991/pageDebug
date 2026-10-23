@@ -166,7 +166,7 @@ test('badge is set on recording tab only', async () => {
   });
 });
 
-test('save: Zapisano names the file that exists in download dir; file is JSON schemaVersion 2 with header fields', async () => {
+test('save: Zapisano names the file that exists in download dir; file is JSON schemaVersion 3 with header fields', async () => {
   await withPage(async (page) => {
     const downloads = await countDownloads(ext);
     const { fileName, json, statusText } = await recordEarlyError(page);
@@ -175,7 +175,7 @@ test('save: Zapisano names the file that exists in download dir; file is JSON sc
     expect(await downloads.names()).toEqual([fileName]);
     expect(await readdir(ext.downloadDir)).toContain(fileName);
 
-    expect(json.schemaVersion).toBe(2);
+    expect(json.schemaVersion).toBe(3);
     expect(json.source).toBe('extension');
     expect(json.documents).toHaveLength(1);
     expect(json.recordingStoppedReason).toBeNull();
@@ -184,7 +184,7 @@ test('save: Zapisano names the file that exists in download dir; file is JSON sc
     expect(Date.parse(json.recordingStartedAt)).toBeLessThanOrEqual(Date.parse(json.collectedAt));
     expect(typeof json.timeOrigin).toBe('number');
     expect(json.documents[0].timeOrigin).toBe(json.timeOrigin);
-    expect(json.truncated).toEqual({ consoleLogs: false, runtimeErrors: false, network: false });
+    expect(json.truncated).toEqual({ consoleLogs: false, runtimeErrors: false, network: false, steps: false, responseBodies: false }); // v3 adds steps and responseBodies
 
     for (const key of ['consoleLogs', 'runtimeErrors', 'network']) {
       const ts = json[key].map((r) => r.t);

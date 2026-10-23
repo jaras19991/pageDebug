@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 3,
+  "extensionVersion": "0.3.0",
+  "source": "extension",
+  "collectedAt": "2026-10-23T14:07:38.710Z",
+  "recordingStartedAt": "2026-10-23T14:07:36.941Z",
+  "recordingStoppedReason": null,
+  "timeOrigin": 1792764456945,
+  "overview": {
+    "runtimeErrors": 0,
+    "consoleErrors": 0,
+    "failedRequests": 1,
+    "steps": 1,
+    "poorVitals": 0,
+    "screenshot": false
+  },
+  "limits": {
+    "consoleLogs": 5000,
+    "runtimeErrors": 1000,
+    "network": 5000,
+    "steps": 2000,
+    "entryChars": 40000,
+    "stackChars": 16000,
+    "responseBodyChars": 4096,
+    "responseBodyTotalChars": 262144,
+    "screenshotBytes": 307200,
+    "longTasks": 20
+  },
+  "truncated": {
+    "consoleLogs": false,
+    "runtimeErrors": false,
+    "network": false,
+    "steps": false,
+    "responseBodies": false
+  },
+  "documents": [
+    {
+      "id": 0,
+      "url": "http://127.0.0.1:8092/basic.html",
+      "timeOrigin": 1792764456945,
+      "navigationType": "reload",
+      "status": 200,
+      "recorded": true,
+      "flushed": true,
+      "current": false,
+      "counts": {
+        "consoleLogs": 2,
+        "runtimeErrors": 0,
+        "network": 1,
+        "steps": 1
+      },
+      "kept": {
+        "consoleLogs": 2,
+        "runtimeErrors": 0,
+        "network": 1,
+        "steps": 1
+      }
+    }
+  ],
+  "notes": [
+    "Recording started at 2026-10-23T14:07:36.941Z (page reloaded); earlier data is not included.",
+    "The current page was not available (it left the recorded origin or did not answer); environment, dom, performance and storage are null.",
+    "No screenshot: the tab showed a page outside the recorded site."
+  ],
+  "steps": [
+    {
+      "t": 9,
+      "doc": 0,
+      "type": "navigate",
+      "url": "http://127.0.0.1:8092/basic.html",
+      "via": "reload"
+    }
+  ],
+  "runtimeErrors": [],
+  "network": [
+    {
+      "t": 11,
+      "doc": 0,
+      "type": "img",
+      "method": "GET",
+      "url": "http://127.0.0.1:8092/favicon.ico",
+      "status": 404,
+      "statusText": null,
+      "ok": false,
+      "redirected": null,
+      "durationMs": 2,
+      "sizeBytes": 9,
+      "requestHeaders": {},
+      "responseHeaders": {},
+      "requestBody": null,
+      "error": null,
+      "initiatorType": "other"
+    }
+  ],
+  "vitals": [
+    {
+      "doc": 0,
+      "TTFB": {
+        "available": true,
+        "value": 3,
+        "rating": "good",
+        "t": 3,
+        "finalized": true
+      },
+      "FCP": {
+        "available": true,
+        "value": 14,
+        "rating": "good",
+        "t": 14,
+        "finalized": true
+      },
+      "LCP": {
+        "available": true,
+        "value": 14,
+        "rating": "good",
+        "t": 14,
+        "finalized": true,
+        "selector": "html > body > h1"
+      },
+      "CLS": {
+        "available": false,
+        "reason": "unsupported-browser"
+      },
+      "INP": {
+        "available": false,
+        "reason": "no-interaction"
+      },
+      "longTasks": {
+        "available": false,
+        "reason": "unsupported-browser"
+      }
+    }
+  ],
+  "screenshots": [],
+  "consoleLogs": [
+    {
+      "t": 9,
+      "doc": 0,
+      "level": "log",
+      "args": [
+        "basic fixture loaded"
+      ],
+      "stack": "@http://127.0.0.1:8092/basic.html:21:13"
+    },
+    {
+      "t": 1135,
+      "doc": 0,
+      "level": "log",
+      "args": [
+        "before-leaving"
+      ],
+      "stack": "@http://127.0.0.1:8092/basic.html:2:15\n@http://127.0.0.1:8092/basic.html:3:8"
+    }
+  ],
+  "environment": null,
+  "performance": null,
+  "storage": null,
+  "dom": null,
+  "attachments": {}
+}

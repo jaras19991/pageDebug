@@ -287,6 +287,33 @@ describe('installVitals', () => {
     expect(snap.TTFB.available).toBe(true);
   });
 
+  it('prerendered page (hidden while prerendering) is not hidden-at-start (web-vitals)', () => {
+    fake = createFakePerformance({});
+    visibility = 'hidden';
+    const intrinsics = { ...captureSelectorIntrinsics(window), getVisibilityState: () => visibility, getPrerendering: () => true };
+    vitals = installVitals({ win: fake.win, doc: document, now: () => 5000, selectorOf: () => null, intrinsics });
+    fake.emit('paint', [{ name: 'first-contentful-paint', startTime: 400 }]);
+    fake.emit('largest-contentful-paint', [{ startTime: 1000, element: null, url: '' }]);
+    const snap = vitals.snapshot();
+    expect(snap.FCP.available).toBe(true);
+    expect(snap.LCP.available).toBe(true);
+  });
+
+  it('prerendering getter is captured from Document.prototype (feature detection; absent → not prerendering)', async () => {
+    const { captureVitalsIntrinsics } = await import('../../src/page/vitals.js');
+    const proto = window.Document.prototype;
+    const had = Object.getOwnPropertyDescriptor(proto, 'prerendering');
+    expect(captureVitalsIntrinsics(window).getPrerendering).toBe(had ? had.get : undefined);
+    const get = () => true;
+    Object.defineProperty(proto, 'prerendering', { get, configurable: true });
+    try {
+      expect(captureVitalsIntrinsics(window).getPrerendering).toBe(get);
+    } finally {
+      if (had) Object.defineProperty(proto, 'prerendering', had);
+      else delete proto.prerendering;
+    }
+  });
+
   it('LCP/FCP entries after the page was hidden are ignored; none before → no-data', () => {
     install();
     clock = 300;

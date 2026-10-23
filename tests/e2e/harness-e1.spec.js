@@ -19,7 +19,7 @@ test.afterAll(async () => {
   await server?.close();
 });
 
-test('harness: record basic fixture, log a marker and save a v2 package', async () => {
+test('harness: record basic fixture, log a marker and save a v3 package', async () => {
   const page = await ext.context.newPage();
   try {
     await page.goto(`${server.url}/basic.html`);
@@ -29,7 +29,7 @@ test('harness: record basic fixture, log a marker and save a v2 package', async 
 
     const { fileName, json } = await saveRecording(page);
     expect(fileName).toMatch(/^page-debug-snapshot-\d+\.json$/);
-    expect(json.schemaVersion).toBe(2);
+    expect(json.schemaVersion).toBe(3);
     expect(json.documents.length).toBeGreaterThanOrEqual(1);
     expect(JSON.stringify(json.consoleLogs)).toContain(marker);
   } finally {

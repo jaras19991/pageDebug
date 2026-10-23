@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: web-vitals oracle</title>
+  <style>
+    body { margin: 0; font: 16px Arial, sans-serif; }
+    .block { height: 100px; margin: 0; padding: 8px; background: #def; border-bottom: 2px solid #89c; }
+    #banner { height: 200px; background: #fc0; }
+    #hero { display: block; }
+  </style>
+  <script type="module">
+    // E2-TEST2 oracle (design D7): the reference web-vitals library measures LCP, CLS and INP on the same page and the
+    // same run as the extension. Values land in window.__wv (reportAllChanges: every change, the last one counts).
+    import { onLCP, onCLS, onINP } from '/vendor/web-vitals.js';
+    window.__wv = {};
+    const keep = (name) => (metric) => { window.__wv[name] = metric.value; };
+    onLCP(keep('LCP'), { reportAllChanges: true });
+    onCLS(keep('CLS'), { reportAllChanges: true });
+    onINP(keep('INP'), { reportAllChanges: true });
+  </script>
+</head>
+<body>
+  <div id="b1" class="block">Blok pierwszy</div>
+  <div id="b2" class="block">Blok drugi</div>
+  <button id="slow" type="button">Wolny przycisk</button>
+  <img id="hero" src="/img/hero.png?delay=1200" width="800" height="450" alt="hero">
+  <p id="result">brak</p>
+  <script>
+    document.getElementById('slow').addEventListener('click', () => {
+      const end = performance.now() + 300;
+      while (performance.now() < end) { /* busy */ }
+      document.getElementById('result').textContent = 'gotowe';
+    });
+    window.__bannerShown = new Promise((resolve) => {
+      setTimeout(() => {
+        const banner = document.createElement('div');
+        banner.id = 'banner';
+        banner.textContent = 'Baner';
+        document.body.insertBefore(banner, document.getElementById('b1'));
+        requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 100)));
+      }, 400);
+    });
+  </script>
+</body>
+</html>

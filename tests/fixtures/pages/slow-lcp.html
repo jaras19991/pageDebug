@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: slow LCP</title>
+  <style>body { margin: 0; font: 16px Arial, sans-serif; } #hero { display: block; } #banner { height: 120px; background: #fc0; }</style>
+</head>
+<body>
+  <!-- E2 AC-5.1/5.2: the hero arrives after 1500 ms (LCP element), a banner shifts the text 500 ms in (CLS). -->
+  <h1 id="title">Strona testowa: wolny LCP</h1>
+  <p id="lead">Akapit nad obrazem, który przesunie się po pojawieniu baneru.</p>
+  <!-- Displayed at 640x360: Chrome ignores low-entropy images (< 0.05 bits per pixel) as LCP candidates and hero.png is 1.7 KB. -->
+  <img id="hero" src="/img/hero.png?delay=1500" width="640" height="360" alt="hero">
+  <p id="below">Tekst pod obrazem.</p>
+  <script>
+    setTimeout(() => {
+      const banner = document.createElement('div');
+      banner.id = 'banner';
+      banner.textContent = 'Baner';
+      document.body.insertBefore(banner, document.getElementById('title'));
+    }, 500);
+  </script>
+</body>
+</html>

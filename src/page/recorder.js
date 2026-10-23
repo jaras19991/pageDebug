@@ -117,6 +117,8 @@ export function createRecorder({ win, options = {} }) {
   let stopping = false;
   let bodyChars = 0;
   let bodiesTruncated = false;
+  // Entries holding a preview, oldest first ({ entry, size }); over the budget the oldest lose it (D3).
+  let bodyEntries = [];
   let resources = null;
   let vitals = null;
   // Network items with sizes and load errors merged, fixed at stop (the resource rings go with the hooks).
@@ -157,8 +159,11 @@ export function createRecorder({ win, options = {} }) {
     }
   }
 
-  // Response body preview of a recorded network entry (hooks-network `ctx.attach`). Over the per-document
-  // budget the field is left out and `truncated.responseBodies` is set (D3).
+  // hooks-network `ctx.canAttach`: false → the body is neither cloned nor read.
+  const canAttach = () => state === 'recording' && limits.responseBodyTotalChars > 0;
+
+  // Response body preview of a recorded network entry (hooks-network `ctx.attach`). The per-document budget
+  // keeps the newest previews: the oldest entries lose the fields and `truncated.responseBodies` is set (D3).
   function attach(entry, fields, chars) {
     try {
       if (state !== 'recording' || !entry || typeof entry !== 'object' || !fields || typeof fields !== 'object') return;
@@ -166,11 +171,20 @@ export function createRecorder({ win, options = {} }) {
       if (typeof preview !== 'string') return;
       const capped = preview.length > limits.responseBodyChars ? preview.slice(0, limits.responseBodyChars) : preview;
       const size = Math.max(capped.length, Math.min(recorderFinite(chars) ?? 0, limits.responseBodyChars));
-      if (bodyChars + size > limits.responseBodyTotalChars) {
+      if (size > limits.responseBodyTotalChars) {
         bodiesTruncated = true;
         return;
       }
+      // With `limits.network` newer entries the oldest has left the network ring anyway: forget it silently.
+      while (bodyEntries.length >= limits.network) bodyChars -= bodyEntries.shift().size;
+      while (bodyEntries.length && bodyChars + size > limits.responseBodyTotalChars) {
+        const oldest = bodyEntries.shift();
+        bodyChars -= oldest.size;
+        for (const key of RECORDER_ATTACH_FIELDS) delete oldest.entry[key];
+        bodiesTruncated = true;
+      }
       bodyChars += size;
+      bodyEntries.push({ entry, size });
       for (const key of RECORDER_ATTACH_FIELDS) {
         if (key === 'responseBodyPreview') entry[key] = capped;
         else if (typeof fields[key] === 'boolean') entry[key] = fields[key] || capped !== preview;
@@ -201,6 +215,7 @@ export function createRecorder({ win, options = {} }) {
     }
     bodyChars = 0;
     bodiesTruncated = false;
+    bodyEntries = [];
     frozenNetwork = null;
   }
 
@@ -264,8 +279,8 @@ export function createRecorder({ win, options = {} }) {
     const installers = [
       () => installConsoleHook({ ...ctx, levels: CONSOLE_LEVELS }),
       () => installErrorHooks(ctx),
-      () => installFetchHook({ ...ctx, enabled, attach }),
-      () => installXhrHook({ ...ctx, enabled, attach }),
+      () => installFetchHook({ ...ctx, enabled, attach, canAttach }),
+      () => installXhrHook({ ...ctx, enabled, attach, canAttach }),
       () => installStepsHook({ ...ctx, doc, selectorOf }),
       () => {
         resources = installResourceHooks({ ...ctx, doc, enabled });
@@ -293,14 +308,15 @@ export function createRecorder({ win, options = {} }) {
   }
 
   function setConfig(config) {
-    if (state !== 'recording') return;
-    cancel(configTimer);
-    configTimer = null;
     const cfg = config && typeof config === 'object' ? config : {};
-    if (cfg.record === false) {
+    // Stopped before the config came (popup stop, time limit): a "not recorded" config still clears everything.
+    if (cfg.record === false && (state === 'recording' || state === 'stopped')) {
       destroy();
       return;
     }
+    if (state !== 'recording') return;
+    cancel(configTimer);
+    configTimer = null;
     if (cfg.docId !== undefined) docId = cfg.docId;
     deadline = recorderFinite(cfg.deadline);
     cancel(limitTimer);

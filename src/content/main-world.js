@@ -517,8 +517,10 @@ function makeTools(ctx) {
     ctx.attach(entry, fields, fields.responseBodyPreview.length);
   };
 
+  // `ctx.canAttach()` false (no budget left for previews, recorder not recording): no clone, no read.
+  const canAttach = () => typeof ctx.canAttach !== 'function' || safe(() => ctx.canAttach() !== false, false);
   const wantsBody = (status, headers) => typeof ctx.attach === 'function' && typeof status === 'number'
-    && status >= 400 && isTextual(contentTypeOf(headers));
+    && status >= 400 && isTextual(contentTypeOf(headers)) && canAttach();
 
   return {
     I, win, safe, isOn, now, emit, json, resolveUrl, headersToObject, bodyPreview, later, cancelLater, then,
@@ -1224,12 +1226,16 @@ return Object.freeze({ SELECTOR_MAX_CHARS: SELECTOR_MAX_CHARS, SELECTOR_DATA_MAX
 
 // module: page/hooks-steps.js
 const __pds_m7 = (function () {
+const { maskSecrets } = __pds_m2;
 // User steps recorder for the MAIN-world recorder (design D4, E2-T5b, AC-3.1, AC-3.3–3.5, AC-3.7).
 // Capture-phase, passive listeners on window (added at document_start, so they run before page handlers and
 // never change propagation or defaultPrevented); a Proxy `apply` on History.prototype.pushState/replaceState.
 // Privacy at the source: no field value is ever read into a record — only `inputType`, `valueLength`, `checked`,
 // a whitelisted `key` and a short label of clicked buttons/links. Only trusted events are recorded.
+// Navigate URLs are masked (maskSecrets) before they reach a record; consecutive replaceState calls with no
+// other step in between are one step (search-as-you-type, AC-3.3).
 // Top-level helpers carry the `steps` prefix (D6: all page modules end up in one IIFE).
+
 
 const STEP_TEXT_MAX_CHARS = 80;
 const STEP_URL_MAX_CHARS = 4000;
@@ -1314,13 +1320,16 @@ function installStepsHook({ win, doc: _doc, now, record, selectorOf, intrinsics 
   // Last recorded `input` step and its element (AC-3.3); any other step ends the coalescing.
   let lastInput = null;
   let lastNavigate = null;
+  // Last recorded entry of any type: a replaceState right after a replaceState step updates that step.
+  let lastEntry = null;
 
   const is = (value, Ctor) => !!Ctor && value instanceof Ctor;
   const attr = (el, name) => call(I.getAttribute, el, name);
   const tagOf = (el) => String(read(I.getTagName, el, 'tagName')).toLowerCase();
 
-  function emit(entry) {
-    lastInput = null;
+  function emit(entry, { keepInput = false } = {}) {
+    if (!keepInput) lastInput = null;
+    lastEntry = entry;
     record('steps', entry);
   }
 
@@ -1356,11 +1365,13 @@ function installStepsHook({ win, doc: _doc, now, record, selectorOf, intrinsics 
     return flag === '' || flag === 'true' || flag === 'plaintext-only' ? host : null;
   }
 
-  // { el, inputType, valueLength? } of an input target; never the value itself.
+  // { el, inputType, valueLength? } of an input target (null for none/checkbox/radio); never the value itself.
   function fieldOf(target) {
     if (is(target, I.HTMLInputElement)) {
       const inputType = String(read(I.getInputType, target, 'type'));
       if (inputType === 'password') return { el: target, inputType };
+      // Checkbox/radio: `value` is a fixed token ("on"), its length means nothing; the change step carries `checked` (QA F-5).
+      if (inputType === 'checkbox' || inputType === 'radio') return null;
       return { el: target, inputType, valueLength: String(read(I.getInputValue, target, 'value')).length };
     }
     if (is(target, I.HTMLTextAreaElement)) {
@@ -1437,11 +1448,18 @@ function installStepsHook({ win, doc: _doc, now, record, selectorOf, intrinsics 
   }
 
   function navigate(via, t) {
-    let url = String(win.location.href);
+    let url = maskSecrets(String(win.location.href).slice(0, STEP_URL_MAX_CHARS)).text;
     if (url.length > STEP_URL_MAX_CHARS) url = url.slice(0, STEP_URL_MAX_CHARS);
     if (lastNavigate && lastNavigate.url === url && t - lastNavigate.t <= STEPS_NAVIGATE_DEDUP_MS) return;
     lastNavigate = { url, t };
-    emit({ t, type: 'navigate', url, via });
+    const replace = via === 'replaceState';
+    if (replace && lastEntry && lastEntry.type === 'navigate' && lastEntry.via === 'replaceState') {
+      lastEntry.url = url;
+      lastEntry.t = t;
+      return;
+    }
+    // replaceState keeps the input coalescing: typing that rewrites `?q=` stays one input step.
+    emit({ t, type: 'navigate', url, via }, { keepInput: replace });
   }
 
   const handlers = {
@@ -1513,6 +1531,7 @@ function installStepsHook({ win, doc: _doc, now, record, selectorOf, intrinsics 
     } finally {
       stepsActive.delete(win);
       lastInput = null;
+      lastEntry = null;
     }
   };
 }
@@ -2313,6 +2332,8 @@ function captureVitalsIntrinsics(win) {
     performance: perf,
     getEntriesByType: vitalsObsTry(() => perf.getEntriesByType, undefined),
     getVisibilityState: vitalsObsGetter(win.Document, 'visibilityState'),
+    // Speculation Rules prerender: the document is 'hidden' until activation (absent where unsupported).
+    getPrerendering: vitalsObsGetter(win.Document, 'prerendering'),
   };
 }
 
@@ -2332,9 +2353,11 @@ function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, opt
     return typeof sel === 'string' ? sel : null;
   };
   const visibility = () => vitalsObsTry(() => (I.getVisibilityState ? call(I.getVisibilityState, doc) : doc.visibilityState), 'visible');
+  const prerendering = () => vitalsObsTry(() => (I.getPrerendering ? call(I.getPrerendering, doc) : doc.prerendering) === true, false);
 
   let active = true;
-  let firstHidden = visibility() === 'hidden' ? 0 : Infinity;
+  // As web-vitals: a prerendered page is hidden until activation, which is not "hidden at start".
+  let firstHidden = visibility() === 'hidden' && !prerendering() ? 0 : Infinity;
   let fcp = null;
   let lcp = null;
   let shifts = [];
@@ -2551,7 +2574,7 @@ const __pds_m13 = (function () {
 // Shared constants of the page recorder (E1 D5/D6). RECORDER_VERSION must equal `version` in
 // src/manifest.base.json (guarded by tests/unit/recorder.test.js), so a release has to run `npm run gen`.
 
-const RECORDER_VERSION = '0.3.0';
+const RECORDER_VERSION = '0.4.0';
 
 // Version of the MAIN <-> ISOLATED message protocol; 2 = `collect` result with steps, vitals, documentStatus
 // (E2 D8). Mirrored by RESULT_PROTOCOL in src/lib/save.js.
@@ -2704,6 +2727,8 @@ function createRecorder({ win, options = {} }) {
   let stopping = false;
   let bodyChars = 0;
   let bodiesTruncated = false;
+  // Entries holding a preview, oldest first ({ entry, size }); over the budget the oldest lose it (D3).
+  let bodyEntries = [];
   let resources = null;
   let vitals = null;
   // Network items with sizes and load errors merged, fixed at stop (the resource rings go with the hooks).
@@ -2744,8 +2769,11 @@ function createRecorder({ win, options = {} }) {
     }
   }
 
-  // Response body preview of a recorded network entry (hooks-network `ctx.attach`). Over the per-document
-  // budget the field is left out and `truncated.responseBodies` is set (D3).
+  // hooks-network `ctx.canAttach`: false → the body is neither cloned nor read.
+  const canAttach = () => state === 'recording' && limits.responseBodyTotalChars > 0;
+
+  // Response body preview of a recorded network entry (hooks-network `ctx.attach`). The per-document budget
+  // keeps the newest previews: the oldest entries lose the fields and `truncated.responseBodies` is set (D3).
   function attach(entry, fields, chars) {
     try {
       if (state !== 'recording' || !entry || typeof entry !== 'object' || !fields || typeof fields !== 'object') return;
@@ -2753,11 +2781,20 @@ function createRecorder({ win, options = {} }) {
       if (typeof preview !== 'string') return;
       const capped = preview.length > limits.responseBodyChars ? preview.slice(0, limits.responseBodyChars) : preview;
       const size = Math.max(capped.length, Math.min(recorderFinite(chars) ?? 0, limits.responseBodyChars));
-      if (bodyChars + size > limits.responseBodyTotalChars) {
+      if (size > limits.responseBodyTotalChars) {
         bodiesTruncated = true;
         return;
       }
+      // With `limits.network` newer entries the oldest has left the network ring anyway: forget it silently.
+      while (bodyEntries.length >= limits.network) bodyChars -= bodyEntries.shift().size;
+      while (bodyEntries.length && bodyChars + size > limits.responseBodyTotalChars) {
+        const oldest = bodyEntries.shift();
+        bodyChars -= oldest.size;
+        for (const key of RECORDER_ATTACH_FIELDS) delete oldest.entry[key];
+        bodiesTruncated = true;
+      }
       bodyChars += size;
+      bodyEntries.push({ entry, size });
       for (const key of RECORDER_ATTACH_FIELDS) {
         if (key === 'responseBodyPreview') entry[key] = capped;
         else if (typeof fields[key] === 'boolean') entry[key] = fields[key] || capped !== preview;
@@ -2788,6 +2825,7 @@ function createRecorder({ win, options = {} }) {
     }
     bodyChars = 0;
     bodiesTruncated = false;
+    bodyEntries = [];
     frozenNetwork = null;
   }
 
@@ -2851,8 +2889,8 @@ function createRecorder({ win, options = {} }) {
     const installers = [
       () => installConsoleHook({ ...ctx, levels: CONSOLE_LEVELS }),
       () => installErrorHooks(ctx),
-      () => installFetchHook({ ...ctx, enabled, attach }),
-      () => installXhrHook({ ...ctx, enabled, attach }),
+      () => installFetchHook({ ...ctx, enabled, attach, canAttach }),
+      () => installXhrHook({ ...ctx, enabled, attach, canAttach }),
       () => installStepsHook({ ...ctx, doc, selectorOf }),
       () => {
         resources = installResourceHooks({ ...ctx, doc, enabled });
@@ -2880,14 +2918,15 @@ function createRecorder({ win, options = {} }) {
   }
 
   function setConfig(config) {
-    if (state !== 'recording') return;
-    cancel(configTimer);
-    configTimer = null;
     const cfg = config && typeof config === 'object' ? config : {};
-    if (cfg.record === false) {
+    // Stopped before the config came (popup stop, time limit): a "not recorded" config still clears everything.
+    if (cfg.record === false && (state === 'recording' || state === 'stopped')) {
       destroy();
       return;
     }
+    if (state !== 'recording') return;
+    cancel(configTimer);
+    configTimer = null;
     if (cfg.docId !== undefined) docId = cfg.docId;
     deadline = recorderFinite(cfg.deadline);
     cancel(limitTimer);

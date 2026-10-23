@@ -1,8 +1,8 @@
 # Page Debug Snapshot
 
 Rozszerzenie przeglądarkowe (MV3, Chrome i Firefox z jednej bazy kodu). Zgłaszający klika „Nagrywaj”, strona odświeża się,
-a rozszerzenie od początku jej ładowania zapisuje konsolę, błędy i zapytania sieciowe oraz (przy zapisie) stan strony:
-środowisko, DOM, wydajność, storage. Po „Zapisz paczkę” powstaje jeden plik `.json` w pobranych, który zgłaszający przekazuje
+a rozszerzenie od początku jej ładowania zapisuje konsolę, błędy, zapytania sieciowe i zasoby strony, kroki zgłaszającego
+oraz metryki wydajności, a przy zapisie także stan strony (środowisko, DOM, storage) i zrzut widocznej części karty. Po „Zapisz paczkę” powstaje jeden plik `.json` w pobranych, który zgłaszający przekazuje
 developerowi; rozszerzenie niczego nie wysyła do sieci.
 Instrukcja dla osoby zgłaszającej: [docs/INSTRUKCJA-ZGLASZAJACEGO.md](docs/INSTRUKCJA-ZGLASZAJACEGO.md).
 
@@ -82,12 +82,38 @@ Przepływ:
 3. Po przeładowaniu most i recorder łączą się prywatnym kanałem, a recorder pyta tło (`hello`) o konfigurację: czy nagrywać, `docId`
    i termin (limit 10 min). Od tej chwili hooki zbierają wpisy w buforach pierścieniowych. Przy opuszczaniu strony (`pagehide`)
    bufor trafia do tła (`flush`), więc dane przeżywają przeładowania i nawigacje w obrębie witryny.
-4. **Zapisz paczkę** — popup wysyła `collect`; tło prosi bieżący dokument o zrzut (limit 15 s), dołącza dane wcześniejszych dokumentów
-   i składa paczkę (`assemblePackage`, schemat v2). Popup robi `Blob` i woła `downloads.download`, a potem `saveStarted` z `downloadId`.
+4. **Zapisz paczkę** — popup wysyła `collect`; tło robi zrzut karty (`captureVisibleTab`, limit 3 s; tylko gdy karta jest aktywna i na origin nagrania), prosi bieżący dokument o resztę danych (limit 15 s), dołącza dane wcześniejszych dokumentów
+   i składa paczkę (`assemblePackage`, schemat v3). Popup robi `Blob` i woła `downloads.download`, a potem `saveStarted` z `downloadId`.
 5. Tło śledzi `downloads.onChanged`. Dopiero `complete` daje komunikat „Zapisano plik …”; wtedy tło wyrejestrowuje skrypty,
    zdejmuje hooki i czyści `storage.session`. Przerwane lub nieudane pobranie zostawia nagrywanie włączone.
 
 Limit nagrywania to 10 minut (auto-stop; zapis nadal możliwy). Uzasadnienia decyzji: `docs/epics/E1/design.md`.
+
+## Co trafia do paczki (schemat v3)
+
+Pełny opis pól: [docs/snapshot-schema.md](docs/snapshot-schema.md). Plik czyta się od góry: `overview` (same liczby: błędy,
+nieudane zapytania, kroki, metryki `poor`, czy jest zrzut) → `notes` → `steps` → `runtimeErrors` → `network` → `vitals` →
+`screenshots` → `consoleLogs` → sekcje strony → `attachments` (obraz w base64, zawsze na końcu).
+
+| Dane | Gdzie | Co zawiera |
+|---|---|---|
+| Kroki zgłaszającego | `steps[]` | klik (selektor CSS, etykieta ≤ 80 znaków), `input`/`change` (typ pola i **długość**, nigdy wartość; bez długości dla `password`, checkboxów i radio), `submit`, `key` (tylko Enter/Escape/Tab/strzałki), `navigate` (adres z zamaskowanymi tokenami; kolejne `replaceState` scalane) |
+| Metryki wydajności | `vitals[]` (jeden wpis na dokument) | TTFB, FCP, LCP, CLS, INP z oceną `good`/`needs-improvement`/`poor` i atrybucją (LCP: selektor i `url`; CLS: do 5 źródeł; INP: cel, typ zdarzenia, fazy), do 20 najdłuższych long tasks ze skryptem. Niedostępna metryka to `{available:false, reason}`, nigdy `0` |
+| Zasoby i statusy | `network[]` | oprócz `fetch`/XHR także `img`/`script`/`css`/`font`/`other` z `status`, `sizeBytes`; status dokumentu w `documents[].status`. Brak statusu zawsze ma `statusUnavailable` |
+| Podglądy odpowiedzi z błędem | `network[].responseBodyPreview` | tylko `fetch`/XHR ze statusem ≥ 400 i treścią tekstową, ≤ 4096 znaków na wpis, ≤ 256 KB łącznie (zostają najnowsze); tokeny zamaskowane (`[redacted:…]`) |
+| Zrzut ekranu | `screenshots[]` + `attachments` | jeden JPEG widocznej części karty (≤ 300 KB) przy *Zapisz paczkę*, tylko gdy karta jest widoczna i pokazuje nagrywaną witrynę; bez zrzutu: `screenshots: []` + notatka |
+| iframe'y | `runtimeErrors[].frame`, `consoleLogs[].frame` | tylko błędy z ramek tego samego originu (do 20 naraz, zagnieżdżenie do 2); kroki, sieć i metryki tylko z dokumentu głównego |
+| Stosy błędów | `stack`, `args` | do 16 000 znaków, `Error.cause` do 5 poziomów |
+
+### Chrome i Firefox
+
+- **Firefox 158** (jedyna sprawdzona wersja): nie ma `layout-shift` ani long animation frames, więc `CLS` i `longTasks` to
+  `available:false`, `reason:"unsupported-browser"`; `INP`, `TTFB`, `FCP`, `LCP` i `responseStatus` zasobów działają jak w Chrome.
+  Dostępność metryk ustala wykrywanie funkcji, nie User-Agent.
+- **Zrzut w Firefoksie:** `activeTab` jest tam cofany przy każdym przeładowaniu karty. Jeśli strona przeładuje się po otwarciu popupu,
+  zapis nie zrobi zrzutu (`screenshots: []` + notatka); zamknij popup, otwórz go ponownie i zapisz. Chrome cofa `activeTab` dopiero
+  przy zmianie originu.
+- Fallback konsolowy (`console-snapshot.js`) ma te same klucze, ale bez zrzutu, a `INP` obejmuje tylko interakcje po wklejeniu skryptu.
 
 ## Struktura repo
 
@@ -95,7 +121,7 @@ Limit nagrywania to 10 minut (auto-stop; zapis nadal możliwy). Uzasadnienia dec
 src/
   manifest.base.json, manifest.chrome.json, manifest.firefox.json   wspólna baza + różnice targetów
   background.js    tło: router wiadomości, top-level listenery, bez stanu w pamięci
-  lib/             logika tła: recording.js, save.js, package.js (schemat v2), session-store.js, content-scripts.js, origin.js
+  lib/             logika tła: recording.js, save.js, package.js (schemat v3), session-store.js, content-scripts.js, origin.js
   popup/           popup.html, popup.js, controller.js, view.js, target.js, messages.js
   page/            moduły ES kodu działającego na stronie (recorder, hooki, kanał, collector, *-entry.js)
   content/         isolated-world.js, main-world.js — GENEROWANE z src/page (npm run gen); nie edytuj ręcznie
@@ -150,6 +176,9 @@ Nie istnieją jeszcze (planowane w kolejnych epikach, patrz `docs/BACKLOG.md`).
 
 Rozszerzenie nie dostaje przy instalacji dostępu do wszystkich witryn i niczego nie wysyła do sieci.
 
+E2 (0.4.0) **nie dodaje żadnych uprawnień**: manifesty są takie same jak w 0.3.0. Statusy zasobów pochodzą z Resource Timing
+(`responseStatus`), a nie z `webRequest`; zrzut korzysta z istniejącego `activeTab` (`tabs.captureVisibleTab`, po otwarciu popupu).
+
 Wersje do formularzy sklepów (Chrome Web Store, AMO):
 
 - `activeTab`
@@ -187,7 +216,8 @@ Test `tests/unit/icons-script.test.js` pilnuje, by `src/icons/*.png` były ident
    (zbieranie na stronie) i/lub `src/lib/package.js` (składanie paczki w tle).
 2. `npm run gen` — odświeża `src/content/*.js` i `src/standalone/console-snapshot.js`.
 3. Zmiana łamiąca (usunięcie/zmiana nazwy lub typu pola, zmiana semantyki) = podbicie `schemaVersion` (`SCHEMA_VERSION` w `package.js`)
-   i nowy fixture `tests/fixtures/snapshots/v<N>.json`; pole opcjonalne = tylko wpis w dokumentacji. Reguły: skill `snapshot-schema`.
+   i nowy fixture `tests/fixtures/snapshots/v<N>.json` (`PDS_UPDATE_FIXTURES=1 npx vitest run tests/unit/snapshot-validator.test.js`);
+   pole opcjonalne = tylko wpis w dokumentacji. Walidator `tests/helpers/snapshot-validator.js` musi znać nowe pole. Reguły: skill `snapshot-schema`.
 4. Opisz pole w [docs/snapshot-schema.md](docs/snapshot-schema.md) i dopisz wpis do [CHANGELOG.md](CHANGELOG.md).
 5. Jeśli pole może zawierać dane użytkownika — redakcja (skill `privacy-redaction`, E3) i aktualizacja listy „Do pliku trafią” w
    `src/popup/messages.js` oraz jej kopii w `popup.html` (test pilnuje zgodności).
@@ -210,6 +240,10 @@ Test `tests/unit/icons-script.test.js` pilnuje, by `src/icons/*.png` były ident
   nie jest w Firefoksie nagrywana (popup nie prosi o zgodę). Otwórz ją przez `http(s)://` (np. lokalny serwer).
 - **Firefox: dodatek zniknął** — tymczasowy dodatek znika po restarcie; załaduj ponownie (`npm run dev:firefox`).
   W Firefoksie ikona bywa pod „puzzlem” (panel rozszerzeń), nie na pasku.
+- **Paczka bez zrzutu (`screenshots: []`)** — przeczytaj `notes`: karta nie była aktywna, pokazywała inną witrynę, zrzut przekroczył 300 KB
+  albo (Firefox) strona przeładowała się przy otwartym popupie. Otwórz popup ponownie na tej karcie i zapisz jeszcze raz.
+- **Metryka `available:false`** — `reason` mówi dlaczego: `unsupported-browser` (np. CLS w Firefoksie), `no-interaction` (INP bez kliknięć), `hidden-at-start`, `no-data`.
+- **e2e na WSL: chromium nie startuje** — linuksowy Chromium z Playwrighta wymaga bibliotek `libnss3`, `libnspr4`, `libasound2`. Bez nich uruchom e2e Node'em z Windows (`node_modules` są natywne dla jednego systemu).
 - **Chrome: ikona niewidoczna** — jest pod „puzzlem”; przypnij ją.
 - **`dev:chrome` otwiera zły Chrome (np. Canary)** — ustaw `PDS_CHROMIUM_BINARY`. Pasek „nieobsługiwana flaga `--disable-blink-features=AutomationControlled`” pochodzi z `web-ext` i jest nieszkodliwy.
 - **Zmiana nie jest widoczna** — `dist/` jest nieprzebudowany: `npm run build` i odśwież rozszerzenie. Zmiana w `src/page` wymaga też `npm run gen`.
@@ -223,6 +257,8 @@ Test `tests/unit/icons-script.test.js` pilnuje, by `src/icons/*.png` były ident
 
 - **Dane nie są redagowane** (do E3): w pliku są jawnie ciasteczka, storage, nagłówki i treść żądań sieciowych, wartości pól formularzy
   (poza `password`/`hidden` — te są maskowane w `dom.forms` i w `dom.html.outerHTML`) oraz reszta `dom.html.outerHTML`. Popup mówi to wprost przed „Nagrywaj”.
+- **Zrzut ekranu nie jest maskowany** (do E3): pokazuje wszystko, co widać na karcie w chwili zapisu, także dane wpisane w pola
+  (np. e-mail, numer karty); hasła są ukryte, bo przeglądarka pokazuje je jako kropki. Popup ostrzega o tym w liście „Do pliku trafią”.
 - `xhr.constructor === XMLHttpRequest` daje `false` (hook to `Proxy`, a `prototype.constructor` wskazuje oryginał); `instanceof`
   i stałe statyczne działają. Instancje XHR mają własne, nieenumerowalne `open`/`send`/`setRequestHeader`.
 - `fetch.toString()` na stronie w trakcie nagrywania daje `function () { [native code] }` (bez nazwy); po zapisie wraca `function fetch() { [native code] }`.
@@ -230,4 +266,14 @@ Test `tests/unit/icons-script.test.js` pilnuje, by `src/icons/*.png` były ident
 - Auto-stop po uśpieniu komputera zapada dopiero przy odpaleniu timera; wpisy po terminie są i tak odrzucane przy składaniu paczki.
 - Firefox: wpisy logowane między `beforeunload` a `pagehide` przy przejściu na inną witrynę mogą zostać utracone (Firefox nie dostarcza wtedy `pagehide`).
 - Nagranie obejmuje jedną witrynę (origin) w jednej karcie naraz; strony z innej witryny nie są nagrywane.
-- Dane wydajności (CWV), kroki użytkownika i zrzuty ekranu — dopiero E2. Firefox: bez automatycznego e2e.
+- **Zasoby z innego originu nie mają statusu** (np. CDN): przeglądarka ukrywa go przed stroną, więc wpis ma `status: null`
+  i `statusUnavailable: "cross-origin"`, często też `sizeBytes: null` (bez `Timing-Allow-Origin`). Na portalu z wieloma CDN-ami
+  może to być większość wpisów (wyborcza.pl: ok. 77%); 404 z CDN nie będzie widoczny. `webRequest` świadomie odrzucono (wymagałby
+  szerszych uprawnień).
+- **Podglądy odpowiedzi** tylko dla statusu ≥ 400 i treści tekstowej; limity 4096 znaków na wpis i 256 KB łącznie (przy przekroczeniu
+  zostają najnowsze). Podgląd odczytywany jest do 2 s po odpowiedzi — jeśli strona zostanie opuszczona albo nagranie zatrzymane wcześniej,
+  tego podglądu nie będzie. Maskowanie tokenów jest regułowe (nie łapie np. `klucz: wartość`, `sessid`, `Basic <b64>`) — do E3.
+- Zasoby jeszcze ładowane w chwili zapisu nie mają wpisu; iframe'y z innego originu są niewidoczne.
+- Metryki bieżącego dokumentu (LCP, CLS, INP) bywają niefinalne w chwili zapisu (`finalized: false` + notatka). Nie sprawdzano Firefoksa 128–157
+  ani Chrome 121–122 na żywo (long tasks tylko unit).
+- Firefox: bez automatycznego e2e (ręczne QA).

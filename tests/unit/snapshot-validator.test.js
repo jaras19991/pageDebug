@@ -256,6 +256,13 @@ describe('snapshot validator (AC-7.1, AC-7.2)', () => {
     ]);
   });
 
+  it('checkbox/radio steps carry checked, never valueLength (QA F-5)', () => {
+    const pkg = build();
+    const box = pkg.steps.findIndex((s) => s.inputType === 'checkbox');
+    pkg.steps[box].valueLength = 2;
+    expect(errorsOf(pkg)).toEqual([`steps[${box}].valueLength: present for a checkbox or radio`]);
+  });
+
   it('documents kept and overview must match the records in the package', () => {
     const pkg = build();
     pkg.overview.failedRequests = 0;

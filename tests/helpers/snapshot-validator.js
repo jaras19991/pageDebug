@@ -262,6 +262,9 @@ const RECORD_CHECKS = {
     // Privacy at the source (AC-3.4): never a value, no length of a password, only whitelisted keys.
     expect(!('value' in r), `${path}.value`, 'steps never carry field values');
     if (r.inputType === 'password') expect(!('valueLength' in r), `${path}.valueLength`, 'present for a password field');
+    if (r.inputType === 'checkbox' || r.inputType === 'radio') {
+      expect(!('valueLength' in r), `${path}.valueLength`, 'present for a checkbox or radio');
+    }
     optional(r, 'selector', (v) => v === null || isStr(v), path, expect, 'not a string');
     optional(r, 'text', (v) => isStr(v) && v.length <= STEP_TEXT_MAX, path, expect, `not a string ≤ ${STEP_TEXT_MAX}`);
     optional(r, 'inputType', isStr, path, expect, 'not a string');

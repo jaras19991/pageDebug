@@ -9,8 +9,8 @@ description: Reguły Manifest V3 dla Page Debug Snapshot — światy MAIN/ISOLAT
 
 | Świat | Widzi `window` strony | Widzi `chrome.*` | Do czego |
 |---|---|---|---|
-| **MAIN** | tak (ten sam `window`, `fetch`, `XMLHttpRequest`, `console`) | **nie** (tylko `chrome.runtime` może nie istnieć w ogóle) | hooki, odczyt zmiennych strony, Performance API |
-| **ISOLATED** (content script) | DOM tak, zmienne JS strony **nie** | `chrome.runtime`, `chrome.storage` | most do SW, rejestracja kliknięć/inputów, screenshot-trigger |
+| **MAIN** | tak (ten sam `window`, `fetch`, `XMLHttpRequest`, `console`) | **nie** (tylko `chrome.runtime` może nie istnieć w ogóle) | hooki, kroki użytkownika (click/input/submit/key/history — E2 D4), CWV, Performance API, odczyt zmiennych strony |
+| **ISOLATED** (content script) | DOM tak, zmienne JS strony **nie** | `chrome.runtime`, `chrome.storage` | most do tła (przekazuje `config`/`collect`/`stop`) |
 | **Service worker** | nic | wszystko z manifestu | `scripting`, `webRequest`, `tabs.captureVisibleTab`, `storage.session`, stan nagrywania |
 
 Konsekwencje:
@@ -122,7 +122,8 @@ Różnice, które trzeba obsłużyć:
 | Host permissions | `host_permissions` nadawane przy instalacji | w MV3 **wszystkie opcjonalne** — trzeba `permissions.request` z gestu | zawsze flow `optional_host_permissions` + request z popupu; identyczny kod |
 | API | `chrome.*` z promisami | `browser.*` i alias `chrome.*`, oba z promisami | `chrome.*` + `await`; zero callbacków; `importScripts` zakazane |
 | Instalacja na stałe | unpacked w trybie dev / CWS / policy | **podpis AMO wymagany** nawet do self-hostingu; tymczasowa przez `about:debugging` znika po restarcie | E5 |
-| Performance API | pełne | brak `layout-shift`, `interactionId`, `long-animation-frame` | E2: raportować „niedostępne w Firefoksie” |
+| Performance API | pełne | brak `layout-shift`, `longtask`, `long-animation-frame`; jest `interactionId` (INP) i `responseStatus` (FF 158) | wykrywanie funkcji; brak → `available:false` + `reason` |
+| `activeTab` | ginie przy zmianie originu | cofany przy **każdym** przeładowaniu/nawigacji | zrzut przy *Zapisz* po reloadzie w FF nie wyjdzie — notatka w paczce |
 | Lint | — | `web-ext lint` | w `npm run lint` dla `dist/firefox` |
 
 Build: `src/manifest.base.json` + `manifest.chrome.json` + `manifest.firefox.json` → `dist/chrome/manifest.json`,

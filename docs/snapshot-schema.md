@@ -215,6 +215,9 @@ albo pusta tablica/obiekt, a `notes` mówi dlaczego (dla `steps`, `vitals`, `scr
 `interactions`), `steps[].selector|text|inputType|valueLength|checked|key|url|via`, `screenshots[].attachment`.
 Brak pola opcjonalnego znaczy „nie było danej”, nie błąd.
 
+Sekcja strony (`environment`, `dom`, `performance`, `storage`), która jest `null`, a nie ma wpisu o błędzie zbierania, dostaje notatkę
+„Section <nazwa> was not received from the page.” — `null` w paczce zawsze ma wyjaśnienie w `notes`.
+
 ### `documents[]`
 
 Jak w v2 (`id`, `url`, `timeOrigin`, `navigationType`, `recorded`, `flushed`, `current`, `counts`, `kept`), plus:
@@ -234,12 +237,13 @@ Jak w v2 (`id`, `url`, `timeOrigin`, `navigationType`, `recorded`, `flushed`, `c
 | `selector` | wszystkie poza `navigate` (gdy da się wyznaczyć) | selektor CSS jednoznaczny w dokumencie: `#id` > `[data-testid]`/`data-*` > ścieżka; ≤ 1000 znaków |
 | `text` | `click` w przycisk, link, `role=button` | widoczna etykieta ≤ 80 znaków; dla pól formularza brak |
 | `inputType` | `input`, `change` | typ pola (`email`, `password`, `checkbox`, `textarea`, `select`, `contenteditable`…) |
-| `valueLength` | `input`, `change` (nie dla `password`) | długość wartości; dla `file` liczba plików. **Wartości pól nigdy nie trafiają do kroków** |
+| `valueLength` | `input`, `change` (nie dla `password`, `checkbox`, `radio`) | długość wartości; **bez** `valueLength` przy `password` (nie zdradzamy długości hasła) i przy checkboxie/radiu (wartość to stały token, zmianę niesie `checked`). **Wartości pól nigdy nie trafiają do kroków** |
 | `checked` | `change` checkboxa/radia | boolean |
 | `key` | `key` | tylko `Enter`, `Escape`, `Tab`, strzałki; nigdy znaki |
-| `url`, `via` | `navigate` | adres i sposób (`navigate`, `reload`, `back_forward`, `pushState`, `replaceState`, `popstate`, `hashchange`) |
+| `url`, `via` | `navigate` | adres (przepuszczony przez maskowanie tokenów, np. `?token=[redacted:…]`) i sposób (`navigate`, `reload`, `back_forward`, `pushState`, `replaceState`, `popstate`, `hashchange`) |
 
-Kolejne wpisywanie w to samo pole to jeden krok `input` z ostatnią długością.
+Kolejne wpisywanie w to samo pole to jeden krok `input` z ostatnią długością. Kolejne wywołania `history.replaceState` (np. strona
+przepisująca `?q=` przy każdym znaku) to jeden krok `navigate` z ostatnim adresem i `t`; nie przerywa to scalania kroków `input`.
 
 ### `network[]`
 
@@ -249,14 +253,18 @@ Jak w v2 (`t`, `doc`, `method`, `url`, `status`, `statusText`, `ok`, `redirected
 | Pole | Typ | Opis |
 |---|---|---|
 | `type` | `fetch` \| `xhr` \| `img` \| `script` \| `css` \| `font` \| `other` | **zmiana semantyki**: zasoby z Resource Timing są osobnymi wpisami; rodzaj z rozszerzenia pliku i `initiatorType` |
-| `status` | integer \| null | status HTTP. `null` zawsze z `statusUnavailable` (zasoby) albo z `error` (nieudany fetch). XHR zakończony błędem ma `status: 0` i `error` (`error`/`abort`/`timeout`). Samo `0` bez wyjaśnienia jest niezgodne ze schematem |
+| `status` | integer \| null | status HTTP. `null` zawsze z `statusUnavailable` (zasoby) albo z `error` (nieudany fetch). XHR zakończony błędem ma `status: 0` i `error` (`error`/`abort`/`timeout`). Samo `0` bez wyjaśnienia jest niezgodne ze schematem: `fetch` w trybie `no-cors` (odpowiedź *opaque*) to `status: null` + `cross-origin`, a każde inne nieuzasadnione `0` z `fetch`/XHR (bez `error`) to `status: null` + `unknown` |
 | `statusUnavailable` | string, opcjonalne | `cross-origin` (zasób z innego originu, przeglądarka ukrywa status), `unsupported-browser`, `network-error` (zasób nie doszedł), `unknown` |
 | `sizeBytes` | integer \| null | bajty treści z sieci (`encodedBodySize`, przed dekompresją); `null`, gdy nieznane (cross-origin bez `Timing-Allow-Origin`) |
 | `initiatorType` | string, opcjonalne | surowy `initiatorType` zasobu |
 | `responseBodyPreview` | string, opcjonalne | tylko fetch/XHR ze statusem ≥ 400 i typem tekstowym (`text/*`, JSON, XML); ≤ 4096 znaków; tokeny (JWT, Bearer, klucze wrażliwe) zastąpione `"[redacted:<reguła>]"` |
 | `responseBodyTruncated` | boolean, opcjonalne | `true`, gdy podgląd obcięto do limitu |
 
-Podglądy łącznie ≤ 262 144 znaków: ponad budżet starsze podglądy tracą pole, `truncated.responseBodies` = `true` i jest notatka.
+Podglądy łącznie ≤ 262 144 znaków. Budżet liczony jest na bieżąco na stronie i ponownie przy składaniu paczki; ponad budżet
+**zostają najnowsze** podglądy, najstarsze tracą oba pola (`responseBodyPreview`, `responseBodyTruncated`), a wpis `network` zostaje.
+`truncated.responseBodies` = `true` zawsze towarzyszy notatka „Older response previews were removed to fit the total limit of …”.
+Podgląd powstaje dopiero po odczycie treści odpowiedzi (do 2 s): jeśli w tym czasie strona została opuszczona (`pagehide`) albo
+nagranie się zakończyło, podgląd tego zapytania nie trafia do paczki (wpis `network` jest, bez podglądu).
 
 ### `vitals[]`
 
@@ -280,7 +288,9 @@ najwyżej 20 najdłuższych (po `blockingDuration`), albo `{ available: false, r
 `width`, `height` (piksele obrazu), `bytes` (rozmiar JPEG po zdekodowaniu, ≤ `limits.screenshotBytes`, nie długość base64),
 `attachment` — klucz w `attachments`. Same bajty leżą w `attachments[<attachment>]` jako data URL. Zrzut powstaje tylko przy
 *Zapisz paczkę*, gdy karta jest widoczna i pokazuje origin nagrania. W przeciwnym razie `screenshots: []`, `attachments: {}`
-i notatka z powodem. W fallbacku konsolowym zrzutów nie ma („Screenshots are not available without the extension.”).
+i notatka z powodem. W Firefoksie uprawnienie `activeTab` ginie przy każdym przeładowaniu karty, więc zapis po przeładowaniu przy otwartym popupie daje
+`screenshots: []` z notatką (otwarcie popupu od nowa przywraca zrzut). Obraz obejrzysz, kopiując ciąg `data:image/jpeg;base64,…`
+z `attachments` do paska adresu przeglądarki. W fallbacku konsolowym zrzutów nie ma („Screenshots are not available without the extension.”).
 
 ### Limity i ograniczenia
 
@@ -289,10 +299,14 @@ i notatka z powodem. W fallbacku konsolowym zrzutów nie ma („Screenshots are 
 - iframe: z iframe'ów tego samego originu (do 20 naraz, zagnieżdżenie do 2) zbierane są tylko błędy (`console.error`,
   `error`, `unhandledrejection`) z polem `frame`. Błędy sprzed podpięcia ramki (przed jej `load`) giną. Ramek z innego originu nie widać.
   Kroki, sieć i metryki pochodzą tylko z dokumentu głównego.
+- Podglądy odpowiedzi tylko dla statusu ≥ 400 i treści tekstowej (`text/*`, JSON, XML); odpowiedzi binarne, 2xx/3xx i strumienie
+  bez końca (czytane najwyżej 2 s) nie mają podglądu. Maskowanie tokenów w podglądzie jest regułowe (JWT, `Bearer`, wartości przy
+  kluczach wrażliwych); pełna redakcja to E3.
 - Zasoby: wpis powstaje po zakończeniu pobierania, więc zasoby jeszcze ładowane w chwili zapisu nie mają wpisu. Zasoby z innego
   originu mają `status: null` + `statusUnavailable: "cross-origin"` i zwykle `sizeBytes: null`.
-- Firefox: brak `layout-shift` i long animation frames, więc `CLS` i `longTasks` mają `available: false`,
-  `reason: "unsupported-browser"`.
+- Firefox (sprawdzone na 158): brak `layout-shift` i long animation frames, więc `CLS` i `longTasks` mają `available: false`,
+  `reason: "unsupported-browser"`. `INP` jest dostępne (Firefox ma `interactionId`), a `TTFB`/`FCP`/`LCP` i `status` zasobów
+  i dokumentu działają jak w Chrome. Wersje 128–157 nie były sprawdzane; dostępność zawsze ustala wykrywanie funkcji.
 - Fallback konsolowy: te same klucze wymagane; `INP` tylko z interakcji po wklejeniu skryptu (notatka).
 
 ### Przykład
