@@ -6,6 +6,7 @@ import { MESSAGES } from '../../src/popup/messages.js';
 
 const HTML_PATH = fileURLToPath(new URL('../../src/popup/popup.html', import.meta.url));
 const html = readFileSync(HTML_PATH, 'utf8');
+const README_PATH = fileURLToPath(new URL('../../README.md', import.meta.url));
 const { document } = new JSDOM(html).window;
 
 const text = (selector) => document.querySelector(selector)?.textContent.trim();
@@ -24,6 +25,12 @@ describe('popup.html', () => {
     expect(labels.sort()).toEqual(['Nagrywaj', 'Zapisz paczkę']);
     expect(text('#record')).toBe('Nagrywaj');
     expect(text('#save')).toBe('Zapisz paczkę');
+  });
+
+  it('button set equals E1 set {record, save}', () => {
+    const ids = [...document.querySelectorAll('button')].map((b) => b.id).sort();
+    expect(ids).toEqual(['record', 'save']);
+    expect(document.querySelectorAll('input, select, textarea, [role="switch"], [role="checkbox"]')).toHaveLength(0);
   });
 
   it('popup.html static disclosure text equals MESSAGES', () => {
@@ -48,6 +55,33 @@ describe('popup.html', () => {
     const record = document.getElementById('record');
     expect(noUpload.compareDocumentPosition(consent) & 4).toBe(4); // DOCUMENT_POSITION_FOLLOWING
     expect(consent.compareDocumentPosition(record) & 4).toBe(4);
+  });
+
+  it('consent order unchanged: disclosure < noUpload < consentNotice < record', () => {
+    const order = ['disclosure', 'noUpload', 'consentNotice', 'record'].map((id) => document.getElementById(id));
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i - 1].compareDocumentPosition(order[i]) & 4, order[i].id).toBe(4);
+    }
+  });
+
+  it('fits the 360 px popup and keeps the ready actions sticky at the bottom (AC-1.3)', () => {
+    const css = document.querySelector('style').textContent.replace(/\s+/g, ' ');
+    expect(css).toMatch(/body \{[^}]*width: 328px;/);
+    expect(css).toMatch(/body \{[^}]*padding: 16px;/);
+    expect(css).toMatch(/#ready \.actions \{[^}]*position: sticky;[^}]*bottom: 0;[^}]*background: #fff/);
+    expect(document.querySelector('#ready .actions #record')).not.toBeNull();
+  });
+
+  it('README activeTab line mentions screenshot in PL and EN', () => {
+    const readme = readFileSync(README_PATH, 'utf8').replace(/\r\n/g, '\n');
+    const section = readme.match(/^## Uprawnienia\n([\s\S]*?)(?=^## |(?![\s\S]))/m)[1];
+    const short = section.match(/^- `activeTab` — .*$/m);
+    expect(short, 'short activeTab line').not.toBeNull();
+    expect(short[0]).toContain('zrzut');
+    const entry = section.match(/^- `activeTab`\n((?: {2}.*\n?)+)/m);
+    expect(entry, 'store-form activeTab entry').not.toBeNull();
+    expect(entry[1]).toMatch(/^ {2}- PL: .*zrzut.*$/m);
+    expect(entry[1]).toMatch(/^ {2}- EN: .*screenshot.*$/m);
   });
 
   it('loads popup.js as a module and has no inline scripts or handlers (CSP)', () => {

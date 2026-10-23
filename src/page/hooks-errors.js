@@ -4,6 +4,9 @@
 
 export const TEXT_MAX_CHARS = 4000;
 
+// Stacks are kept much longer than message/filename (AC-4.8).
+export const STACK_MAX_CHARS = 16000;
+
 // win -> true while listeners are installed; a second install in the same window is a no-op.
 const errorHooksActive = new WeakMap();
 
@@ -21,7 +24,8 @@ function capText(value) {
 function stackOf(value) {
   try {
     const stack = value && value.stack;
-    return typeof stack === 'string' && stack !== '' ? capText(stack) : undefined;
+    if (typeof stack !== 'string' || stack === '') return undefined;
+    return stack.length > STACK_MAX_CHARS ? stack.slice(0, STACK_MAX_CHARS) : stack;
   } catch {
     return undefined;
   }

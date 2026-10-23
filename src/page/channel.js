@@ -15,7 +15,8 @@ export const CHANNEL_EVENTS = Object.freeze({
 });
 
 // Public message types per direction; 'bind' and 'hello' are internal handshake messages.
-export const I2M_TYPES = Object.freeze(['config', 'collect', 'destroy']);
+// 'stop' (E2-T9b): the background's time-limit stop, relayed by the bridge.
+export const I2M_TYPES = Object.freeze(['config', 'collect', 'destroy', 'stop']);
 export const M2I_TYPES = Object.freeze(['result', 'flush', 'stopped']);
 
 export const CHANNEL_BIND_TIMEOUT_MS = 10000;

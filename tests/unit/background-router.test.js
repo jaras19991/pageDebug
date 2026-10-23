@@ -127,7 +127,7 @@ describe('router sender check (D2)', () => {
 // What MAIN answers to `collect` through the bridge (T15): a JSON string.
 function pageResult(docId, logs) {
   return JSON.stringify({
-    protocol: 1,
+    protocol: 2,
     recorderVersion: '0.3.0',
     docId,
     timeOrigin: T0 + 500,

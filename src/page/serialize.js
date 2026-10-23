@@ -39,6 +39,55 @@ export function safeSlice(value, max) {
   return value.length > max ? value.slice(0, max) + `... [truncated ${value.length - max} chars]` : value;
 }
 
+// Stack limits for Error values (AC-4.8): the error itself keeps up to 16 000 chars, each cause up to 4000.
+// Causes are followed up to SERIALIZE_CAUSE_DEPTH levels; a deeper one becomes a marker.
+const SERIALIZE_STACK_MAX = 16000;
+const SERIALIZE_CAUSE_STACK_MAX = 4000;
+const SERIALIZE_CAUSE_DEPTH = 5;
+
+// Errors of same-origin frames come from another realm and fail `instanceof Error`; the built-in brand
+// (`[object Error]`, captured at load) recognises them too (E2-D6).
+const serializeObjectToString = Object.prototype.toString;
+
+function serializeIsError(value) {
+  if (value instanceof Error) return true;
+  if (value === null || typeof value !== 'object') return false;
+  try {
+    return Reflect.apply(serializeObjectToString, value, []) === '[object Error]';
+  } catch {
+    return false;
+  }
+}
+
+function serializeCapStack(stack, max) {
+  return typeof stack === 'string' && stack.length > max ? stack.slice(0, max) : stack;
+}
+
+// { name, message, stack, cause? } of an Error. Error causes are expanded here (depth and cycles
+// tracked on `chain`); a non-Error cause stays a value and goes through the replacer like any other.
+function serializeError(err, depth, chain) {
+  const out = { name: err.name, message: err.message, stack: undefined };
+  out.stack = serializeCapStack(err.stack, depth === 0 ? SERIALIZE_STACK_MAX : SERIALIZE_CAUSE_STACK_MAX);
+  let cause;
+  try {
+    if (!('cause' in err)) return out;
+    cause = err.cause;
+  } catch {
+    return out;
+  }
+  if (!serializeIsError(cause)) {
+    out.cause = cause;
+  } else if (chain.includes(cause)) {
+    out.cause = '[Circular]';
+  } else if (depth + 1 > SERIALIZE_CAUSE_DEPTH) {
+    out.cause = '[cause depth limit]';
+  } else {
+    chain.push(cause);
+    out.cause = serializeError(cause, depth + 1, chain);
+  }
+  return out;
+}
+
 // JSON.stringify with a replacer that summarises functions, errors and DOM nodes.
 // Cycles are detected on the ancestor stack: the replacer's `this` is the holder,
 // so everything above it on the stack is a finished sibling subtree and is popped.
@@ -56,8 +105,8 @@ function serializeToJsonString(value, outerHtmlMax) {
       return `[Function: ${val.name || 'anonymous'}]`;
     }
 
-    if (val instanceof Error) {
-      out = { name: val.name, message: val.message, stack: val.stack };
+    if (serializeIsError(val)) {
+      out = serializeError(val, 0, [val]);
     } else if (typeof ElementCtor === 'function' && val instanceof ElementCtor) {
       out = {
         tagName: val.tagName,

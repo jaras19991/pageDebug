@@ -5,6 +5,8 @@ import {
   connectIsolated,
   CHANNEL_PROTOCOL,
   CHANNEL_EVENTS,
+  I2M_TYPES,
+  M2I_TYPES,
 } from '../../src/page/channel.js';
 
 // Two "worlds" = two independent channel instances on the same jsdom document.
@@ -146,6 +148,17 @@ describe('channel messages', () => {
     expect(iso.ch.send('result', {})).toBe(false);
     expect(main.ch.send('config', {})).toBe(false);
     expect(main.got).toEqual([]);
+    expect(iso.got).toEqual([]);
+  });
+
+  // E2-T9b: the background's time-limit stop goes ISOLATED → MAIN; MAIN cannot send it.
+  it('stop travels only from ISOLATED to MAIN', () => {
+    expect(I2M_TYPES).toContain('stop');
+    expect(M2I_TYPES).not.toContain('stop');
+    const { main, iso } = bindBoth();
+    expect(iso.ch.send('stop', { reason: 'time-limit' })).toBe(true);
+    expect(main.got).toEqual([{ type: 'stop', payload: { reason: 'time-limit' }, id: null }]);
+    expect(main.ch.send('stop', { reason: 'user' })).toBe(false);
     expect(iso.got).toEqual([]);
   });
 

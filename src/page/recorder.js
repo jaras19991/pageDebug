@@ -1,5 +1,8 @@
-// MAIN-world recorder (E1 D5, D10): composes the console/error/network hooks over bounded buffers,
-// guards the window with an install marker, stops on the time limit and removes itself without a config.
+// MAIN-world recorder (E1 D5, D10; E2 D2–D4, D6, D8): composes the console/error/network hooks, the user
+// steps, the resource observer, same-origin frames and the Web Vitals observers over bounded buffers,
+// guards the window with an install marker, stops on the time limit (also checked at every recorded event
+// and on visibilitychange, so a sleeping device stops at the first event after waking) and removes itself
+// without a config.
 // Buffers live only in this closure; nothing is exposed on the page window except the frozen marker.
 // Every recorder failure is swallowed and the recorder never writes to `console` (AC-4.7).
 // Top-level helpers carry the `recorder` prefix (D6: all page modules end up in one IIFE).
@@ -9,9 +12,16 @@ import { createBuffer } from './buffer.js';
 import { installFetchHook, installXhrHook } from './hooks-network.js';
 import { installConsoleHook } from './hooks-console.js';
 import { installErrorHooks } from './hooks-errors.js';
+import { captureSelectorIntrinsics, createSelectorOf } from './selector.js';
+import { installStepsHook } from './hooks-steps.js';
+import { installResourceHooks } from './hooks-resources.js';
+import { installFrameHooks } from './hooks-frames.js';
+import { installVitals } from './vitals.js';
 import { RECORDER_VERSION, PROTOCOL, LIMITS, MARKER_KEY, CONFIG_TIMEOUT_MS, CONSOLE_LEVELS } from './constants.js';
 
-const RECORDER_SECTIONS = ['consoleLogs', 'runtimeErrors', 'network'];
+const RECORDER_SECTIONS = ['consoleLogs', 'runtimeErrors', 'network', 'steps'];
+// Fields a hook may attach to its network entry later (response body preview, D3).
+const RECORDER_ATTACH_FIELDS = ['responseBodyPreview', 'responseBodyTruncated'];
 const RECORDER_URL_MAX = 4000;
 
 function recorderTry(fn, fallback) {
@@ -46,12 +56,15 @@ export function isInstalled(win) {
 /**
  * @param {object} input
  * @param {Window} input.win
- * @param {{ limits?: object, configTimeoutMs?: number, onStopped?: (reason: string) => void }} [input.options]
+ * @param {{ limits?: object, configTimeoutMs?: number, onStopped?: (reason: string) => void,
+ *   interactionsSince?: number }} [input.options] `interactionsSince` (performance.now() ms): INP counts only
+ *   later interactions (console fallback, AC-5.8).
  */
 export function createRecorder({ win, options = {} }) {
   const limits = { ...LIMITS, ...(options.limits || {}) };
   const onStopped = typeof options.onStopped === 'function' ? options.onStopped : null;
   const configTimeoutMs = recorderFinite(options.configTimeoutMs) ?? CONFIG_TIMEOUT_MS;
+  const interactionsSince = recorderFinite(options.interactionsSince);
 
   // Intrinsics captured before page scripts run (document_start).
   const perf = recorderTry(() => win.performance, null);
@@ -60,13 +73,17 @@ export function createRecorder({ win, options = {} }) {
   const setTimer = recorderTry(() => win.setTimeout, null);
   const clearTimer = recorderTry(() => win.clearTimeout, null);
   const proto = recorderTry(() => win.EventTarget.prototype, null);
+  const doc = recorderTry(() => win.document, null);
   const intrinsics = {
     Reflect,
     Proxy,
     Error,
     addEventListener: recorderTry(() => proto.addEventListener, undefined),
     removeEventListener: recorderTry(() => proto.removeEventListener, undefined),
+    // Frames: new iframes are found by a MutationObserver the page cannot replace later (E2-D6).
+    MutationObserver: recorderTry(() => win.MutationObserver, undefined),
   };
+  const selectorIntrinsics = recorderTry(() => captureSelectorIntrinsics(win), null);
   const defineProperty = Object.defineProperty;
   const freeze = Object.freeze;
   const markerSymbol = Symbol.for(MARKER_KEY);
@@ -75,10 +92,16 @@ export function createRecorder({ win, options = {} }) {
   const now = () => (perfNow ? Reflect.apply(perfNow, perf, []) : dateNow() - startDate);
   const timeOrigin = recorderTry(() => recorderFinite(perf.timeOrigin), null) ?? startDate - recorderTry(now, 0);
 
+  // Response previews are attached to network entries after they were pushed (the buffer cannot grow an
+  // entry), so their budget is reserved inside the network buffer's char limit when it fits (D3).
+  const networkChars = limits.documentChars > 2 * limits.responseBodyTotalChars
+    ? limits.documentChars - limits.responseBodyTotalChars
+    : limits.documentChars;
   const buffers = {};
   const counts = {};
   for (const section of RECORDER_SECTIONS) {
-    buffers[section] = createBuffer({ maxItems: limits[section], maxChars: limits.documentChars });
+    const maxChars = section === 'network' ? networkChars : limits.documentChars;
+    buffers[section] = createBuffer({ maxItems: limits[section], maxChars });
     counts[section] = 0;
   }
 
@@ -90,6 +113,14 @@ export function createRecorder({ win, options = {} }) {
   let configTimer = null;
   let limitTimer = null;
   let pendingChars = 0;
+  // Set while stop() drains the observers: records are then checked only by their own `t` (decision 4).
+  let stopping = false;
+  let bodyChars = 0;
+  let bodiesTruncated = false;
+  let resources = null;
+  let vitals = null;
+  // Network items with sizes and load errors merged, fixed at stop (the resource rings go with the hooks).
+  let frozenNetwork = null;
 
   const later = (fn, ms) => recorderTry(() => Reflect.apply(setTimer, win, [fn, ms]), null);
   const cancel = (id) => {
@@ -105,20 +136,52 @@ export function createRecorder({ win, options = {} }) {
 
   // `deadline` is wall-clock epoch (background Date.now()); the monotonic clock stands still while the device
   // sleeps, so the time limit is checked against Date.now() too.
-  const pastDeadline = (t) => deadline !== null && (timeOrigin + t >= deadline || dateNow() >= deadline);
+  const pastByTime = (t) => deadline !== null && timeOrigin + t >= deadline;
+  const pastDeadline = (t) => pastByTime(t) || (!stopping && deadline !== null && dateNow() >= deadline);
 
+  // Any event past the deadline stops the recording at once (E2 D8, AC-2.2); the entry itself is dropped.
   function record(section, entry) {
     const chars = pendingChars;
     pendingChars = 0;
     try {
       if (state !== 'recording' || !buffers[section] || !entry || typeof entry !== 'object') return;
       if (recorderFinite(entry.t) === null) entry.t = now();
-      if (pastDeadline(entry.t)) return;
+      if (pastDeadline(entry.t)) {
+        if (!stopping) stop('time-limit');
+        return;
+      }
       counts[section] += 1;
       buffers[section].push(entry, chars + recorderShallowChars(entry));
     } catch {
       // never let a recorder failure reach the page
     }
+  }
+
+  // Response body preview of a recorded network entry (hooks-network `ctx.attach`). Over the per-document
+  // budget the field is left out and `truncated.responseBodies` is set (D3).
+  function attach(entry, fields, chars) {
+    try {
+      if (state !== 'recording' || !entry || typeof entry !== 'object' || !fields || typeof fields !== 'object') return;
+      const preview = fields.responseBodyPreview;
+      if (typeof preview !== 'string') return;
+      const capped = preview.length > limits.responseBodyChars ? preview.slice(0, limits.responseBodyChars) : preview;
+      const size = Math.max(capped.length, Math.min(recorderFinite(chars) ?? 0, limits.responseBodyChars));
+      if (bodyChars + size > limits.responseBodyTotalChars) {
+        bodiesTruncated = true;
+        return;
+      }
+      bodyChars += size;
+      for (const key of RECORDER_ATTACH_FIELDS) {
+        if (key === 'responseBodyPreview') entry[key] = capped;
+        else if (typeof fields[key] === 'boolean') entry[key] = fields[key] || capped !== preview;
+      }
+    } catch {
+      // never let a recorder failure reach the page
+    }
+  }
+
+  function onVisibility() {
+    if (state === 'recording' && deadline !== null && dateNow() >= deadline) stop('time-limit');
   }
 
   function removeHooks() {
@@ -136,13 +199,27 @@ export function createRecorder({ win, options = {} }) {
       buffers[section].clear();
       counts[section] = 0;
     }
+    bodyChars = 0;
+    bodiesTruncated = false;
+    frozenNetwork = null;
   }
 
+  // Stops every hook and observer (History, frames, PerformanceObservers, listeners); buffers stay for collect.
+  // Entries still queued in the observers are drained first and kept when they started before the deadline.
   function stop(reason) {
-    if (state !== 'recording') return;
-    state = 'stopped';
-    stopReason = typeof reason === 'string' ? reason.slice(0, 64) : 'user';
-    removeHooks();
+    if (state !== 'recording' || stopping) return;
+    stopping = true;
+    try {
+      stopReason = typeof reason === 'string' ? reason.slice(0, 64) : 'user';
+      if (resources) {
+        const current = resources;
+        frozenNetwork = recorderTry(() => current.adjust(buffers.network.items()), null);
+      }
+      state = 'stopped';
+      removeHooks();
+    } finally {
+      stopping = false;
+    }
     if (onStopped) recorderTry(() => onStopped(stopReason));
   }
 
@@ -150,6 +227,8 @@ export function createRecorder({ win, options = {} }) {
     if (state === 'recording') state = 'stopped';
     removeHooks();
     clearBuffers();
+    resources = null;
+    vitals = null;
     state = 'destroyed';
   }
 
@@ -176,11 +255,31 @@ export function createRecorder({ win, options = {} }) {
     }
     state = 'recording';
     const ctx = { win, now, record, json, intrinsics };
+    const enabled = () => state === 'recording';
+    const selectorOf = (selectorIntrinsics && doc && recorderTry(() => createSelectorOf({ doc, intrinsics: selectorIntrinsics }), null))
+      || (() => null);
+    // Vitals entries are judged by their own start time: a record drained after the deadline still counts
+    // when it happened before it (decision 4).
+    const accept = (t) => !pastByTime(t);
     const installers = [
       () => installConsoleHook({ ...ctx, levels: CONSOLE_LEVELS }),
       () => installErrorHooks(ctx),
-      () => installFetchHook({ ...ctx, enabled: () => state === 'recording' }),
-      () => installXhrHook({ ...ctx, enabled: () => state === 'recording' }),
+      () => installFetchHook({ ...ctx, enabled, attach }),
+      () => installXhrHook({ ...ctx, enabled, attach }),
+      () => installStepsHook({ ...ctx, doc, selectorOf }),
+      () => {
+        resources = installResourceHooks({ ...ctx, doc, enabled });
+        return resources.restore;
+      },
+      () => installFrameHooks({ ...ctx, doc }),
+      () => {
+        vitals = installVitals({ win, doc, now, selectorOf, intrinsics, accept, options: { interactionsSince } });
+        return vitals.restore;
+      },
+      () => {
+        Reflect.apply(intrinsics.addEventListener, doc, ['visibilitychange', onVisibility, true]);
+        return () => Reflect.apply(intrinsics.removeEventListener, doc, ['visibilitychange', onVisibility, true]);
+      },
     ];
     for (const installer of installers) {
       const restore = recorderTry(installer, null);
@@ -209,6 +308,7 @@ export function createRecorder({ win, options = {} }) {
     if (deadline !== null) onLimit();
   }
 
+  // Raw buffer copies with `doc`; `network` without the Resource Timing adjustments (see snapshot()).
   function exportBuffers() {
     const out = { truncated: {}, counts: {} };
     for (const section of RECORDER_SECTIONS) {
@@ -216,12 +316,28 @@ export function createRecorder({ win, options = {} }) {
       out.truncated[section] = buffers[section].truncated;
       out.counts[section] = counts[section];
     }
+    out.truncated.responseBodies = bodiesTruncated;
     return out;
   }
 
-  // Current-document part of the `collect` result (flat, as assemblePackage reads it); the entry point adds
-  // the collector sections.
-  function snapshot() {
+  // Network items with `sizeBytes` from Resource Timing and element load errors merged (copies, D2).
+  function adjustedNetwork() {
+    if (frozenNetwork) return frozenNetwork.map((entry) => ({ ...entry, doc: docId }));
+    const items = buffers.network.items();
+    const current = resources;
+    const adjusted = state === 'recording' && current ? recorderTry(() => current.adjust(items), null) : null;
+    return (Array.isArray(adjusted) ? adjusted : items).map((entry) => ({ ...entry, doc: docId }));
+  }
+
+  // Current-document part of the `collect`/`flush` result (flat, as assemblePackage reads it); the entry point
+  // adds the collector sections. `final`: the page is going away or hidden, so LCP/CLS/INP cannot grow (AC-5.6).
+  function snapshot({ final = false } = {}) {
+    // Resource entries still queued in the observer become records (and count) before the export.
+    const current = resources;
+    if (state === 'recording' && current) recorderTry(() => current.sync());
+    const buffered = exportBuffers();
+    buffered.network = adjustedNetwork();
+    const currentVitals = vitals;
     const url = recorderTry(() => String(win.location.href).slice(0, RECORDER_URL_MAX), null);
     const navigationType = recorderTry(() => {
       const nav = perf.getEntriesByType('navigation')[0];
@@ -235,7 +351,9 @@ export function createRecorder({ win, options = {} }) {
       timeOrigin,
       navigationType,
       stopReason,
-      ...exportBuffers(),
+      ...buffered,
+      vitals: currentVitals ? recorderTry(() => currentVitals.snapshot({ final: final === true }), null) : null,
+      documentStatus: current ? recorderTry(() => current.documentStatus(), null) : null,
     };
   }
 

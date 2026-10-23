@@ -7,14 +7,15 @@
 
 import { assemblePackage, packageFileName } from './package.js';
 import { isSameOrigin } from './origin.js';
+import { captureScreenshot } from './screenshot.js';
 
 // D7 / AC-2.4: click → download id, and download start → complete.
 export const COLLECT_TIMEOUT_MS = 15_000;
 export const DOWNLOAD_TIMEOUT_MS = 60_000;
 
 // Protocol of the MAIN `collect` result (design T15: `{ protocol, recorderVersion, docId, … }`).
-// Mirrors PROTOCOL from src/page/constants.js (T3c); src/lib does not import page modules.
-export const RESULT_PROTOCOL = 1;
+// Mirrors PROTOCOL from src/page/constants.js (T3c, E2-T9a); src/lib does not import page modules.
+export const RESULT_PROTOCOL = 2;
 // Same bound as CHANNEL_MAX_MESSAGE: one serialized result never exceeds this many characters.
 const MAX_RESULT_CHARS = 32 * 1024 * 1024;
 const MAX_FILE_NAME = 255;
@@ -22,6 +23,13 @@ const MAX_FILE_NAME = 255;
 const BADGE_NONE = '';
 
 const TIMEOUT = Symbol('timeout');
+
+// Why a package has no screenshot (E2 D5, AC-6.3/6.4); goes to `notes` through meta.screenshotNote.
+const SHOT_NOTE_OTHER_SITE = 'No screenshot: the tab showed a page outside the recorded site.';
+const SHOT_NOTE_HIDDEN = 'No screenshot: the tab was not visible.';
+const SHOT_NOTE_TOO_LARGE = 'No screenshot: the image could not be made smaller than 300 KB.';
+const shotFailedNote = (reason) =>
+  reason === 'too-large' ? SHOT_NOTE_TOO_LARGE : `No screenshot: capture failed (${String(reason).slice(0, 40)}).`;
 
 function basename(path) {
   if (typeof path !== 'string' || path === '') return null;
@@ -53,7 +61,8 @@ const isOurDownload = (rec, downloadId) =>
 /**
  * @param {object} api  `store` (session-store.js) and the chrome.* namespaces `tabs`, `downloads`,
  *   `runtime`, `scripting`, `action`; optional `now`, `setTimeout`, `clearTimeout`, and
- *   `unregisterAll(scripting)` / `setBadge(action, tabId, kind)` from content-scripts.js (T1b).
+ *   `unregisterAll(scripting)` / `setBadge(action, tabId, kind)` from content-scripts.js (T1b);
+ *   optional `codec` (screenshot.js `createCanvasCodec`) to shrink a screenshot over the limit.
  */
 export function createSaveHandlers(api) {
   const { store, tabs, downloads, runtime, scripting, action } = api;
@@ -85,10 +94,10 @@ export function createSaveHandlers(api) {
     return changed;
   }
 
-  async function sendCollect(tabId) {
+  async function sendCollect(tabId, timeoutMs) {
     let timer;
     const timeout = new Promise((resolve) => {
-      timer = schedule(() => resolve(TIMEOUT), COLLECT_TIMEOUT_MS);
+      timer = schedule(() => resolve(TIMEOUT), Math.max(0, timeoutMs));
     });
     try {
       return await Promise.race([tabs.sendMessage(tabId, { type: 'collect' }, { frameId: 0 }), timeout]);
@@ -180,11 +189,34 @@ export function createSaveHandlers(api) {
       if (!rec) return { ok: false, reason: 'failed' };
       const sameAttempt = (r) => r.save?.startedAt === startedAt;
 
-      let tab = null;
-      try {
-        tab = await tabs.get(tabId);
-      } catch {
-        // Tab closed after the recording: package from the flushed documents only.
+      const getTab = async () => {
+        try {
+          return await tabs.get(tabId);
+        } catch {
+          // Tab closed after the recording: package from the flushed documents only.
+          return null;
+        }
+      };
+      let tab = await getTab();
+
+      // Screenshot first, so it shows the page at the click (D5). Only of the recorded site and only when the tab
+      // is the visible one: the check comes before the API call, nothing of another site is ever captured (AC-6.3).
+      // Failures only add a note; the save goes on (AC-6.4).
+      let screenshots;
+      let screenshotNote;
+      if (tab && isSameOrigin(tab.url, rec.origin)) {
+        if (tab.active) {
+          const result = await captureScreenshot({ tabs, tab, codec: api.codec ?? null, now });
+          // The tab may have navigated while the image was taken: re-check, and drop the image of another site.
+          tab = await getTab();
+          if (!(tab && isSameOrigin(tab.url, rec.origin))) screenshotNote = SHOT_NOTE_OTHER_SITE;
+          else if (result.shot) screenshots = [{ ...result.shot, reason: 'save' }];
+          else screenshotNote = shotFailedNote(result.error);
+        } else {
+          screenshotNote = SHOT_NOTE_HIDDEN;
+        }
+      } else if (tab) {
+        screenshotNote = SHOT_NOTE_OTHER_SITE;
       }
 
       const version = runtime.getManifest().version;
@@ -194,7 +226,8 @@ export function createSaveHandlers(api) {
         let raw;
         let noReceiver = false;
         try {
-          raw = await sendCollect(tabId);
+          // The screenshot's time counts towards the same 15 s (expireSave measures from startedAt too).
+          raw = await sendCollect(tabId, COLLECT_TIMEOUT_MS - (now() - startedAt));
         } catch {
           noReceiver = true;
         }
@@ -223,7 +256,17 @@ export function createSaveHandlers(api) {
       const deadline = typeof rec.deadline === 'number' ? rec.deadline : undefined;
       const stopReason = rec.stopReason ?? (deadline !== undefined && collectedAt >= deadline ? 'time-limit' : null);
       const pkg = assemblePackage({
-        meta: { extensionVersion: version, source: 'extension', startedAt: rec.startedAt, collectedAt, stopReason, deadline, currentMissingReason },
+        meta: {
+          extensionVersion: version,
+          source: 'extension',
+          startedAt: rec.startedAt,
+          collectedAt,
+          stopReason,
+          deadline,
+          currentMissingReason,
+          screenshots,
+          screenshotNote,
+        },
         current,
         priorDocs,
         docs: Array.isArray(rec.docs) ? rec.docs : [],

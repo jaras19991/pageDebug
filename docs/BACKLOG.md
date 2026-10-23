@@ -126,43 +126,43 @@ Developer wie, że „coś było wolno”, ale nie wie co, i nie wie, co zgłasz
 **Efekt:** paczka odpowiada na pytania: *co kliknął, co się zepsuło, co było wolne, jak to wyglądało*.
 
 Wejście z E1 (release 0.3.0)
-- [ ] E2-IN1 (LOW, QA) Popup otwarty w trakcie nawigacji karty na inny origin nie odświeża notatki `otherOrigin` (po ponownym otwarciu poprawna).
-- [ ] E2-IN2 (LOW, tester) Teardown e2e: kontrola `git status` zawęzić do ścieżek poza `docs/` (fałszywy alarm przy równoległej pracy nad dokumentacją).
-- [ ] E2-IN3 (LOW, review) Timer limitu nagrywania (`setTimeout`) jest monotoniczny: po uśpieniu komputera `stop('time-limit')` zapada dopiero przy odpaleniu timera (rekordy po terminie są już odrzucane) — dodać kontrolę terminu przy zdarzeniu (np. `visibilitychange`/kolejny rekord).
-- [ ] E2-IN4 (nice-to-have) `scripts/gen-content.mjs`: moduł importowany tylko dla efektu ubocznego nadal dostaje nieużywaną stałą — pomijać przypisanie dla modułów bez użyć.
-- [ ] E2-IN5 (LOW, release) Pilnować zgodności `RECORDER_VERSION` z `manifest.version` przy `npm run pack` (np. `scripts/check-release.mjs`), nie tylko w `npm test`.
+- [x] E2-IN1 (LOW, QA) Popup otwarty w trakcie nawigacji karty na inny origin nie odświeża notatki `otherOrigin` (po ponownym otwarciu poprawna).
+- [x] E2-IN2 (LOW, tester) Teardown e2e: kontrola `git status` zawęzić do ścieżek poza `docs/` (fałszywy alarm przy równoległej pracy nad dokumentacją).
+- [x] E2-IN3 (LOW, review) Timer limitu nagrywania (`setTimeout`) jest monotoniczny: po uśpieniu komputera `stop('time-limit')` zapada dopiero przy odpaleniu timera (rekordy po terminie są już odrzucane) — dodać kontrolę terminu przy zdarzeniu (np. `visibilitychange`/kolejny rekord).
+- [x] E2-IN4 (nice-to-have) `scripts/gen-content.mjs`: moduł importowany tylko dla efektu ubocznego nadal dostaje nieużywaną stałą — pomijać przypisanie dla modułów bez użyć.
+- [x] E2-IN5 (LOW, release) Pilnować zgodności `RECORDER_VERSION` z `manifest.version` przy `npm run pack` (np. `scripts/check-release.mjs`), nie tylko w `npm test`.
 
 Spec
-- [ ] E2-S1 Lista pól wymaganych vs opcjonalnych w paczce; co developer czyta najpierw.
-- [ ] E2-S2 Kryteria: LCP/CLS/INP/FCP/TTFB z atrybucją; status każdego zapytania; ≥1 zrzut ekranu
+- [x] E2-S1 Lista pól wymaganych vs opcjonalnych w paczce; co developer czyta najpierw.
+- [x] E2-S2 Kryteria: LCP/CLS/INP/FCP/TTFB z atrybucją; status każdego zapytania; ≥1 zrzut ekranu
       z momentu *Zapisz*; lista kroków (klik/input/nawigacja) z selektorami i czasem.
 
 Design
-- [ ] E2-D1 CWV: `web-vitals` (attribution build) wbudowane w `recorder.js` lub własne `PerformanceObserver`
+- [x] E2-D1 CWV: `web-vitals` (attribution build) wbudowane w `recorder.js` lub własne `PerformanceObserver`
       z `buffered: true` na `largest-contentful-paint`, `layout-shift`, `event`, `long-animation-frame`,
       `paint`, `resource`. Decyzja z uzasadnieniem (rozmiar vs utrzymanie). Firefox nie daje CLS/INP/LoAF —
       paczka i `summary.md` mówią „niedostępne w tej przeglądarce”.
-- [ ] E2-D2 Kody HTTP i rozmiary: `chrome.webRequest` (observational, permission `webRequest`) w SW,
+- [x] E2-D2 Kody HTTP i rozmiary: `chrome.webRequest` (observational, permission `webRequest`) w SW,
       korelacja z wpisami z MAIN world po URL+czasie. Alternatywa: tylko fetch/XHR z MAIN. Decyzja.
-- [ ] E2-D3 Treść odpowiedzi: klon odpowiedzi fetch/XHR tylko dla `content-type` tekstowych, limit N KB,
+- [x] E2-D3 Treść odpowiedzi: klon odpowiedzi fetch/XHR tylko dla `content-type` tekstowych, limit N KB,
       tylko dla statusów ≥ 400 domyślnie (konfigurowalne).
-- [ ] E2-D4 Kroki użytkownika: listener `click`/`input`/`submit`/`popstate` w ISOLATED world,
+- [x] E2-D4 Kroki użytkownika: listener `click`/`input`/`submit`/`popstate` w ISOLATED world,
       selektor CSS stabilny (id > data-* > ścieżka), wartości inputów **nie** zapisywane (tylko typ i długość).
-- [ ] E2-D5 Zrzut ekranu: `chrome.tabs.captureVisibleTab` przy *Zapisz*; opcjonalnie przy każdym błędzie
+- [x] E2-D5 Zrzut ekranu: `chrome.tabs.captureVisibleTab` przy *Zapisz*; opcjonalnie przy każdym błędzie
       (throttle). Format JPEG, jakość 60.
-- [ ] E2-D6 Iframe'y same-origin: zbierać podstawowe dane; cross-origin: tylko lista `src`.
+- [x] E2-D6 Iframe'y same-origin: zbierać podstawowe dane; cross-origin: tylko lista `src`.
 
 Implementacja
-- [ ] E2-T1 Moduł `vitals.js` — zbiera metryki z atrybucją (element LCP, źródła CLS, target INP).
-- [ ] E2-T2 webRequest w SW: mapa requestId → {url, status, size, type, timing}, filtr do tabId nagrywania.
-- [ ] E2-T3 Korelacja webRequest ↔ hooki MAIN; pole `network[].status` i `network[].sizeBytes`.
-- [ ] E2-T4 Treść odpowiedzi dla błędów (limit, content-type).
-- [ ] E2-T5 Rejestrator kroków użytkownika w ISOLATED world.
-- [ ] E2-T6 Zrzut ekranu i osadzenie w paczce (base64 w JSON lub osobny plik — zależnie od E3-D2).
-- [ ] E2-T7 Stack trace dla `console.error` i błędów runtime zachowany w pełnej postaci.
+- [x] E2-T1 Moduł `vitals.js` — zbiera metryki z atrybucją (element LCP, źródła CLS, target INP).
+- [-] E2-T2 (odrzucone w design D2: Resource Timing responseStatus wystarcza bez nowych uprawnień) webRequest w SW: mapa requestId → {url, status, size, type, timing}, filtr do tabId nagrywania.
+- [x] E2-T3 Korelacja webRequest ↔ hooki MAIN; pole `network[].status` i `network[].sizeBytes`.
+- [x] E2-T4 Treść odpowiedzi dla błędów (limit, content-type).
+- [x] E2-T5 Rejestrator kroków użytkownika w ISOLATED world.
+- [x] E2-T6 Zrzut ekranu i osadzenie w paczce (base64 w JSON lub osobny plik — zależnie od E3-D2).
+- [x] E2-T7 Stack trace dla `console.error` i błędów runtime zachowany w pełnej postaci.
 
 Testy / Review / QA / Docs / Release
-- [ ] E2-TEST1 Unit: korelacja webRequest ↔ MAIN przy wielu identycznych URL w krótkim czasie.
+- [x] E2-TEST1 Unit: korelacja webRequest ↔ MAIN przy wielu identycznych URL w krótkim czasie.
 - [ ] E2-TEST2 E2E: strona testowa z wymuszonym CLS i wolnym LCP → metryki i atrybucja w paczce.
 - [ ] E2-TEST3 E2E: 404 na obrazku i 500 na fetch → oba mają status w paczce.
 - [ ] E2-R1 Review: permission `webRequest` uzasadnione w manifeście i README; brak wartości inputów w krokach.

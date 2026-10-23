@@ -1,5 +1,6 @@
 // AC-3.4: e2e must not leave files in the repo. Compares `git status` with the snapshot
-// taken in global-setup and fails the run when anything changed.
+// taken in global-setup and fails the run when anything changed. Both sides use the same
+// `gitStatus()` filter, so edits under docs/ made in parallel do not fail the run (E2-IN2).
 import { gitStatus } from './helpers/git-status.js';
 
 export default async function globalTeardown() {

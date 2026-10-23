@@ -39,7 +39,7 @@ function createRouter(chrome, handlers) {
 // What MAIN answers to `collect` through the bridge (T15): a JSON string.
 function pageResult(docId, logs) {
   return JSON.stringify({
-    protocol: 1,
+    protocol: 2,
     recorderVersion: '0.3.0',
     docId,
     timeOrigin: T0 + 500,
@@ -184,7 +184,7 @@ describe('popup ↔ background (contract for E1-T1c)', () => {
       downloadId: 1,
       fileName: requested,
     });
-    expect(pkg).toMatchObject({ schemaVersion: 2, source: 'extension', recordingStoppedReason: null });
+    expect(pkg).toMatchObject({ schemaVersion: 3, source: 'extension', recordingStoppedReason: null });
     expect(pkg.consoleLogs.map((l) => l.args[0])).toEqual(['Nie działa koszyk']);
 
     // Success comes from the background (pds:last with downloadId), with the real file name.

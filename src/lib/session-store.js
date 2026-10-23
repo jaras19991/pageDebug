@@ -13,8 +13,8 @@ export const KEYS = Object.freeze({
 // Test-only override of the 10 min recording limit is clamped into this range (D10).
 export const TEST_LIMIT_RANGE = Object.freeze({ min: 1000, max: 600_000 });
 
-// Buffers of one document as exported by the recorder (exportBuffers, design T3c).
-export const DOC_LISTS = Object.freeze(['consoleLogs', 'runtimeErrors', 'network']);
+// Buffers of one document as exported by the recorder (exportBuffers, design T3c); `steps` since E2 (T10a).
+export const DOC_LISTS = Object.freeze(['consoleLogs', 'runtimeErrors', 'network', 'steps']);
 
 const MB = 1024 * 1024;
 // D4: one flushed document ≤ 3 MB, all documents ≤ 8 MB (Chrome session quota is 10 MB).

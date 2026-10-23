@@ -188,3 +188,98 @@ describe('serializeCapped', () => {
     expect(out.value).toEqual({ f: '[Function: f]', self: '[Circular]' });
   });
 });
+
+describe('Error serialization with full stack and cause (E2-T7a, AC-4.8)', () => {
+  const frames = (n, urlChars = 300) =>
+    Array.from({ length: n }, (_, i) => `    at fn${i} (https://example.com/${'p'.repeat(urlChars)}.js:${i + 1}:7)`);
+
+  function errorWithStack(message, stack, cause) {
+    const err = cause === undefined ? new Error(message) : new Error(message, { cause });
+    err.stack = stack;
+    return err;
+  }
+
+  it('Error keeps name, message and its full stack up to 16000 chars', () => {
+    const stack = 'Error: boom\n' + frames(45).join('\n');
+    expect(stack.length).toBeGreaterThan(14000);
+    expect(stack.length).toBeLessThanOrEqual(16000);
+    const out = safeJson(errorWithStack('boom', stack));
+    expect(out).toEqual({ name: 'Error', message: 'boom', stack });
+    expect(out).not.toHaveProperty('cause');
+  });
+
+  it('main stack longer than 16000 chars is cut at 16000', () => {
+    const stack = 'Error: big\n' + frames(80).join('\n');
+    const out = safeJson(errorWithStack('big', stack));
+    expect(out.stack).toBe(stack.slice(0, 16000));
+  });
+
+  it('cause chain of 5 levels is kept; the 6th level is marked', () => {
+    let err = errorWithStack('level 6', 'Error: level 6\n' + frames(2).join('\n'));
+    for (let level = 5; level >= 0; level--) {
+      err = errorWithStack(`level ${level}`, `Error: level ${level}\n` + frames(20).join('\n'), err);
+    }
+    const out = safeJson(err);
+    let node = out;
+    for (let level = 0; level <= 5; level++) {
+      expect(node.name).toBe('Error');
+      expect(node.message).toBe(`level ${level}`);
+      expect(node.stack.length).toBeLessThanOrEqual(level === 0 ? 16000 : 4000);
+      node = node.cause;
+    }
+    expect(node).toBe('[cause depth limit]');
+  });
+
+  it('cause stacks are capped at 4000 chars', () => {
+    const causeStack = 'Error: inner\n' + frames(40).join('\n');
+    const out = safeJson(errorWithStack('outer', 'Error: outer', errorWithStack('inner', causeStack)));
+    expect(out.cause.stack).toBe(causeStack.slice(0, 4000));
+  });
+
+  it('cause cycle yields [Circular]', () => {
+    const a = new Error('a');
+    const b = new Error('b', { cause: a });
+    a.cause = b;
+    const out = safeJson(a);
+    expect(out.cause.message).toBe('b');
+    expect(out.cause.cause).toBe('[Circular]');
+    const self = new Error('self');
+    self.cause = self;
+    expect(safeJson(self).cause).toBe('[Circular]');
+  });
+
+  it('non-Error cause serialized as value', () => {
+    expect(safeJson(new Error('x', { cause: { code: 42, why: 'timeout', f() {} } })).cause).toEqual({
+      code: 42,
+      why: 'timeout',
+      f: '[Function: f]',
+    });
+    expect(safeJson(new Error('x', { cause: 'plain' })).cause).toBe('plain');
+    expect(safeJson(new Error('x', { cause: null })).cause).toBeNull();
+  });
+
+  it('Error with throwing getters does not break serialization', () => {
+    const err = new Error('m');
+    Object.defineProperty(err, 'cause', { get() { throw new Error('nope'); } });
+    const out = safeJson(err);
+    expect(out.message).toBe('m');
+    expect(out).not.toHaveProperty('serializationError');
+  });
+});
+
+describe('Error from another realm (E2-T9a, orchestrator decision 3: same-origin frames)', () => {
+  it('cross-realm Error and its cross-realm cause are serialized as errors', async () => {
+    const { runInNewContext } = await import('node:vm');
+    const err = runInNewContext('new Error("outer", { cause: new TypeError("inner") })');
+    expect(err instanceof Error).toBe(false);
+    const out = safeJson({ err });
+    expect(out.err.name).toBe('Error');
+    expect(out.err.message).toBe('outer');
+    expect(typeof out.err.stack).toBe('string');
+    expect(out.err.cause).toMatchObject({ name: 'TypeError', message: 'inner' });
+  });
+
+  it('plain object is not taken for an Error', () => {
+    expect(safeJson({ message: 'm', name: 'Error' })).toEqual({ message: 'm', name: 'Error' });
+  });
+});

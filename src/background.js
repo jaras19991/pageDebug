@@ -8,6 +8,7 @@ import { createStore } from './lib/session-store.js';
 import { createRecordingHandlers, PENDING_TTL_MS } from './lib/recording.js';
 import { createSaveHandlers } from './lib/save.js';
 import { unregisterAll, setBadge } from './lib/content-scripts.js';
+import { createCanvasCodec } from './lib/screenshot.js';
 
 // Popup commands (extension page, no tab) and bridge messages (top frame of a tab).
 const POPUP_TYPES = new Set(['getStatus', 'armStart', 'start', 'disarm', 'collect', 'saveStarted', 'saveFailed']);
@@ -18,7 +19,9 @@ const FAILED = Object.freeze({ ok: false, reason: 'failed' });
 /** Both handler sets of one background instance on one shared store (writes share a queue). */
 export function createHandlers({ chrome, store, now }) {
   const clock = now ? { now } : {};
-  const save = createSaveHandlers({ store, ...chrome, unregisterAll, setBadge, ...clock });
+  // Shrinks a screenshot over the limit (E2 D5); null where createImageBitmap/OffscreenCanvas are missing.
+  const codec = createCanvasCodec(globalThis);
+  const save = createSaveHandlers({ store, ...chrome, unregisterAll, setBadge, codec, ...clock });
   const recording = createRecordingHandlers({ chrome, store, expireSave: save.expireSave, ...clock });
   return { recording, save };
 }

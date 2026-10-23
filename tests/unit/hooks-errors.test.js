@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach } from 'vitest';
-import { installErrorHooks, TEXT_MAX_CHARS } from '../../src/page/hooks-errors.js';
+import { installErrorHooks, TEXT_MAX_CHARS, STACK_MAX_CHARS } from '../../src/page/hooks-errors.js';
 
 const win = globalThis.window;
 
@@ -116,7 +116,7 @@ describe('installErrorHooks', () => {
     expect(TEXT_MAX_CHARS).toBe(4000);
     expect(entry.message.length).toBeLessThanOrEqual(TEXT_MAX_CHARS);
     expect(entry.filename.length).toBeLessThanOrEqual(TEXT_MAX_CHARS);
-    expect(entry.stack.length).toBeLessThanOrEqual(TEXT_MAX_CHARS);
+    expect(entry.stack.length).toBeLessThanOrEqual(STACK_MAX_CHARS);
   });
 
   it('restore() removes both listeners (no record after)', () => {
@@ -151,5 +151,44 @@ describe('installErrorHooks', () => {
     }
     win.dispatchEvent(new win.ErrorEvent('error', { message: 'after' }));
     expect(records).toHaveLength(0);
+  });
+});
+
+describe('installErrorHooks — full stacks (E2-T7a, AC-4.8)', () => {
+  const frames = (n) => Array.from({ length: n }, (_, i) => `    at fn${i} (https://example.com/${'u'.repeat(300)}.js:${i + 1}:3)`);
+  // Looked up by message, not by index: records must not depend on listeners left by earlier tests.
+  const recordOf = (message) => records.find((r) => r.entry.message === message).entry;
+
+  it('runtime error stack equals error.stack for 10 frames with 300-char URLs', () => {
+    install();
+    const error = new Error('deep');
+    error.stack = 'Error: deep\n' + frames(10).join('\n');
+    win.dispatchEvent(new win.ErrorEvent('error', { message: 'Uncaught Error: deep', error }));
+    expect(recordOf('Uncaught Error: deep').stack).toBe(error.stack);
+  });
+
+  it('runtime error stack is kept up to 16000 chars and cut there; rejection too', () => {
+    install();
+    const error = new Error('long');
+    error.stack = 'Error: long\n' + frames(45).join('\n');
+    expect(error.stack.length).toBeGreaterThan(14000);
+    win.dispatchEvent(new win.ErrorEvent('error', { message: 'Uncaught Error: long', error }));
+    expect(recordOf('Uncaught Error: long').stack).toBe(error.stack);
+    const huge = new Error('huge');
+    huge.stack = 'Error: huge\n' + frames(80).join('\n');
+    win.dispatchEvent(rejection(huge));
+    expect(STACK_MAX_CHARS).toBe(16000);
+    expect(recordOf('huge').stack).toBe(huge.stack.slice(0, 16000));
+  });
+
+  it('message still capped at 4000', () => {
+    install();
+    win.dispatchEvent(new win.ErrorEvent('error', { message: 'm'.repeat(20000), filename: 'f'.repeat(20000) }));
+    win.dispatchEvent(rejection({ message: 'r'.repeat(20000) }));
+    const error = records.find((r) => r.entry.type === 'error').entry;
+    const rejected = records.find((r) => r.entry.type === 'unhandledrejection').entry;
+    expect(error.message).toHaveLength(TEXT_MAX_CHARS);
+    expect(error.filename).toHaveLength(TEXT_MAX_CHARS);
+    expect(rejected.message).toHaveLength(TEXT_MAX_CHARS);
   });
 });

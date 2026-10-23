@@ -2,7 +2,12 @@
 // Proxy `construct` returning the native instance. `XMLHttpRequest.prototype` is never touched, so
 // `instanceof`, static constants and later page patches on the prototype keep working.
 // Every recorder failure is swallowed; the page call always runs exactly once and its result or
-// exception reaches the page unchanged. Response bodies are never read (no `clone()`).
+// exception reaches the page unchanged. Bodies of error responses (status >= 400, textual content-type) are
+// previewed (E2 D3): fetch through `clone()` + a bounded stream reader (8192 chars or 2 s, then `cancel()`),
+// XHR from `responseText`/`response` of text/json types only. The preview is masked (maskSecrets) before it is cut
+// and reaches the recorder asynchronously through `ctx.attach(entry, fields, chars)`; without `attach` nothing is read.
+
+import { maskSecrets, cutPreview } from '../lib/mask-secrets.js';
 
 export const NETWORK_LIMITS = Object.freeze({
   urlChars: 4000,
@@ -11,21 +16,58 @@ export const NETWORK_LIMITS = Object.freeze({
   headerChars: 2000,
   bodyChars: 5000,
   statusTextChars: 500,
+  responseBodyChars: 4096,
+  responseReadChars: 8192,
+  bodyTimeoutMs: 2000,
 });
+
+// Trailing "word" left by a read stopped at the char limit: dropped so a half token never stays (D3).
+const READ_TRAILING_WORD = /[A-Za-z0-9._~+/=-]+$/;
+
+/**
+ * Content types whose error bodies are previewed (D3): `text/*`, `application/json`, `*+json`, `*xml`,
+ * `application/x-www-form-urlencoded`.
+ */
+export function isTextual(contentType) {
+  if (typeof contentType !== 'string') return false;
+  const mime = contentType.slice(0, 256).split(';')[0].trim().toLowerCase();
+  if (!mime) return false;
+  return mime.startsWith('text/') || mime === 'application/json' || mime.endsWith('+json')
+    || mime.endsWith('xml') || mime === 'application/x-www-form-urlencoded';
+}
 
 // Hooks created by this module, so a second install on the same window is a no-op.
 const ownHooks = new WeakSet();
 
 const noop = () => {};
 
+function pickProto(ctor, name) {
+  try {
+    return typeof ctor === 'function' ? ctor.prototype[name] : null;
+  } catch {
+    return null;
+  }
+}
+
 function defaultIntrinsics() {
+  const G = globalThis;
+  const reader = G.ReadableStream ? pickProto(G.ReadableStream, 'getReader') : null;
   return {
     Reflect,
     Proxy,
-    URL: globalThis.URL,
+    URL: G.URL,
     promiseThen: Promise.prototype.then,
-    addEventListener: globalThis.EventTarget ? EventTarget.prototype.addEventListener : null,
+    addEventListener: G.EventTarget ? EventTarget.prototype.addEventListener : null,
     objectToString: Object.prototype.toString,
+    jsonStringify: JSON.stringify,
+    responseClone: pickProto(G.Response, 'clone'),
+    getReader: reader,
+    readerRead: pickProto(G.ReadableStreamDefaultReader, 'read'),
+    readerCancel: pickProto(G.ReadableStreamDefaultReader, 'cancel'),
+    TextDecoder: G.TextDecoder,
+    decode: pickProto(G.TextDecoder, 'decode'),
+    setTimeout: G.setTimeout,
+    clearTimeout: G.clearTimeout,
   };
 }
 
@@ -91,7 +133,108 @@ function makeTools(ctx) {
     return `[${slice(tag, 64)}]`;
   };
 
-  return { I, win, safe, isOn, now, emit, json, resolveUrl, headersToObject, bodyPreview };
+  const contentTypeOf = (headers) => {
+    for (const key of Object.keys(headers || {})) if (key.toLowerCase() === 'content-type') return headers[key];
+    return null;
+  };
+
+  const later = (fn, ms) => safe(() => I.Reflect.apply(I.setTimeout, win, [fn, ms]), null);
+  const cancelLater = (id) => {
+    if (id !== null) safe(() => I.Reflect.apply(I.clearTimeout, win, [id]));
+  };
+  // `then` captured at install; both callbacks guarded so no rejection is ever left unhandled.
+  const then = (promise, ok, fail) => {
+    const guard = (fn) => (value) => {
+      safe(() => fn(value));
+    };
+    safe(() => I.Reflect.apply(I.promiseThen, promise, [guard(ok), guard(fail)]));
+  };
+
+  // Preview fields from read text: mask first, then cut (D3). `readCut` = the read stopped at the char limit.
+  const previewFields = (raw, readCut) => {
+    const text = readCut ? raw.replace(READ_TRAILING_WORD, '') : raw;
+    const masked = maskSecrets(text).text;
+    const { preview, truncated } = cutPreview(masked, NETWORK_LIMITS.responseBodyChars);
+    return { responseBodyPreview: preview, responseBodyTruncated: truncated || readCut };
+  };
+
+  const attach = (entry, raw, readCut) => {
+    if (!isOn() || typeof ctx.attach !== 'function') return;
+    const fields = previewFields(raw, readCut);
+    ctx.attach(entry, fields, fields.responseBodyPreview.length);
+  };
+
+  const wantsBody = (status, headers) => typeof ctx.attach === 'function' && typeof status === 'number'
+    && status >= 400 && isTextual(contentTypeOf(headers));
+
+  return {
+    I, win, safe, isOn, now, emit, json, resolveUrl, headersToObject, bodyPreview, later, cancelLater, then,
+    attach, wantsBody,
+  };
+}
+
+// Reads at most `responseReadChars` chars of `stream` within `bodyTimeoutMs`; `done(text, readCut)` only when the
+// stream ended or the char limit was hit. A timeout or any failure cancels the reader and reports nothing.
+function readLimited(tools, stream, done) {
+  const { I, safe, later, cancelLater, then } = tools;
+  const reader = I.Reflect.apply(I.getReader, stream, []);
+  const decoder = new I.TextDecoder();
+  const decode = (value, more) => I.Reflect.apply(I.decode, decoder, more ? [value, { stream: true }] : []);
+  let text = '';
+  let settled = false;
+  let timer = null;
+
+  const settle = (result, cancel) => {
+    if (settled) return;
+    settled = true;
+    cancelLater(timer);
+    if (cancel) safe(() => then(I.Reflect.apply(I.readerCancel, reader, []), () => {}, () => {}));
+    if (result) safe(() => done(result.text, result.cut));
+  };
+
+  const step = () => {
+    let pending;
+    try {
+      pending = I.Reflect.apply(I.readerRead, reader, []);
+    } catch {
+      settle(null, true);
+      return;
+    }
+    then(pending, (chunk) => {
+      if (settled) return;
+      try {
+        if (chunk.done) {
+          text += decode(undefined, false);
+          settle({ text: text.slice(0, NETWORK_LIMITS.responseReadChars), cut: text.length > NETWORK_LIMITS.responseReadChars }, false);
+          return;
+        }
+        text += decode(chunk.value, true);
+        if (text.length >= NETWORK_LIMITS.responseReadChars) {
+          settle({ text: text.slice(0, NETWORK_LIMITS.responseReadChars), cut: true }, true);
+          return;
+        }
+      } catch {
+        settle(null, true);
+        return;
+      }
+      step();
+    }, () => settle(null, true));
+  };
+
+  timer = later(() => settle(null, true), NETWORK_LIMITS.bodyTimeoutMs);
+  step();
+}
+
+// A status of 0 is never recorded bare (AC-4.3): an opaque response (`mode: 'no-cors'`) is `cross-origin`, any other
+// unexplained 0 is `unknown`. `statusUnavailable` is placed right after `status` (key order of the package schema).
+function markStatusUnavailable(entry, reason) {
+  const keys = Object.keys(entry);
+  const tail = keys.slice(keys.indexOf('status') + 1).map((key) => [key, entry[key]]);
+  for (const [key] of tail) delete entry[key];
+  entry.status = null;
+  entry.statusUnavailable = reason;
+  for (const [key, value] of tail) entry[key] = value;
+  entry.ok = null;
 }
 
 // Duck typing instead of `instanceof Request`: works across realms and for polyfilled Requests.
@@ -123,6 +266,7 @@ export function installFetchHook(ctx) {
       ok: null,
       redirected: null,
       durationMs: null,
+      sizeBytes: null,
       requestHeaders: safe(() => tools.headersToObject(hasInit && init.headers != null ? init.headers : req && req.headers), {}),
       responseHeaders: {},
       requestBody: hasInit && init.body !== undefined ? safe(() => tools.bodyPreview(init.body), null) : null,
@@ -140,10 +284,24 @@ export function installFetchHook(ctx) {
         entry.ok = response.ok;
         entry.redirected = response.redirected;
         entry.responseHeaders = safe(() => tools.headersToObject(response.headers), {});
+        if (response.type === 'opaque') markStatusUnavailable(entry, 'cross-origin');
+        else if (!(entry.status > 0)) markStatusUnavailable(entry, 'unknown');
       } else {
         entry.error = json(error);
       }
       emit(entry);
+    });
+    if (response) safe(() => previewBody(entry, response));
+  };
+
+  // Clone synchronously, before the page gets the response, so `bodyUsed` of the original stays false (AC-4.6).
+  const previewBody = (entry, response) => {
+    if (!active || !isOn() || !tools.wantsBody(entry.status, entry.responseHeaders)) return;
+    const type = response.type;
+    if (type === 'opaque' || type === 'opaqueredirect' || response.body == null || response.bodyUsed) return;
+    const clone = I.Reflect.apply(I.responseClone, response, []);
+    readLimited(tools, clone.body, (text, cut) => {
+      if (active) tools.attach(entry, text, cut);
     });
   };
 
@@ -260,13 +418,27 @@ export function installXhrHook(ctx) {
         state.error = type;
       });
     }
+    // Only text and json response types are read; blob/arraybuffer/document are never touched (AC-4.6).
+    const previewXhrBody = (entry) => {
+      if (!tools.wantsBody(entry.status, entry.responseHeaders)) return;
+      const type = xhr.responseType;
+      let raw = null;
+      if (type === '' || type === 'text') raw = xhr.responseText;
+      else if (type === 'json') {
+        const value = xhr.response;
+        raw = value == null ? null : I.Reflect.apply(I.jsonStringify, JSON, [value]);
+      }
+      if (typeof raw !== 'string' || raw === '') return;
+      const cut = raw.length > NETWORK_LIMITS.responseReadChars;
+      tools.attach(entry, cut ? raw.slice(0, NETWORK_LIMITS.responseReadChars) : raw, cut);
+    };
     listen('loadend', () => {
       if (!state.opened || !live()) return;
       safe(() => {
         const t = state.tSend ?? state.tOpen;
         const end = now();
         const status = xhr.status;
-        emit({
+        const entry = {
           t,
           type: 'xhr',
           method: state.method,
@@ -276,11 +448,15 @@ export function installXhrHook(ctx) {
           ok: status >= 200 && status < 300,
           redirected: safe(() => !!xhr.responseURL && xhr.responseURL !== state.url, false),
           durationMs: end != null && t != null ? round2(end - t) : null,
+          sizeBytes: null,
           requestHeaders: state.headers,
           responseHeaders: safe(() => parseResponseHeaders(xhr.getAllResponseHeaders(), tools.headersToObject), {}),
           requestBody: state.body,
           error: state.error,
-        });
+        };
+        if (!(status > 0) && state.error === null) markStatusUnavailable(entry, 'unknown');
+        emit(entry);
+        safe(() => previewXhrBody(entry));
       });
       state.opened = false;
     });

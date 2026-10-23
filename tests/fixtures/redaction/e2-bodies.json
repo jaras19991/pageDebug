@@ -1,0 +1,39 @@
+{
+  "comment": "E2-T4a corpus for maskSecrets (response body previews). All values are fake. 'secrets' must not appear in the masked text; 'rule' is the expected redaction marker. Benign bodies must stay unchanged (at most 2 documented false positives, see 'falsePositive').",
+  "sensitive": [
+    { "name": "AC-4.7 401 JSON with access_token", "body": "{\"error\":\"expired\",\"access_token\":\"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJGQUtFLXVzZXItMSJ9.ZmFrZS1zaWduYXR1cmUtZm9yLXRlc3Rz\"}", "secrets": ["eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJGQUtFLXVzZXItMSJ9.ZmFrZS1zaWduYXR1cmUtZm9yLXRlc3Rz"], "rule": "[redacted:key-token]" },
+    { "name": "Bearer in plain text", "body": "Unauthorized: header was Bearer FAKEtoken0123456789abcdefXYZ", "secrets": ["FAKEtoken0123456789abcdefXYZ"], "rule": "[redacted:bearer]" },
+    { "name": "Bearer lower case in JSON message", "body": "{\"message\":\"invalid credentials: bearer fake.opaque-token_0123456789\"}", "secrets": ["fake.opaque-token_0123456789"], "rule": "[redacted:bearer]" },
+    { "name": "bare JWT in text", "body": "token rejected eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJmYWtlLWlzc3VlciJ9.c2lnbmF0dXJlLWZha2UtMDEyMzQ1 at gateway", "secrets": ["eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJmYWtlLWlzc3VlciJ9.c2lnbmF0dXJlLWZha2UtMDEyMzQ1"], "rule": "[redacted:jwt]" },
+    { "name": "refresh_token and id_token", "body": "{\"refresh_token\":\"fake-refresh-0001\",\"id_token\":\"fake-id-0002\",\"expires_in\":3600}", "secrets": ["fake-refresh-0001", "fake-id-0002"], "rule": "[redacted:key-token]" },
+    { "name": "password in JSON with spaces", "body": "{ \"user\": \"jan\", \"password\" : \"FakeP4ss!word\" }", "secrets": ["FakeP4ss!word"], "rule": "[redacted:key-password]" },
+    { "name": "camelCase accessToken", "body": "{\"data\":{\"accessToken\":\"fakeAccess999\",\"user\":\"x\"}}", "secrets": ["fakeAccess999"], "rule": "[redacted:key-token]" },
+    { "name": "api_key in form body", "body": "user=jan&api_key=FAKEKEY12345&mode=test", "secrets": ["FAKEKEY12345"], "rule": "[redacted:key-api_key]" },
+    { "name": "session id in text", "body": "Session expired (sessionid=fakeSess777 path=/)", "secrets": ["fakeSess777"], "rule": "[redacted:key-sessionid]" },
+    { "name": "token in URL query inside HTML", "body": "<p>Go to <a href=\"https://example.test/cb?state=1&access_token=fakeUrlTok55\">login</a></p>", "secrets": ["fakeUrlTok55"], "rule": "[redacted:key-token]" },
+    { "name": "OAuth fragment", "body": "redirect: https://example.test/#access_token=fakeFrag42&token_type=bearer", "secrets": ["fakeFrag42"], "rule": "[redacted:key-token]" },
+    { "name": "csrf and xsrf keys", "body": "{\"csrfToken\":\"fakeCsrf-1\",\"XSRF-TOKEN\":\"fakeXsrf-2\"}", "secrets": ["fakeCsrf-1", "fakeXsrf-2"], "rule": "[redacted:key-" },
+    { "name": "client_secret", "body": "{\"error\":\"invalid_client\",\"client_secret\":\"fakeClientSecret00\"}", "secrets": ["fakeClientSecret00"], "rule": "[redacted:key-secret]" },
+    { "name": "Authorization header echoed in JSON", "body": "{\"headers\":{\"Authorization\":\"Basic ZmFrZTpmYWtl\"}}", "secrets": ["ZmFrZTpmYWtl"], "rule": "[redacted:key-authorization]" },
+    { "name": "signature and otp", "body": "otp=123456&signature=fakeSig0099", "secrets": ["123456", "fakeSig0099"], "rule": "[redacted:key-" },
+    { "name": "cookie echoed in XML", "body": "<error><detail>cookie=fakeCookieVal1; Path=/</detail></error>", "secrets": ["fakeCookieVal1"], "rule": "[redacted:key-cookie]" },
+    { "name": "JSON with escaped quotes in secret", "body": "{\"pwd\":\"fake\\\"quoted\\\"pw\",\"ok\":false}", "secrets": ["quoted"], "rule": "[redacted:key-pwd]" },
+    { "name": "nested JSON string with jwt", "body": "{\"detail\":\"upstream said {\\\"jwt\\\":\\\"eyJmYWtlIjoxfQ.eyJmYWtlIjoyfQ.ZmFrZXNpZ25hdHVyZQ\\\"}\"}", "secrets": ["eyJmYWtlIjoxfQ.eyJmYWtlIjoyfQ.ZmFrZXNpZ25hdHVyZQ"], "rule": "[redacted:" },
+    { "name": "user_token key", "body": "{\"user_token\":\"fakeUserTok\"}", "secrets": ["fakeUserTok"], "rule": "[redacted:key-token]" }
+  ],
+  "benign": [
+    { "name": "plain error JSON", "body": "{\"error\":\"not_found\",\"message\":\"Resource /api/items/42 does not exist\",\"status\":404}" },
+    { "name": "timestamps and numbers", "body": "{\"ts\":1768471204200,\"iso\":\"2026-10-23T12:00:00.000Z\",\"count\":12,\"ratio\":0.25}" },
+    { "name": "uuid", "body": "{\"requestId\":\"3f2b6c1e-8d4a-4b7e-9c2f-0a1b2c3d4e5f\",\"error\":\"timeout\"}" },
+    { "name": "commit hash", "body": "build 9fceb02d0ae598e95dc970b74767f19372d61af8 failed" },
+    { "name": "html error page", "body": "<!doctype html><html><head><title>500 Internal Server Error</title></head><body><h1>Oops</h1></body></html>" },
+    { "name": "form-like query without secrets", "body": "page=2&sort=name&filter=active" },
+    { "name": "validation errors", "body": "{\"errors\":[{\"field\":\"email\",\"code\":\"required\"},{\"field\":\"name\",\"code\":\"too_short\"}]}" },
+    { "name": "word token in a sentence", "body": "{\"message\":\"The tokenizer failed on input; please retry\"}" },
+    { "name": "boolean and numeric secret-looking keys", "body": "{\"has_password\":true,\"pin_attempts\":3,\"session_count\":2}", "falsePositive": "none expected: non-string JSON values are kept by design" },
+    { "name": "dotted hostname and version", "body": "upstream api.example.test v1.2.3 returned 502" },
+    { "name": "base64 small image name", "body": "{\"icon\":\"data:image/png;base64,iVBORw0KGgo=\"}" },
+    { "name": "author field", "body": "{\"author\":\"Jan Kowalski\",\"authority\":\"local\"}" },
+    { "name": "stack trace", "body": "TypeError: x is undefined\n    at render (http://127.0.0.1:8080/app.js:10:5)\n    at main (http://127.0.0.1:8080/app.js:20:3)" }
+  ]
+}

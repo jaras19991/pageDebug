@@ -1,0 +1,457 @@
+{
+  "schemaVersion": 3,
+  "extensionVersion": "0.4.0",
+  "source": "extension",
+  "collectedAt": "2026-01-15T10:01:05.000Z",
+  "recordingStartedAt": "2026-01-15T10:00:00.000Z",
+  "recordingStoppedReason": null,
+  "timeOrigin": 1768471204200.25,
+  "overview": {
+    "runtimeErrors": 2,
+    "consoleErrors": 1,
+    "failedRequests": 3,
+    "steps": 9,
+    "poorVitals": 1,
+    "screenshot": true
+  },
+  "limits": {
+    "consoleLogs": 5000,
+    "runtimeErrors": 1000,
+    "network": 5000,
+    "steps": 2000,
+    "entryChars": 40000,
+    "stackChars": 16000,
+    "responseBodyChars": 4096,
+    "responseBodyTotalChars": 262144,
+    "screenshotBytes": 307200,
+    "longTasks": 20
+  },
+  "truncated": {
+    "consoleLogs": false,
+    "runtimeErrors": false,
+    "network": false,
+    "steps": false,
+    "responseBodies": false
+  },
+  "documents": [
+    {
+      "id": 0,
+      "url": "http://127.0.0.1:8080/form.html",
+      "timeOrigin": 1768471200120.5,
+      "navigationType": "reload",
+      "status": 200,
+      "recorded": true,
+      "flushed": true,
+      "current": false,
+      "counts": {
+        "consoleLogs": 1,
+        "runtimeErrors": 0,
+        "network": 2,
+        "steps": 7
+      },
+      "kept": {
+        "consoleLogs": 1,
+        "runtimeErrors": 0,
+        "network": 2,
+        "steps": 7
+      }
+    },
+    {
+      "id": 1,
+      "url": "http://127.0.0.1:8080/result.html",
+      "timeOrigin": 1768471204200.25,
+      "navigationType": "navigate",
+      "status": 500,
+      "recorded": true,
+      "flushed": true,
+      "current": true,
+      "counts": {
+        "consoleLogs": 1,
+        "runtimeErrors": 2,
+        "network": 3,
+        "steps": 2
+      },
+      "kept": {
+        "consoleLogs": 1,
+        "runtimeErrors": 2,
+        "network": 3,
+        "steps": 2
+      }
+    }
+  ],
+  "notes": [
+    "Recording started at 2026-01-15T10:00:00.000Z (page reloaded); earlier data is not included.",
+    "LCP, CLS and INP are values at the time of saving; they could still grow."
+  ],
+  "steps": [
+    {
+      "t": 0,
+      "doc": 0,
+      "type": "navigate",
+      "url": "http://127.0.0.1:8080/form.html",
+      "via": "reload"
+    },
+    {
+      "t": 812.4,
+      "doc": 0,
+      "type": "click",
+      "selector": "#start",
+      "text": "Zacznij"
+    },
+    {
+      "t": 930,
+      "doc": 0,
+      "type": "input",
+      "selector": "form > input:nth-of-type(1)",
+      "inputType": "email",
+      "valueLength": 15
+    },
+    {
+      "t": 1201.7,
+      "doc": 0,
+      "type": "input",
+      "selector": "#pass",
+      "inputType": "password"
+    },
+    {
+      "t": 1300.2,
+      "doc": 0,
+      "type": "change",
+      "selector": "[data-testid=\"terms\"]",
+      "inputType": "checkbox",
+      "checked": true
+    },
+    {
+      "t": 1400,
+      "doc": 0,
+      "type": "key",
+      "selector": "#pass",
+      "key": "Enter"
+    },
+    {
+      "t": 1401,
+      "doc": 0,
+      "type": "submit",
+      "selector": "#loginForm"
+    },
+    {
+      "t": 0,
+      "doc": 1,
+      "type": "navigate",
+      "url": "http://127.0.0.1:8080/result.html",
+      "via": "navigate"
+    },
+    {
+      "t": 2050,
+      "doc": 1,
+      "type": "click",
+      "selector": "#slow",
+      "text": "Zapisz"
+    }
+  ],
+  "runtimeErrors": [
+    {
+      "t": 8.7,
+      "doc": 1,
+      "type": "error",
+      "message": "Uncaught TypeError: x is undefined",
+      "filename": "http://127.0.0.1:8080/result.html",
+      "lineno": 3,
+      "colno": 9,
+      "stack": "TypeError: x is undefined\n    at http://127.0.0.1:8080/result.html:3:9"
+    },
+    {
+      "t": 9.5,
+      "doc": 1,
+      "type": "error",
+      "message": "Uncaught Error: frame failed",
+      "filename": "http://127.0.0.1:8080/inner.html",
+      "lineno": 1,
+      "colno": 1,
+      "stack": "Error: frame failed",
+      "frame": "http://127.0.0.1:8080/inner.html"
+    }
+  ],
+  "network": [
+    {
+      "t": 40.1,
+      "doc": 0,
+      "type": "img",
+      "method": "GET",
+      "url": "http://127.0.0.1:8080/img/missing.png",
+      "status": 404,
+      "statusText": null,
+      "ok": false,
+      "redirected": null,
+      "durationMs": 2.4,
+      "sizeBytes": 9,
+      "requestHeaders": {},
+      "responseHeaders": {},
+      "requestBody": null,
+      "error": null,
+      "initiatorType": "img"
+    },
+    {
+      "t": 41,
+      "doc": 0,
+      "type": "img",
+      "method": "GET",
+      "url": "https://cdn.example/logo.png",
+      "status": null,
+      "statusText": null,
+      "ok": null,
+      "redirected": null,
+      "durationMs": 2.4,
+      "sizeBytes": null,
+      "requestHeaders": {},
+      "responseHeaders": {},
+      "requestBody": null,
+      "error": null,
+      "statusUnavailable": "cross-origin",
+      "initiatorType": "img"
+    },
+    {
+      "t": 12.5,
+      "doc": 1,
+      "type": "fetch",
+      "method": "POST",
+      "url": "http://127.0.0.1:8080/api/fail",
+      "status": 500,
+      "statusText": "Internal Server Error",
+      "ok": false,
+      "redirected": false,
+      "durationMs": 3.21,
+      "sizeBytes": 23,
+      "requestHeaders": {
+        "content-type": "application/json"
+      },
+      "responseHeaders": {
+        "content-type": "application/json"
+      },
+      "requestBody": "{\"name\":\"Example\"}",
+      "error": null,
+      "responseBodyPreview": "{\"error\":\"expired\"}",
+      "responseBodyTruncated": false
+    },
+    {
+      "t": 20,
+      "doc": 1,
+      "type": "script",
+      "method": "GET",
+      "url": "http://127.0.0.1:8080/missing.js",
+      "status": 404,
+      "statusText": null,
+      "ok": false,
+      "redirected": null,
+      "durationMs": 2.4,
+      "sizeBytes": 9,
+      "requestHeaders": {},
+      "responseHeaders": {},
+      "requestBody": null,
+      "error": null,
+      "initiatorType": "script"
+    },
+    {
+      "t": 21,
+      "doc": 1,
+      "type": "css",
+      "method": "GET",
+      "url": "http://127.0.0.1:8080/style.css",
+      "status": 200,
+      "statusText": null,
+      "ok": true,
+      "redirected": null,
+      "durationMs": 2.4,
+      "sizeBytes": 9,
+      "requestHeaders": {},
+      "responseHeaders": {},
+      "requestBody": null,
+      "error": null,
+      "initiatorType": "link"
+    }
+  ],
+  "vitals": [
+    {
+      "doc": 0,
+      "TTFB": {
+        "available": true,
+        "value": 47,
+        "rating": "good",
+        "t": 47,
+        "finalized": true
+      },
+      "FCP": {
+        "available": true,
+        "value": 820,
+        "rating": "good",
+        "t": 820,
+        "finalized": true
+      },
+      "LCP": {
+        "available": true,
+        "value": 1712,
+        "rating": "good",
+        "t": 1712,
+        "finalized": true,
+        "selector": "#hero",
+        "url": "http://127.0.0.1:8080/img/hero.png"
+      },
+      "CLS": {
+        "available": false,
+        "reason": "unsupported-browser"
+      },
+      "INP": {
+        "available": false,
+        "reason": "unsupported-browser"
+      },
+      "longTasks": {
+        "available": false,
+        "reason": "unsupported-browser"
+      }
+    },
+    {
+      "doc": 1,
+      "TTFB": {
+        "available": true,
+        "value": 52,
+        "rating": "good",
+        "t": 52,
+        "finalized": true
+      },
+      "FCP": {
+        "available": true,
+        "value": 910,
+        "rating": "good",
+        "t": 910,
+        "finalized": true
+      },
+      "LCP": {
+        "available": true,
+        "value": 4300,
+        "rating": "poor",
+        "t": 4300,
+        "finalized": false,
+        "selector": "#hero",
+        "url": "http://127.0.0.1:8080/img/hero.png"
+      },
+      "CLS": {
+        "available": true,
+        "value": 0.183,
+        "rating": "needs-improvement",
+        "t": 560,
+        "finalized": false,
+        "sources": [
+          {
+            "selector": "main > p:nth-of-type(1)",
+            "value": 0.183,
+            "t": 560
+          }
+        ]
+      },
+      "INP": {
+        "available": true,
+        "value": 336,
+        "rating": "needs-improvement",
+        "t": 2100,
+        "finalized": false,
+        "selector": "#slow",
+        "eventType": "click",
+        "inputDelay": 2,
+        "processing": 304,
+        "presentation": 30,
+        "interactions": 1
+      },
+      "longTasks": {
+        "available": true,
+        "items": [
+          {
+            "t": 300.2,
+            "duration": 212,
+            "blockingDuration": 162,
+            "scripts": [
+              {
+                "url": "http://127.0.0.1:8080/heavy.js",
+                "function": "heavyWork",
+                "invoker": "BUTTON#slow.onclick",
+                "duration": 205
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "screenshots": [
+    {
+      "t": 5230.1,
+      "doc": 1,
+      "reason": "save",
+      "mime": "image/jpeg",
+      "width": 1,
+      "height": 1,
+      "bytes": 136,
+      "attachment": "screenshot-0"
+    }
+  ],
+  "consoleLogs": [
+    {
+      "t": 30.1,
+      "doc": 0,
+      "level": "info",
+      "args": [
+        "\"form ready\""
+      ]
+    },
+    {
+      "t": 15.2,
+      "doc": 1,
+      "level": "error",
+      "args": [
+        {
+          "name": "TypeError",
+          "message": "x is undefined",
+          "stack": "TypeError: x is undefined\n    at onSave (http://127.0.0.1:8080/result.js:12:9)",
+          "cause": {
+            "name": "Error",
+            "message": "save failed",
+            "stack": "Error: save failed\n    at save (http://127.0.0.1:8080/result.js:3:1)"
+          }
+        }
+      ],
+      "stack": "at onSave (http://127.0.0.1:8080/result.js:12:9)"
+    }
+  ],
+  "environment": {
+    "location": {
+      "href": "http://127.0.0.1:8080/result.html",
+      "hostname": "127.0.0.1",
+      "pathname": "/result.html"
+    }
+  },
+  "performance": {
+    "timeOrigin": 1768471204200.25,
+    "navigation": {
+      "type": "navigate"
+    },
+    "resources": []
+  },
+  "storage": {
+    "cookies": "sid=EXAMPLE",
+    "localStorage": {
+      "theme": "dark"
+    },
+    "sessionStorage": {}
+  },
+  "dom": {
+    "counts": {
+      "totalElements": 12,
+      "forms": 0
+    },
+    "html": {
+      "outerHTML": "<html><body><p>Wynik</p></body></html>"
+    }
+  },
+  "attachments": {
+    "screenshot-0": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxD/2Q=="
+  }
+}

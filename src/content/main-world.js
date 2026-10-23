@@ -45,6 +45,55 @@ function safeSlice(value, max) {
   return value.length > max ? value.slice(0, max) + `... [truncated ${value.length - max} chars]` : value;
 }
 
+// Stack limits for Error values (AC-4.8): the error itself keeps up to 16 000 chars, each cause up to 4000.
+// Causes are followed up to SERIALIZE_CAUSE_DEPTH levels; a deeper one becomes a marker.
+const SERIALIZE_STACK_MAX = 16000;
+const SERIALIZE_CAUSE_STACK_MAX = 4000;
+const SERIALIZE_CAUSE_DEPTH = 5;
+
+// Errors of same-origin frames come from another realm and fail `instanceof Error`; the built-in brand
+// (`[object Error]`, captured at load) recognises them too (E2-D6).
+const serializeObjectToString = Object.prototype.toString;
+
+function serializeIsError(value) {
+  if (value instanceof Error) return true;
+  if (value === null || typeof value !== 'object') return false;
+  try {
+    return Reflect.apply(serializeObjectToString, value, []) === '[object Error]';
+  } catch {
+    return false;
+  }
+}
+
+function serializeCapStack(stack, max) {
+  return typeof stack === 'string' && stack.length > max ? stack.slice(0, max) : stack;
+}
+
+// { name, message, stack, cause? } of an Error. Error causes are expanded here (depth and cycles
+// tracked on `chain`); a non-Error cause stays a value and goes through the replacer like any other.
+function serializeError(err, depth, chain) {
+  const out = { name: err.name, message: err.message, stack: undefined };
+  out.stack = serializeCapStack(err.stack, depth === 0 ? SERIALIZE_STACK_MAX : SERIALIZE_CAUSE_STACK_MAX);
+  let cause;
+  try {
+    if (!('cause' in err)) return out;
+    cause = err.cause;
+  } catch {
+    return out;
+  }
+  if (!serializeIsError(cause)) {
+    out.cause = cause;
+  } else if (chain.includes(cause)) {
+    out.cause = '[Circular]';
+  } else if (depth + 1 > SERIALIZE_CAUSE_DEPTH) {
+    out.cause = '[cause depth limit]';
+  } else {
+    chain.push(cause);
+    out.cause = serializeError(cause, depth + 1, chain);
+  }
+  return out;
+}
+
 // JSON.stringify with a replacer that summarises functions, errors and DOM nodes.
 // Cycles are detected on the ancestor stack: the replacer's `this` is the holder,
 // so everything above it on the stack is a finished sibling subtree and is popped.
@@ -62,8 +111,8 @@ function serializeToJsonString(value, outerHtmlMax) {
       return `[Function: ${val.name || 'anonymous'}]`;
     }
 
-    if (val instanceof Error) {
-      out = { name: val.name, message: val.message, stack: val.stack };
+    if (serializeIsError(val)) {
+      out = serializeError(val, 0, [val]);
     } else if (typeof ElementCtor === 'function' && val instanceof ElementCtor) {
       out = {
         tagName: val.tagName,
@@ -190,13 +239,128 @@ function createBuffer({ maxItems = Infinity, maxChars = Infinity } = {}) {
 return Object.freeze({ createBuffer: createBuffer });
 })();
 
-// module: page/hooks-network.js
+// module: lib/mask-secrets.js
 const __pds_m2 = (function () {
+// Masking of secrets in text at the source (E2 D3a): response body previews are masked in MAIN before they
+// reach a buffer, and again in the background when the package is assembled (the page may have patched
+// String/RegExp in MAIN). Pure, idempotent, no DOM and no imports, so it is bundled into MAIN as well.
+// Rules (skill privacy-redaction, rulesVersion 1): key list in JSON and `key=value` form, Bearer, JWT.
+// Every regex is linear: no nested quantifiers over overlapping classes; runs start only at a run boundary.
+// E3 grows this into the full redact.js.
+
+const MASK_LIMITS = Object.freeze({
+  // Longer input is cut before masking: an unmasked tail must never pass through.
+  inputChars: 65536,
+  keyChars: 256,
+});
+
+// Skill privacy-redaction, "Klucze". The first token found in a key names the rule: `access_token` → key-token.
+const SECRET_KEYS = Object.freeze([
+  'token', 'access_token', 'refresh_token', 'id_token', 'auth', 'authorization', 'session', 'sessionid', 'sid', 'jwt',
+  'secret', 'api_key', 'apikey', 'key', 'password', 'passwd', 'pwd', 'csrf', 'xsrf', 'cookie', 'set-cookie', 'bearer',
+  'credential', 'private', 'signature', 'sig', 'otp', 'pin',
+]);
+
+// Word boundaries in a key: start/end, `_`, `-`, `.`, white space or brackets (`user[password]`).
+const KEY_EDGE = '[_\\-.\\s\\[\\]]';
+const KEY_MATCHERS = SECRET_KEYS.map((token) => ({
+  token,
+  re: new RegExp(`(?:^|${KEY_EDGE})${token.replace(/[.-]/g, '\\$&')}(?:$|${KEY_EDGE})`),
+}));
+
+// `"key" : "value"` with JSON escapes. Non-string values (numbers, booleans, null, objects) are kept.
+const JSON_PAIR = /"((?:[^"\\\n]|\\.){1,256})"(\s*:\s*)"((?:[^"\\]|\\.)*)"/g;
+// `key=value` in forms, query strings, fragments and plain text; the value ends at `&`, `#`, white space,
+// a quote, a backslash (escaped quote inside a JSON string), `;`, `,`, `<` or `>`.
+const FORM_PAIR = /(?<![A-Za-z0-9_.\-[\]])([A-Za-z0-9_.\-[\]]{1,256})=([^&#\s"'\\;,<>]+)/g;
+const BEARER = /\b(Bearer\s+)([A-Za-z0-9._~+/=-]{16,})/gi;
+const JWT = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}(?![A-Za-z0-9_-])/g;
+
+const MARKER = /^\[redacted:[a-z0-9_-]+\]$/;
+
+// Trailing "word" that a cut may leave half-kept (D3): a token fragment must not stay at the end.
+const WORD_CHAR = /[A-Za-z0-9._~+/=-]/;
+const TRAILING_WORD = /[A-Za-z0-9._~+/=-]+$/;
+
+function secretKeyToken(rawKey) {
+  if (rawKey.length > MASK_LIMITS.keyChars) return null;
+  // camelCase → snake_case, so `accessToken` matches `token` as a word.
+  const key = rawKey.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+  for (const { token, re } of KEY_MATCHERS) if (re.test(key)) return token;
+  return null;
+}
+
+/**
+ * Replaces secret values in `text` with `[redacted:<rule>]` (rules `key-<token>`, `bearer`, `jwt`).
+ * JSON stays valid: string values are replaced inside their quotes. Values that are already markers are
+ * left alone, so `maskSecrets(maskSecrets(x).text)` changes nothing and reports `masked: 0`.
+ * @param {string} text non-strings give `{ text: '', masked: 0 }`
+ * @returns {{ text: string, masked: number }} `masked` = number of replaced values
+ */
+function maskSecrets(text) {
+  if (typeof text !== 'string') return { text: '', masked: 0 };
+  let masked = 0;
+  let out = text.length > MASK_LIMITS.inputChars ? text.slice(0, MASK_LIMITS.inputChars) : text;
+
+  out = out.replace(JSON_PAIR, (all, key, colon, value) => {
+    if (value === '' || MARKER.test(value)) return all;
+    const token = secretKeyToken(key);
+    if (token === null) return all;
+    masked++;
+    return `"${key}"${colon}"[redacted:key-${token}]"`;
+  });
+
+  out = out.replace(FORM_PAIR, (all, key, value) => {
+    if (MARKER.test(value)) return all;
+    const token = secretKeyToken(key);
+    if (token === null) return all;
+    masked++;
+    return `${key}=[redacted:key-${token}]`;
+  });
+
+  out = out.replace(BEARER, (_all, prefix) => {
+    masked++;
+    return `${prefix}[redacted:bearer]`;
+  });
+
+  out = out.replace(JWT, () => {
+    masked++;
+    return '[redacted:jwt]';
+  });
+
+  return { text: out, masked };
+}
+
+/**
+ * Cuts `text` to at most `max` characters for a preview (D3). A word (`[A-Za-z0-9._~+/=-]+`) that the cut
+ * splits is dropped entirely, so half of a token never stays at the end; a split surrogate pair is dropped too.
+ * @returns {{ preview: string, truncated: boolean }}
+ */
+function cutPreview(text, max) {
+  const s = typeof text === 'string' ? text : '';
+  const limit = Number.isFinite(max) && max > 0 ? Math.floor(max) : 0;
+  if (s.length <= limit) return { preview: s, truncated: false };
+  let preview = s.slice(0, limit);
+  if (WORD_CHAR.test(s[limit])) preview = preview.replace(TRAILING_WORD, '');
+  const last = preview.charCodeAt(preview.length - 1);
+  if (last >= 0xd800 && last <= 0xdbff) preview = preview.slice(0, -1);
+  return { preview, truncated: true };
+}
+return Object.freeze({ MASK_LIMITS: MASK_LIMITS, maskSecrets: maskSecrets, cutPreview: cutPreview });
+})();
+
+// module: page/hooks-network.js
+const __pds_m3 = (function () {
+const { maskSecrets, cutPreview } = __pds_m2;
 // Network hooks of the recorder (E1 D5): `fetch` through Proxy `apply`, `XMLHttpRequest` through
 // Proxy `construct` returning the native instance. `XMLHttpRequest.prototype` is never touched, so
 // `instanceof`, static constants and later page patches on the prototype keep working.
 // Every recorder failure is swallowed; the page call always runs exactly once and its result or
-// exception reaches the page unchanged. Response bodies are never read (no `clone()`).
+// exception reaches the page unchanged. Bodies of error responses (status >= 400, textual content-type) are
+// previewed (E2 D3): fetch through `clone()` + a bounded stream reader (8192 chars or 2 s, then `cancel()`),
+// XHR from `responseText`/`response` of text/json types only. The preview is masked (maskSecrets) before it is cut
+// and reaches the recorder asynchronously through `ctx.attach(entry, fields, chars)`; without `attach` nothing is read.
+
 
 const NETWORK_LIMITS = Object.freeze({
   urlChars: 4000,
@@ -205,21 +369,58 @@ const NETWORK_LIMITS = Object.freeze({
   headerChars: 2000,
   bodyChars: 5000,
   statusTextChars: 500,
+  responseBodyChars: 4096,
+  responseReadChars: 8192,
+  bodyTimeoutMs: 2000,
 });
+
+// Trailing "word" left by a read stopped at the char limit: dropped so a half token never stays (D3).
+const READ_TRAILING_WORD = /[A-Za-z0-9._~+/=-]+$/;
+
+/**
+ * Content types whose error bodies are previewed (D3): `text/*`, `application/json`, `*+json`, `*xml`,
+ * `application/x-www-form-urlencoded`.
+ */
+function isTextual(contentType) {
+  if (typeof contentType !== 'string') return false;
+  const mime = contentType.slice(0, 256).split(';')[0].trim().toLowerCase();
+  if (!mime) return false;
+  return mime.startsWith('text/') || mime === 'application/json' || mime.endsWith('+json')
+    || mime.endsWith('xml') || mime === 'application/x-www-form-urlencoded';
+}
 
 // Hooks created by this module, so a second install on the same window is a no-op.
 const ownHooks = new WeakSet();
 
 const noop = () => {};
 
+function pickProto(ctor, name) {
+  try {
+    return typeof ctor === 'function' ? ctor.prototype[name] : null;
+  } catch {
+    return null;
+  }
+}
+
 function defaultIntrinsics() {
+  const G = globalThis;
+  const reader = G.ReadableStream ? pickProto(G.ReadableStream, 'getReader') : null;
   return {
     Reflect,
     Proxy,
-    URL: globalThis.URL,
+    URL: G.URL,
     promiseThen: Promise.prototype.then,
-    addEventListener: globalThis.EventTarget ? EventTarget.prototype.addEventListener : null,
+    addEventListener: G.EventTarget ? EventTarget.prototype.addEventListener : null,
     objectToString: Object.prototype.toString,
+    jsonStringify: JSON.stringify,
+    responseClone: pickProto(G.Response, 'clone'),
+    getReader: reader,
+    readerRead: pickProto(G.ReadableStreamDefaultReader, 'read'),
+    readerCancel: pickProto(G.ReadableStreamDefaultReader, 'cancel'),
+    TextDecoder: G.TextDecoder,
+    decode: pickProto(G.TextDecoder, 'decode'),
+    setTimeout: G.setTimeout,
+    clearTimeout: G.clearTimeout,
   };
 }
 
@@ -285,7 +486,108 @@ function makeTools(ctx) {
     return `[${slice(tag, 64)}]`;
   };
 
-  return { I, win, safe, isOn, now, emit, json, resolveUrl, headersToObject, bodyPreview };
+  const contentTypeOf = (headers) => {
+    for (const key of Object.keys(headers || {})) if (key.toLowerCase() === 'content-type') return headers[key];
+    return null;
+  };
+
+  const later = (fn, ms) => safe(() => I.Reflect.apply(I.setTimeout, win, [fn, ms]), null);
+  const cancelLater = (id) => {
+    if (id !== null) safe(() => I.Reflect.apply(I.clearTimeout, win, [id]));
+  };
+  // `then` captured at install; both callbacks guarded so no rejection is ever left unhandled.
+  const then = (promise, ok, fail) => {
+    const guard = (fn) => (value) => {
+      safe(() => fn(value));
+    };
+    safe(() => I.Reflect.apply(I.promiseThen, promise, [guard(ok), guard(fail)]));
+  };
+
+  // Preview fields from read text: mask first, then cut (D3). `readCut` = the read stopped at the char limit.
+  const previewFields = (raw, readCut) => {
+    const text = readCut ? raw.replace(READ_TRAILING_WORD, '') : raw;
+    const masked = maskSecrets(text).text;
+    const { preview, truncated } = cutPreview(masked, NETWORK_LIMITS.responseBodyChars);
+    return { responseBodyPreview: preview, responseBodyTruncated: truncated || readCut };
+  };
+
+  const attach = (entry, raw, readCut) => {
+    if (!isOn() || typeof ctx.attach !== 'function') return;
+    const fields = previewFields(raw, readCut);
+    ctx.attach(entry, fields, fields.responseBodyPreview.length);
+  };
+
+  const wantsBody = (status, headers) => typeof ctx.attach === 'function' && typeof status === 'number'
+    && status >= 400 && isTextual(contentTypeOf(headers));
+
+  return {
+    I, win, safe, isOn, now, emit, json, resolveUrl, headersToObject, bodyPreview, later, cancelLater, then,
+    attach, wantsBody,
+  };
+}
+
+// Reads at most `responseReadChars` chars of `stream` within `bodyTimeoutMs`; `done(text, readCut)` only when the
+// stream ended or the char limit was hit. A timeout or any failure cancels the reader and reports nothing.
+function readLimited(tools, stream, done) {
+  const { I, safe, later, cancelLater, then } = tools;
+  const reader = I.Reflect.apply(I.getReader, stream, []);
+  const decoder = new I.TextDecoder();
+  const decode = (value, more) => I.Reflect.apply(I.decode, decoder, more ? [value, { stream: true }] : []);
+  let text = '';
+  let settled = false;
+  let timer = null;
+
+  const settle = (result, cancel) => {
+    if (settled) return;
+    settled = true;
+    cancelLater(timer);
+    if (cancel) safe(() => then(I.Reflect.apply(I.readerCancel, reader, []), () => {}, () => {}));
+    if (result) safe(() => done(result.text, result.cut));
+  };
+
+  const step = () => {
+    let pending;
+    try {
+      pending = I.Reflect.apply(I.readerRead, reader, []);
+    } catch {
+      settle(null, true);
+      return;
+    }
+    then(pending, (chunk) => {
+      if (settled) return;
+      try {
+        if (chunk.done) {
+          text += decode(undefined, false);
+          settle({ text: text.slice(0, NETWORK_LIMITS.responseReadChars), cut: text.length > NETWORK_LIMITS.responseReadChars }, false);
+          return;
+        }
+        text += decode(chunk.value, true);
+        if (text.length >= NETWORK_LIMITS.responseReadChars) {
+          settle({ text: text.slice(0, NETWORK_LIMITS.responseReadChars), cut: true }, true);
+          return;
+        }
+      } catch {
+        settle(null, true);
+        return;
+      }
+      step();
+    }, () => settle(null, true));
+  };
+
+  timer = later(() => settle(null, true), NETWORK_LIMITS.bodyTimeoutMs);
+  step();
+}
+
+// A status of 0 is never recorded bare (AC-4.3): an opaque response (`mode: 'no-cors'`) is `cross-origin`, any other
+// unexplained 0 is `unknown`. `statusUnavailable` is placed right after `status` (key order of the package schema).
+function markStatusUnavailable(entry, reason) {
+  const keys = Object.keys(entry);
+  const tail = keys.slice(keys.indexOf('status') + 1).map((key) => [key, entry[key]]);
+  for (const [key] of tail) delete entry[key];
+  entry.status = null;
+  entry.statusUnavailable = reason;
+  for (const [key, value] of tail) entry[key] = value;
+  entry.ok = null;
 }
 
 // Duck typing instead of `instanceof Request`: works across realms and for polyfilled Requests.
@@ -317,6 +619,7 @@ function installFetchHook(ctx) {
       ok: null,
       redirected: null,
       durationMs: null,
+      sizeBytes: null,
       requestHeaders: safe(() => tools.headersToObject(hasInit && init.headers != null ? init.headers : req && req.headers), {}),
       responseHeaders: {},
       requestBody: hasInit && init.body !== undefined ? safe(() => tools.bodyPreview(init.body), null) : null,
@@ -334,10 +637,24 @@ function installFetchHook(ctx) {
         entry.ok = response.ok;
         entry.redirected = response.redirected;
         entry.responseHeaders = safe(() => tools.headersToObject(response.headers), {});
+        if (response.type === 'opaque') markStatusUnavailable(entry, 'cross-origin');
+        else if (!(entry.status > 0)) markStatusUnavailable(entry, 'unknown');
       } else {
         entry.error = json(error);
       }
       emit(entry);
+    });
+    if (response) safe(() => previewBody(entry, response));
+  };
+
+  // Clone synchronously, before the page gets the response, so `bodyUsed` of the original stays false (AC-4.6).
+  const previewBody = (entry, response) => {
+    if (!active || !isOn() || !tools.wantsBody(entry.status, entry.responseHeaders)) return;
+    const type = response.type;
+    if (type === 'opaque' || type === 'opaqueredirect' || response.body == null || response.bodyUsed) return;
+    const clone = I.Reflect.apply(I.responseClone, response, []);
+    readLimited(tools, clone.body, (text, cut) => {
+      if (active) tools.attach(entry, text, cut);
     });
   };
 
@@ -454,13 +771,27 @@ function installXhrHook(ctx) {
         state.error = type;
       });
     }
+    // Only text and json response types are read; blob/arraybuffer/document are never touched (AC-4.6).
+    const previewXhrBody = (entry) => {
+      if (!tools.wantsBody(entry.status, entry.responseHeaders)) return;
+      const type = xhr.responseType;
+      let raw = null;
+      if (type === '' || type === 'text') raw = xhr.responseText;
+      else if (type === 'json') {
+        const value = xhr.response;
+        raw = value == null ? null : I.Reflect.apply(I.jsonStringify, JSON, [value]);
+      }
+      if (typeof raw !== 'string' || raw === '') return;
+      const cut = raw.length > NETWORK_LIMITS.responseReadChars;
+      tools.attach(entry, cut ? raw.slice(0, NETWORK_LIMITS.responseReadChars) : raw, cut);
+    };
     listen('loadend', () => {
       if (!state.opened || !live()) return;
       safe(() => {
         const t = state.tSend ?? state.tOpen;
         const end = now();
         const status = xhr.status;
-        emit({
+        const entry = {
           t,
           type: 'xhr',
           method: state.method,
@@ -470,11 +801,15 @@ function installXhrHook(ctx) {
           ok: status >= 200 && status < 300,
           redirected: safe(() => !!xhr.responseURL && xhr.responseURL !== state.url, false),
           durationMs: end != null && t != null ? round2(end - t) : null,
+          sizeBytes: null,
           requestHeaders: state.headers,
           responseHeaders: safe(() => parseResponseHeaders(xhr.getAllResponseHeaders(), tools.headersToObject), {}),
           requestBody: state.body,
           error: state.error,
-        });
+        };
+        if (!(status > 0) && state.error === null) markStatusUnavailable(entry, 'unknown');
+        emit(entry);
+        safe(() => previewXhrBody(entry));
       });
       state.opened = false;
     });
@@ -496,18 +831,18 @@ function installXhrHook(ctx) {
     if (win.XMLHttpRequest === hook) win.XMLHttpRequest = Original;
   };
 }
-return Object.freeze({ NETWORK_LIMITS: NETWORK_LIMITS, installFetchHook: installFetchHook, installXhrHook: installXhrHook });
+return Object.freeze({ NETWORK_LIMITS: NETWORK_LIMITS, isTextual: isTextual, installFetchHook: installFetchHook, installXhrHook: installXhrHook });
 })();
 
 // module: page/hooks-console.js
-const __pds_m3 = (function () {
+const __pds_m4 = (function () {
 // console.* hooks for the MAIN-world recorder (design D5, E1-T5).
 // Each level gets a wrapper that records { t, level, args, stack? } and then calls the original exactly once
 // via Reflect.apply with the page's arguments. Recorder failures are swallowed; page exceptions propagate.
 // restore() puts back only the levels that still hold our wrapper; a wrapper the page installed on top of ours
 // (Sentry, Datadog, …) stays, and ours becomes a plain passthrough to the original.
 
-const STACK_MAX_CHARS = 4000;
+const STACK_MAX_CHARS = 16000;
 
 // win -> true while hooks are installed; a second install in the same window is a no-op.
 const consoleHookActive = new WeakMap();
@@ -609,12 +944,15 @@ return Object.freeze({ STACK_MAX_CHARS: STACK_MAX_CHARS, parseStack: parseStack,
 })();
 
 // module: page/hooks-errors.js
-const __pds_m4 = (function () {
+const __pds_m5 = (function () {
 // window `error` / `unhandledrejection` listeners for the MAIN-world recorder (design D5, E1-T5).
 // Bubble-phase listeners on window (resource load errors are out of scope, E2). Handler references are kept
 // so restore() removes exactly what was added. Recorder failures are swallowed.
 
 const TEXT_MAX_CHARS = 4000;
+
+// Stacks are kept much longer than message/filename (AC-4.8).
+const STACK_MAX_CHARS = 16000;
 
 // win -> true while listeners are installed; a second install in the same window is a no-op.
 const errorHooksActive = new WeakMap();
@@ -633,7 +971,8 @@ function capText(value) {
 function stackOf(value) {
   try {
     const stack = value && value.stack;
-    return typeof stack === 'string' && stack !== '' ? capText(stack) : undefined;
+    if (typeof stack !== 'string' || stack === '') return undefined;
+    return stack.length > STACK_MAX_CHARS ? stack.slice(0, STACK_MAX_CHARS) : stack;
   } catch {
     return undefined;
   }
@@ -715,25 +1054,1522 @@ function installErrorHooks({ win, now, record, json, intrinsics = {} }) {
     }
   };
 }
-return Object.freeze({ TEXT_MAX_CHARS: TEXT_MAX_CHARS, installErrorHooks: installErrorHooks });
+return Object.freeze({ TEXT_MAX_CHARS: TEXT_MAX_CHARS, STACK_MAX_CHARS: STACK_MAX_CHARS, installErrorHooks: installErrorHooks });
+})();
+
+// module: page/selector.js
+const __pds_m6 = (function () {
+// CSS selector of an element for steps and vitals attribution (design D4, E2-T5a, AC-3.2).
+// Order: `#id` if unique → `tag[data-testid|data-test|data-test-id|data-qa|data-cy="…"]` if unique →
+// path of `tag:nth-of-type(k)` segments joined with ` > ` from the nearest ancestor with a unique id (or `html`).
+// Every DOM call goes through intrinsics captured at document_start, so page patches made later
+// (getAttribute, querySelectorAll, the `id` getter, …) do not change the result.
+
+const SELECTOR_MAX_CHARS = 1000;
+
+// Above this many elements in the document the test-attribute step is skipped (one scan per attribute is too slow).
+const SELECTOR_DATA_MAX_ELEMENTS = 5000;
+
+const SELECTOR_TEST_ATTRIBUTES = ['data-testid', 'data-test', 'data-test-id', 'data-qa', 'data-cy'];
+
+function selectorGetter(proto, name) {
+  const desc = proto && Object.getOwnPropertyDescriptor(proto, name);
+  return desc && typeof desc.get === 'function' ? desc.get : undefined;
+}
+
+function captureSelectorIntrinsics(win) {
+  const elementProto = win.Element.prototype;
+  const nodeProto = win.Node.prototype;
+  const css = win.CSS;
+  return {
+    apply: Reflect.apply,
+    querySelectorAll: win.Document.prototype.querySelectorAll,
+    getElementsByTagName: win.Document.prototype.getElementsByTagName,
+    getAttribute: elementProto.getAttribute,
+    closest: elementProto.closest,
+    getTagName: selectorGetter(elementProto, 'tagName'),
+    getId: selectorGetter(elementProto, 'id'),
+    getChildren: selectorGetter(elementProto, 'children'),
+    getParentElement: selectorGetter(nodeProto, 'parentElement'),
+    getIsConnected: selectorGetter(nodeProto, 'isConnected'),
+    getRootNode: nodeProto.getRootNode,
+    getHost: win.ShadowRoot ? selectorGetter(win.ShadowRoot.prototype, 'host') : undefined,
+    getListLength: selectorGetter(win.NodeList.prototype, 'length'),
+    listItem: win.NodeList.prototype.item,
+    getCollectionLength: selectorGetter(win.HTMLCollection.prototype, 'length'),
+    collectionItem: win.HTMLCollection.prototype.item,
+    Element: win.Element,
+    cssEscape: css && typeof css.escape === 'function' ? css.escape : undefined,
+  };
+}
+
+// CSSOM "serialize an identifier" for environments without CSS.escape (jsdom).
+function selectorEscapeFallback(value) {
+  const text = String(value);
+  let out = '';
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    const ch = text.charAt(i);
+    if (code === 0) out += '�';
+    else if ((code >= 0x1 && code <= 0x1f) || code === 0x7f || (i === 0 && code >= 0x30 && code <= 0x39)
+      || (i === 1 && code >= 0x30 && code <= 0x39 && text.charCodeAt(0) === 0x2d)) out += '\\' + code.toString(16) + ' ';
+    else if (i === 0 && text.length === 1 && code === 0x2d) out += '\\' + ch;
+    else if (code >= 0x80 || code === 0x2d || code === 0x5f || (code >= 0x30 && code <= 0x39)
+      || (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a)) out += ch;
+    else out += '\\' + ch;
+  }
+  return out;
+}
+
+function createSelectorOf({ doc, intrinsics }) {
+  const I = intrinsics || captureSelectorIntrinsics(doc.defaultView);
+  const call = (fn, self, ...args) => I.apply(fn, self, args);
+  const escape = (value) => (I.cssEscape ? call(I.cssEscape, null, String(value)) : selectorEscapeFallback(value));
+  const tagOf = (el) => String(call(I.getTagName, el)).toLowerCase();
+
+  // The one element matching `sel`, or null (also for an invalid selector).
+  function matchesOnly(sel, el) {
+    try {
+      const list = call(I.querySelectorAll, doc, sel);
+      return call(I.getListLength, list) === 1 && call(I.listItem, list, 0) === el;
+    } catch {
+      return false;
+    }
+  }
+
+  function uniqueId(el) {
+    const id = call(I.getId, el);
+    if (typeof id !== 'string' || id === '') return null;
+    const sel = '#' + escape(id);
+    return sel.length <= SELECTOR_MAX_CHARS && matchesOnly(sel, el) ? sel : null;
+  }
+
+  function uniqueTestAttribute(el) {
+    const all = call(I.getElementsByTagName, doc, '*');
+    if (call(I.getCollectionLength, all) > SELECTOR_DATA_MAX_ELEMENTS) return null;
+    for (const name of SELECTOR_TEST_ATTRIBUTES) {
+      const value = call(I.getAttribute, el, name);
+      if (value === null || value === undefined) continue;
+      const sel = `${escape(tagOf(el))}[${name}="${escape(value)}"]`;
+      if (sel.length <= SELECTOR_MAX_CHARS && matchesOnly(sel, el)) return sel;
+    }
+    return null;
+  }
+
+  // `tag` when the element is the only one of its type among siblings, else `tag:nth-of-type(k)`.
+  function segment(el, parent) {
+    const tag = tagOf(el);
+    if (!parent) return escape(tag);
+    const siblings = call(I.getChildren, parent);
+    const count = call(I.getCollectionLength, siblings);
+    let index = 0;
+    let same = 0;
+    for (let i = 0; i < count; i++) {
+      const sibling = call(I.collectionItem, siblings, i);
+      if (tagOf(sibling) !== tag) continue;
+      same++;
+      if (sibling === el) index = same;
+    }
+    return same > 1 ? `${escape(tag)}:nth-of-type(${index})` : escape(tag);
+  }
+
+  function path(el) {
+    const parts = [];
+    let node = el;
+    while (node) {
+      const parent = call(I.getParentElement, node);
+      if (node !== el) {
+        const anchor = uniqueId(node);
+        if (anchor) {
+          parts.unshift(anchor);
+          break;
+        }
+      }
+      parts.unshift(segment(node, parent));
+      node = parent;
+    }
+    // Too long: keep the segments closest to the element (still a valid selector).
+    while (parts.length > 1 && parts.join(' > ').length > SELECTOR_MAX_CHARS) parts.shift();
+    const sel = parts.join(' > ');
+    return sel.length <= SELECTOR_MAX_CHARS ? sel : sel.slice(sel.length - SELECTOR_MAX_CHARS);
+  }
+
+  // Element inside a shadow root → its (outermost) host in `doc`; detached or foreign → null.
+  function inDocument(el) {
+    let node = el;
+    for (let depth = 0; depth < 100; depth++) {
+      if (!call(I.getIsConnected, node)) return null;
+      const root = call(I.getRootNode, node);
+      if (root === doc) return node;
+      const host = I.getHost ? call(I.getHost, root) : null;
+      if (!host) return null;
+      node = host;
+    }
+    return null;
+  }
+
+  return function selectorOf(target) {
+    try {
+      if (!target || !(target instanceof I.Element)) return null;
+      const el = inDocument(target);
+      if (!el) return null;
+      return uniqueId(el) || uniqueTestAttribute(el) || path(el);
+    } catch {
+      return null;
+    }
+  };
+}
+return Object.freeze({ SELECTOR_MAX_CHARS: SELECTOR_MAX_CHARS, SELECTOR_DATA_MAX_ELEMENTS: SELECTOR_DATA_MAX_ELEMENTS, captureSelectorIntrinsics: captureSelectorIntrinsics, createSelectorOf: createSelectorOf });
+})();
+
+// module: page/hooks-steps.js
+const __pds_m7 = (function () {
+// User steps recorder for the MAIN-world recorder (design D4, E2-T5b, AC-3.1, AC-3.3–3.5, AC-3.7).
+// Capture-phase, passive listeners on window (added at document_start, so they run before page handlers and
+// never change propagation or defaultPrevented); a Proxy `apply` on History.prototype.pushState/replaceState.
+// Privacy at the source: no field value is ever read into a record — only `inputType`, `valueLength`, `checked`,
+// a whitelisted `key` and a short label of clicked buttons/links. Only trusted events are recorded.
+// Top-level helpers carry the `steps` prefix (D6: all page modules end up in one IIFE).
+
+const STEP_TEXT_MAX_CHARS = 80;
+const STEP_URL_MAX_CHARS = 4000;
+
+// Same URL navigated again within this window is one step (popstate + hashchange of one jump, D4).
+const STEPS_NAVIGATE_DEDUP_MS = 50;
+// textContent read before whitespace normalization (labels of huge elements).
+const STEPS_TEXT_SCAN_CHARS = 2000;
+
+const STEPS_CLICKABLE = 'a, button, [role=button], input, select, textarea, label, summary, [onclick]';
+const STEPS_LABELLED_INPUTS = ['submit', 'button', 'reset'];
+const STEPS_CHANGE_INPUTS = ['checkbox', 'radio', 'file'];
+const STEPS_KEYS = ['Enter', 'Escape', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+const STEPS_LISTENER_OPTIONS = { capture: true, passive: true };
+const STEPS_NAVIGATION_TYPES = ['navigate', 'reload', 'back_forward'];
+
+// win -> true while installed; a second install in the same window is a no-op.
+const stepsActive = new WeakMap();
+
+function stepsGetter(ctor, name) {
+  try {
+    const desc = Object.getOwnPropertyDescriptor(ctor.prototype, name);
+    return desc && typeof desc.get === 'function' ? desc.get : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function stepsTry(fn, fallback) {
+  try {
+    return fn();
+  } catch {
+    return fallback;
+  }
+}
+
+// Everything the handlers touch on events and elements, captured before page scripts run.
+function captureStepsIntrinsics(win) {
+  const element = stepsTry(() => win.Element.prototype, {});
+  const perf = stepsTry(() => win.performance, null);
+  return {
+    apply: Reflect.apply,
+    Proxy,
+    // Looked up on the window (at document_start: the EventTarget.prototype methods).
+    addEventListener: stepsTry(() => win.addEventListener, undefined),
+    removeEventListener: stepsTry(() => win.removeEventListener, undefined),
+    closest: element.closest,
+    getAttribute: element.getAttribute,
+    getTagName: stepsGetter(win.Element, 'tagName'),
+    getEventTarget: stepsGetter(win.Event, 'target'),
+    getKey: stepsGetter(win.KeyboardEvent, 'key'),
+    getRepeat: stepsGetter(win.KeyboardEvent, 'repeat'),
+    getInputType: stepsGetter(win.HTMLInputElement, 'type'),
+    getInputValue: stepsGetter(win.HTMLInputElement, 'value'),
+    getChecked: stepsGetter(win.HTMLInputElement, 'checked'),
+    getFiles: stepsGetter(win.HTMLInputElement, 'files'),
+    getTextareaValue: stepsGetter(win.HTMLTextAreaElement, 'value'),
+    getSelectValue: stepsGetter(win.HTMLSelectElement, 'value'),
+    getTextContent: stepsGetter(win.Node, 'textContent'),
+    getIsContentEditable: stepsGetter(win.HTMLElement, 'isContentEditable'),
+    Element: win.Element,
+    HTMLInputElement: win.HTMLInputElement,
+    HTMLTextAreaElement: win.HTMLTextAreaElement,
+    HTMLSelectElement: win.HTMLSelectElement,
+    HTMLFormElement: win.HTMLFormElement,
+    History: win.History,
+    navigationType: stepsTry(() => perf.getEntriesByType('navigation')[0].type, undefined),
+  };
+}
+
+function installStepsHook({ win, doc: _doc, now, record, selectorOf, intrinsics = {} }) {
+  if (stepsActive.get(win)) return () => {};
+  const I = { ...captureStepsIntrinsics(win), ...intrinsics };
+  const call = (fn, self, ...args) => I.apply(fn, self, args);
+  // Getter through the captured intrinsic; plain property read when the intrinsic does not exist here.
+  const read = (getter, self, name) => (getter ? call(getter, self) : self[name]);
+  const isTrusted = typeof I.isTrusted === 'function' ? I.isTrusted : (event) => event.isTrusted === true;
+  const add = I.addEventListener || win.addEventListener;
+  const remove = I.removeEventListener || win.removeEventListener;
+
+  let active = true;
+  // Last recorded `input` step and its element (AC-3.3); any other step ends the coalescing.
+  let lastInput = null;
+  let lastNavigate = null;
+
+  const is = (value, Ctor) => !!Ctor && value instanceof Ctor;
+  const attr = (el, name) => call(I.getAttribute, el, name);
+  const tagOf = (el) => String(read(I.getTagName, el, 'tagName')).toLowerCase();
+
+  function emit(entry) {
+    lastInput = null;
+    record('steps', entry);
+  }
+
+  function withSelector(entry, el) {
+    const selector = stepsTry(() => selectorOf(el), null);
+    if (typeof selector === 'string') entry.selector = selector;
+    return entry;
+  }
+
+  function normalizedText(value) {
+    if (typeof value !== 'string') return '';
+    const text = value.slice(0, STEPS_TEXT_SCAN_CHARS).replace(/\s+/g, ' ').trim();
+    return text.length > STEP_TEXT_MAX_CHARS ? text.slice(0, STEP_TEXT_MAX_CHARS) : text;
+  }
+
+  // Visible label of buttons and links only (AC-3.5); form fields never get `text`.
+  function labelOf(el) {
+    if (is(el, I.HTMLInputElement)) {
+      const type = String(read(I.getInputType, el, 'type'));
+      return STEPS_LABELLED_INPUTS.includes(type) ? normalizedText(attr(el, 'value')) : '';
+    }
+    const tag = tagOf(el);
+    if (tag !== 'a' && tag !== 'button' && attr(el, 'role') !== 'button') return '';
+    return normalizedText(attr(el, 'aria-label')) || normalizedText(read(I.getTextContent, el, 'textContent'));
+  }
+
+  function editableHost(el) {
+    if (!is(el, I.Element)) return null;
+    if (I.getIsContentEditable && call(I.getIsContentEditable, el) === true) return el;
+    const host = call(I.closest, el, '[contenteditable]');
+    if (!host) return null;
+    const flag = String(attr(host, 'contenteditable')).toLowerCase();
+    return flag === '' || flag === 'true' || flag === 'plaintext-only' ? host : null;
+  }
+
+  // { el, inputType, valueLength? } of an input target; never the value itself.
+  function fieldOf(target) {
+    if (is(target, I.HTMLInputElement)) {
+      const inputType = String(read(I.getInputType, target, 'type'));
+      if (inputType === 'password') return { el: target, inputType };
+      return { el: target, inputType, valueLength: String(read(I.getInputValue, target, 'value')).length };
+    }
+    if (is(target, I.HTMLTextAreaElement)) {
+      return { el: target, inputType: 'textarea', valueLength: String(read(I.getTextareaValue, target, 'value')).length };
+    }
+    if (is(target, I.HTMLSelectElement)) {
+      return { el: target, inputType: 'select', valueLength: String(read(I.getSelectValue, target, 'value')).length };
+    }
+    const host = editableHost(target);
+    if (!host) return null;
+    const text = read(I.getTextContent, host, 'textContent');
+    return { el: host, inputType: 'contenteditable', valueLength: typeof text === 'string' ? text.length : 0 };
+  }
+
+  const targetOf = (event) => read(I.getEventTarget, event, 'target');
+
+  function onClick(event, t) {
+    const target = targetOf(event);
+    if (!is(target, I.Element)) return;
+    const el = call(I.closest, target, STEPS_CLICKABLE) || target;
+    const entry = withSelector({ t, type: 'click' }, el);
+    const text = labelOf(el);
+    if (text) entry.text = text;
+    emit(entry);
+  }
+
+  function onInput(event, t) {
+    const field = fieldOf(targetOf(event));
+    if (!field) return;
+    if (lastInput && lastInput.el === field.el) {
+      if (field.valueLength !== undefined) lastInput.entry.valueLength = field.valueLength;
+      return;
+    }
+    const entry = withSelector({ t, type: 'input' }, field.el);
+    entry.inputType = field.inputType;
+    if (field.valueLength !== undefined) entry.valueLength = field.valueLength;
+    emit(entry);
+    lastInput = { el: field.el, entry };
+  }
+
+  function onChange(event, t) {
+    const target = targetOf(event);
+    let entry = null;
+    if (is(target, I.HTMLInputElement)) {
+      const inputType = String(read(I.getInputType, target, 'type'));
+      if (!STEPS_CHANGE_INPUTS.includes(inputType)) return;
+      entry = withSelector({ t, type: 'change' }, target);
+      entry.inputType = inputType;
+      if (inputType === 'file') {
+        const files = read(I.getFiles, target, 'files');
+        entry.valueLength = files && typeof files.length === 'number' ? files.length : 0;
+      } else {
+        entry.checked = read(I.getChecked, target, 'checked') === true;
+      }
+    } else if (is(target, I.HTMLSelectElement)) {
+      entry = withSelector({ t, type: 'change' }, target);
+      entry.inputType = 'select';
+      entry.valueLength = String(read(I.getSelectValue, target, 'value')).length;
+    }
+    if (entry) emit(entry);
+  }
+
+  function onSubmit(event, t) {
+    const target = targetOf(event);
+    if (is(target, I.HTMLFormElement)) emit(withSelector({ t, type: 'submit' }, target));
+  }
+
+  function onKeydown(event, t) {
+    const key = read(I.getKey, event, 'key');
+    if (!STEPS_KEYS.includes(key) || read(I.getRepeat, event, 'repeat') === true) return;
+    const entry = withSelector({ t, type: 'key' }, targetOf(event));
+    entry.key = key;
+    emit(entry);
+  }
+
+  function navigate(via, t) {
+    let url = String(win.location.href);
+    if (url.length > STEP_URL_MAX_CHARS) url = url.slice(0, STEP_URL_MAX_CHARS);
+    if (lastNavigate && lastNavigate.url === url && t - lastNavigate.t <= STEPS_NAVIGATE_DEDUP_MS) return;
+    lastNavigate = { url, t };
+    emit({ t, type: 'navigate', url, via });
+  }
+
+  const handlers = {
+    click: onClick,
+    input: onInput,
+    change: onChange,
+    submit: onSubmit,
+    keydown: onKeydown,
+    popstate: (_event, t) => navigate('popstate', t),
+    hashchange: (_event, t) => navigate('hashchange', t),
+  };
+  const listeners = [];
+  for (const type of Object.keys(handlers)) {
+    const handler = handlers[type];
+    const listener = function (event) {
+      try {
+        if (active && isTrusted(event)) handler(event, now());
+      } catch {
+        // never break the page's event dispatch
+      }
+    };
+    listeners.push([type, listener]);
+    call(add, win, type, listener, STEPS_LISTENER_OPTIONS);
+  }
+
+  // History methods: the original runs exactly once (its exception propagates), the step comes after.
+  const historyProto = stepsTry(() => I.History.prototype, null);
+  const patched = [];
+  for (const name of ['pushState', 'replaceState']) {
+    const original = stepsTry(() => historyProto[name], null);
+    if (typeof original !== 'function') continue;
+    const hook = new I.Proxy(original, {
+      apply(target, self, args) {
+        const result = I.apply(target, self, args);
+        if (active) {
+          try {
+            navigate(name, now());
+          } catch {
+            // never break the page's navigation
+          }
+        }
+        return result;
+      },
+    });
+    const installed = stepsTry(() => {
+      historyProto[name] = hook;
+      return historyProto[name] === hook;
+    }, false);
+    if (installed) patched.push({ name, original, hook });
+  }
+
+  stepsActive.set(win, true);
+  stepsTry(() => {
+    const type = I.navigationType;
+    navigate(STEPS_NAVIGATION_TYPES.includes(type) ? type : 'navigate', now());
+  });
+
+  return function restore() {
+    if (!active) return;
+    active = false;
+    try {
+      for (const [type, listener] of listeners) stepsTry(() => call(remove, win, type, listener, STEPS_LISTENER_OPTIONS));
+      // Restore guard (E1 H2): only put the original back while our Proxy is still in place.
+      for (const { name, original, hook } of patched) {
+        stepsTry(() => {
+          if (historyProto[name] === hook) historyProto[name] = original;
+        });
+      }
+    } finally {
+      stepsActive.delete(win);
+      lastInput = null;
+    }
+  };
+}
+return Object.freeze({ STEP_TEXT_MAX_CHARS: STEP_TEXT_MAX_CHARS, STEP_URL_MAX_CHARS: STEP_URL_MAX_CHARS, captureStepsIntrinsics: captureStepsIntrinsics, installStepsHook: installStepsHook });
+})();
+
+// module: page/network-merge.js
+const __pds_m8 = (function () {
+// Resource records, kinds and size correlation for `network[]` (E2 D2). Pure functions, no imports,
+// no DOM: the recorder feeds them Resource/Navigation Timing entries and its own hook records.
+// Status of fetch/XHR always comes from the hook; Resource Timing only adds `sizeBytes` to it, so a wrong
+// match can never swap statuses (AC-4.4). `status: null` always comes with `statusUnavailable` (AC-4.3).
+// `URL`/`Set`/`Map` are captured when the module loads (document_start in the MAIN bundle), so a page that
+// replaces them later does not change the result; callers may pass their own through `intrinsics`.
+
+const MERGE_LIMITS = Object.freeze({
+  urlChars: 4000,
+  initiatorChars: 32,
+  // Hook `t` is taken just before the call; the RT `startTime` follows within this window.
+  matchBeforeMs: 5,
+  matchAfterMs: 1000,
+});
+
+// Initiators whose RT entries only feed `sizeBytes` of hook records and never become own records.
+const HOOK_INITIATORS = Object.freeze({ fetch: 'fetch', xmlhttprequest: 'xhr' });
+
+const EXTENSION_KINDS = [
+  [/^(woff2?|ttf|otf|eot)$/, 'font'],
+  [/^css$/, 'css'],
+  [/^(png|jpe?g|gif|webp|avif|svg|ico)$/, 'img'],
+  [/^m?js$/, 'script'],
+];
+
+const INITIATOR_KINDS = Object.freeze({ img: 'img', image: 'img', input: 'img', script: 'script', link: 'css' });
+
+const MERGE_INTRINSICS = Object.freeze({
+  URL: typeof URL === 'function' ? URL : undefined,
+  Set,
+  Map,
+});
+
+function intrinsicsOf(intrinsics) {
+  return intrinsics && typeof intrinsics === 'object' ? { ...MERGE_INTRINSICS, ...intrinsics } : MERGE_INTRINSICS;
+}
+
+function str(value, max) {
+  const s = typeof value === 'string' ? value : value == null ? '' : String(value);
+  return s.length > max ? s.slice(0, max) + `... [truncated ${s.length - max} chars]` : s;
+}
+
+function num(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function round2(value) {
+  const n = num(value);
+  return n === null ? null : Math.round(n * 100) / 100;
+}
+
+function extensionOf(href) {
+  if (typeof href !== 'string') return '';
+  const path = href.slice(0, MERGE_LIMITS.urlChars).split(/[?#]/, 1)[0];
+  const name = path.slice(path.lastIndexOf('/') + 1);
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
+}
+
+function originOfHref(href, I) {
+  try {
+    return new I.URL(href).origin;
+  } catch {
+    return null;
+  }
+}
+
+function isCrossOrigin(href, docOrigin, I) {
+  if (typeof docOrigin !== 'string' || docOrigin === '') return true;
+  return originOfHref(href, I) !== docOrigin;
+}
+
+function positiveStatus(entry) {
+  const s = num(entry && entry.responseStatus);
+  return s !== null && s > 0 ? s : null;
+}
+
+// `encodedBodySize` = body bytes from the network before decompression. A cross-origin response without
+// `Timing-Allow-Origin` reports only zeros, which means "unknown", not "empty" (D2).
+function sizeOf(entry, crossOrigin) {
+  const encoded = num(entry.encodedBodySize);
+  if (encoded === null || encoded < 0) return null;
+  if (crossOrigin && encoded === 0 && !num(entry.decodedBodySize) && !num(entry.transferSize)) return null;
+  return encoded;
+}
+
+function sameUrl(hookUrl, rtUrl) {
+  if (typeof hookUrl !== 'string' || typeof rtUrl !== 'string') return false;
+  if (hookUrl === rtUrl) return true;
+  // Hook URLs longer than the limit carry a truncation marker; compare the kept prefix.
+  return rtUrl.length > MERGE_LIMITS.urlChars && hookUrl.startsWith(rtUrl.slice(0, MERGE_LIMITS.urlChars));
+}
+
+// Copy of a record with `sizeBytes` placed right after `durationMs` (schema v3 key order).
+function withSize(entry, sizeBytes) {
+  const out = {};
+  let placed = false;
+  for (const key of Object.keys(entry)) {
+    if (key === 'sizeBytes') continue;
+    out[key] = entry[key];
+    if (key === 'durationMs') {
+      out.sizeBytes = sizeBytes;
+      placed = true;
+    }
+  }
+  if (!placed) out.sizeBytes = sizeBytes;
+  return out;
+}
+
+/**
+ * Kind of a Resource Timing entry for `network[].type`: the file extension wins, then the initiator.
+ * @returns {'img'|'script'|'css'|'font'|'other'|null} `null` for fetch/XHR/navigation (not own records).
+ */
+function resourceKind(initiatorType, href) {
+  if (initiatorType === 'fetch' || initiatorType === 'xmlhttprequest' || initiatorType === 'navigation') return null;
+  const ext = extensionOf(href);
+  if (ext) {
+    for (const [re, kind] of EXTENSION_KINDS) if (re.test(ext)) return kind;
+  }
+  return (typeof initiatorType === 'string' && INITIATOR_KINDS[initiatorType]) || 'other';
+}
+
+/**
+ * Network record (schema v3 key order, without `doc`) for a Resource Timing entry.
+ * @param {object} entry PerformanceResourceTiming-like
+ * @param {{ docOrigin: string, supportsStatus: boolean, intrinsics?: { URL?: Function } }} options
+ * @returns {object | null} `null` for entries that are not own records (fetch/XHR/navigation)
+ */
+function resourceRecord(entry, { docOrigin, supportsStatus, intrinsics } = {}) {
+  if (!entry) return null;
+  const type = resourceKind(entry.initiatorType, entry.name);
+  if (type === null) return null;
+  const url = str(entry.name, MERGE_LIMITS.urlChars);
+  const crossOrigin = isCrossOrigin(entry.name, docOrigin, intrinsicsOf(intrinsics));
+  const status = supportsStatus ? positiveStatus(entry) : null;
+  const rec = { t: round2(entry.startTime), type, method: 'GET', url, status };
+  if (status === null) {
+    rec.statusUnavailable = crossOrigin ? 'cross-origin' : supportsStatus ? 'network-error' : 'unsupported-browser';
+  }
+  rec.statusText = null;
+  rec.ok = status === null ? null : status >= 200 && status < 300;
+  rec.redirected = null;
+  rec.durationMs = round2(entry.duration);
+  rec.sizeBytes = sizeOf(entry, crossOrigin);
+  rec.requestHeaders = {};
+  rec.responseHeaders = {};
+  rec.requestBody = null;
+  rec.error = null;
+  rec.initiatorType = str(entry.initiatorType, Infinity).slice(0, MERGE_LIMITS.initiatorChars);
+  return rec;
+}
+
+/**
+ * Adds `sizeBytes` to fetch/XHR hook records from RT entries of the same URL and initiator: in order of `t`,
+ * each record takes the first unassigned RT entry with `startTime ∈ [t - 5, t + 1000]`. Statuses are never
+ * touched. Returns new objects in the input order; other records are copied unchanged.
+ * @param {object[]} hookEntries
+ * @param {object[]} rtEntries PerformanceResourceTiming-like
+ * @param {{ docOrigin?: string, intrinsics?: { URL?: Function, Set?: Function, Map?: Function } }} [options]
+ *   without `docOrigin` all-zero sizes count as unknown (`null`)
+ */
+function correlateSizes(hookEntries, rtEntries, { docOrigin, intrinsics } = {}) {
+  const I = intrinsicsOf(intrinsics);
+  const records = Array.isArray(hookEntries) ? hookEntries : [];
+  const candidates = (Array.isArray(rtEntries) ? rtEntries : [])
+    .filter((e) => e && HOOK_INITIATORS[e.initiatorType] && num(e.startTime) !== null)
+    .sort((a, b) => a.startTime - b.startTime);
+  const used = new I.Set();
+  const sizes = new I.Map();
+  const order = records
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => entry && (entry.type === 'fetch' || entry.type === 'xhr'))
+    .sort((a, b) => (num(a.entry.t) ?? Infinity) - (num(b.entry.t) ?? Infinity));
+  for (const { entry, index } of order) {
+    const t = num(entry.t);
+    if (t === null) continue;
+    for (let i = 0; i < candidates.length; i++) {
+      const c = candidates[i];
+      if (used.has(i)) continue;
+      if (c.startTime > t + MERGE_LIMITS.matchAfterMs) break;
+      if (c.startTime < t - MERGE_LIMITS.matchBeforeMs) continue;
+      if (HOOK_INITIATORS[c.initiatorType] !== entry.type || !sameUrl(entry.url, c.name)) continue;
+      used.add(i);
+      sizes.set(index, sizeOf(c, docOrigin ? isCrossOrigin(c.name, docOrigin, I) : true));
+      break;
+    }
+  }
+  return records.map((entry, index) => {
+    if (!entry || (entry.type !== 'fetch' && entry.type !== 'xhr')) return entry && { ...entry };
+    return withSize(entry, sizes.has(index) ? sizes.get(index) : entry.sizeBytes ?? null);
+  });
+}
+
+/**
+ * Marks resource records whose element fired `error` with `error: 'load-failed'`; a load error without
+ * a matching record (no RT entry) becomes its own record with `statusUnavailable: 'network-error'`.
+ * A record matches when URL and kind agree and it started no later than the error; the latest such
+ * unmarked record wins. Returns new objects ordered by `t` (stable).
+ * @param {object[]} records network records
+ * @param {{ t: number, url: string, kind: string }[]} loadErrors
+ */
+function mergeLoadErrors(records, loadErrors) {
+  const out = (Array.isArray(records) ? records : []).map((e) => e && { ...e });
+  const errors = (Array.isArray(loadErrors) ? loadErrors : []).filter((e) => e && typeof e.url === 'string');
+  const added = [];
+  for (const err of errors) {
+    const t = round2(err.t);
+    const url = str(err.url, MERGE_LIMITS.urlChars);
+    const kind = typeof err.kind === 'string' && err.kind ? err.kind : 'other';
+    let best = null;
+    for (const rec of out) {
+      if (!rec || rec.type === 'fetch' || rec.type === 'xhr' || rec.error != null) continue;
+      if (rec.type !== kind || rec.url !== url) continue;
+      if (t !== null && rec.t !== null && rec.t > t + MERGE_LIMITS.matchBeforeMs) continue;
+      if (!best || (rec.t ?? -Infinity) >= (best.t ?? -Infinity)) best = rec;
+    }
+    if (best) {
+      best.error = 'load-failed';
+      continue;
+    }
+    added.push({
+      t, type: kind, method: 'GET', url, status: null, statusUnavailable: 'network-error', statusText: null, ok: null,
+      redirected: null, durationMs: null, sizeBytes: null, requestHeaders: {}, responseHeaders: {}, requestBody: null,
+      error: 'load-failed',
+    });
+  }
+  if (added.length === 0) return out;
+  return out
+    .concat(added)
+    .map((entry, index) => ({ entry, index }))
+    .sort((a, b) => (num(a.entry && a.entry.t) ?? Infinity) - (num(b.entry && b.entry.t) ?? Infinity) || a.index - b.index)
+    .map(({ entry }) => entry);
+}
+
+/**
+ * Status of the document from its PerformanceNavigationTiming entry (AC-4.2).
+ * @returns {{ status: number } | { status: null, statusUnavailable: string }}
+ */
+function documentStatus(navEntry, supportsStatus) {
+  if (!supportsStatus) return { status: null, statusUnavailable: 'unsupported-browser' };
+  const status = positiveStatus(navEntry);
+  return status === null ? { status: null, statusUnavailable: 'unknown' } : { status };
+}
+return Object.freeze({ MERGE_LIMITS: MERGE_LIMITS, resourceKind: resourceKind, resourceRecord: resourceRecord, correlateSizes: correlateSizes, mergeLoadErrors: mergeLoadErrors, documentStatus: documentStatus });
+})();
+
+// module: page/hooks-resources.js
+const __pds_m9 = (function () {
+const { resourceRecord, resourceKind, correlateSizes, mergeLoadErrors, documentStatus: navStatus } = __pds_m8;
+// Resource observer of the recorder (E2 D2, E2-T3b): Resource Timing entries become `network[]` records
+// (img/script/css/font/other); RT entries of fetch/XHR only feed `sizeBytes` of the hook records; `error`
+// events of elements (capture phase on window, they do not bubble) mark failed loads. Document status comes
+// from Navigation Timing. Statuses are detected by feature (`responseStatus` on the prototype), never by UA.
+// Everything the page could replace later is captured at install (document_start). Failures are swallowed.
+
+
+const RESOURCE_LIMITS = Object.freeze({
+  // RT entries of fetch/XHR kept for size correlation, and element load errors kept for merging.
+  rtEntries: 500,
+  loadErrors: 200,
+  urlChars: 4000,
+});
+
+// RT initiators whose entries only feed the correlation ring.
+const RESOURCE_HOOK_INITIATORS = ['fetch', 'xmlhttprequest'];
+// Elements whose `error` event is a failed load; `link` only with rel=stylesheet.
+const RESOURCE_ERROR_TAGS = ['img', 'script', 'link', 'source', 'video', 'audio'];
+
+// win -> true while installed; a second install in the same window is inert.
+const resourceHooksActive = new WeakMap();
+
+function resourceTry(fn, fallback) {
+  try {
+    return fn();
+  } catch {
+    return fallback;
+  }
+}
+
+function resourcePick(intrinsics, win, name) {
+  if (intrinsics && Object.prototype.hasOwnProperty.call(intrinsics, name)) return intrinsics[name];
+  return resourceTry(() => win[name], undefined);
+}
+
+// Plain copy of a PerformanceResourceTiming entry, read once when observed.
+function resourcePlain(entry) {
+  return {
+    name: resourceTry(() => entry.name, ''),
+    initiatorType: resourceTry(() => entry.initiatorType, ''),
+    startTime: resourceTry(() => entry.startTime, null),
+    duration: resourceTry(() => entry.duration, null),
+    responseStatus: resourceTry(() => entry.responseStatus, undefined),
+    encodedBodySize: resourceTry(() => entry.encodedBodySize, null),
+    decodedBodySize: resourceTry(() => entry.decodedBodySize, null),
+    transferSize: resourceTry(() => entry.transferSize, null),
+  };
+}
+
+function resourceCopies(items) {
+  return (Array.isArray(items) ? items : []).map((e) => (e && typeof e === 'object' ? { ...e } : e));
+}
+
+function resourceString(value) {
+  return typeof value === 'string' ? value.slice(0, RESOURCE_LIMITS.urlChars) : '';
+}
+
+// `{ url, kind }` of an element whose load failed, or null for other targets.
+function resourceLoadTarget(el) {
+  const tag = resourceTry(() => el.localName, null);
+  if (typeof tag !== 'string' || RESOURCE_ERROR_TAGS.indexOf(tag) < 0) return null;
+  let initiator = tag;
+  let url;
+  if (tag === 'link') {
+    const rel = resourceTry(() => String(el.rel).toLowerCase(), '');
+    if (rel.split(/\s+/).indexOf('stylesheet') < 0) return null;
+    url = resourceString(resourceTry(() => el.href, ''));
+  } else if (tag === 'source') {
+    const parent = resourceTry(() => el.parentNode.localName, '');
+    initiator = parent === 'picture' ? 'img' : parent || 'other';
+    url = resourceString(resourceTry(() => el.src, ''));
+  } else if (tag === 'script') {
+    url = resourceString(resourceTry(() => el.src, ''));
+  } else {
+    url = resourceString(resourceTry(() => el.currentSrc, '')) || resourceString(resourceTry(() => el.src, ''));
+  }
+  if (!url) return null;
+  return { url, kind: resourceKind(initiator, url) || 'other' };
+}
+
+/**
+ * @param {{ win: Window, doc?: Document, now: () => number, record: (section: string, entry: object) => void,
+ *   enabled?: () => boolean, intrinsics?: object }} ctx
+ *   `intrinsics` may override `PerformanceObserver`, `PerformanceResourceTiming`, `performance`,
+ *   `addEventListener`, `removeEventListener` (captured from `win` otherwise).
+ * @returns {{ adjust: (items: object[]) => object[], documentStatus: () => object, sync: () => object[], restore: () => void }}
+ *   `sync()` records entries still queued in the observer; `adjust(items)` calls it, appends the records it made
+ *   and returns copies of the network items with `sizeBytes` correlated and element load errors merged.
+ */
+function installResourceHooks({ win, now, record, enabled, intrinsics = {} }) {
+  const I = intrinsics || {};
+  const reflectApply = Reflect.apply;
+  const Observer = resourcePick(I, win, 'PerformanceObserver');
+  const Timing = resourcePick(I, win, 'PerformanceResourceTiming');
+  const perf = resourcePick(I, win, 'performance');
+  const getEntriesByType = resourceTry(() => perf.getEntriesByType, null);
+  const add = I.addEventListener || resourceTry(() => win.addEventListener, null);
+  const remove = I.removeEventListener || resourceTry(() => win.removeEventListener, null);
+  const supportsStatus = resourceTry(() => !!Timing && 'responseStatus' in Timing.prototype, false);
+  const docOrigin = resourceTry(() => String(win.location.origin), '');
+
+  const documentStatus = () => {
+    const nav = resourceTry(() => (getEntriesByType ? reflectApply(getEntriesByType, perf, ['navigation'])[0] : undefined), undefined);
+    const responseStatus = resourceTry(() => nav && nav.responseStatus, undefined);
+    return navStatus(nav ? { responseStatus } : undefined, supportsStatus && !!getEntriesByType);
+  };
+
+  if (resourceTry(() => resourceHooksActive.get(win), true)) {
+    return { adjust: resourceCopies, documentStatus, sync: () => [], restore() {} };
+  }
+
+  let active = true;
+  const isOn = () => active && resourceTry(() => (typeof enabled === 'function' ? !!enabled() : true), false);
+  const rtRing = [];
+  const loadErrors = [];
+  const push = (ring, item, max) => {
+    ring.push(item);
+    if (ring.length > max) ring.splice(0, ring.length - max);
+  };
+
+  function handle(entries) {
+    const made = [];
+    if (!isOn()) return made;
+    const list = resourceTry(() => Array.from(entries), []);
+    for (const raw of list) {
+      resourceTry(() => {
+        const entry = resourcePlain(raw);
+        if (RESOURCE_HOOK_INITIATORS.indexOf(entry.initiatorType) >= 0) {
+          push(rtRing, entry, RESOURCE_LIMITS.rtEntries);
+          return;
+        }
+        const rec = resourceRecord(entry, { docOrigin, supportsStatus });
+        if (!rec) return;
+        made.push(rec);
+        resourceTry(() => record('network', rec));
+      });
+    }
+    return made;
+  }
+
+  let observer = null;
+  if (typeof Observer === 'function') {
+    observer = resourceTry(() => new Observer((list) => {
+      resourceTry(() => handle(list.getEntries()));
+    }), null);
+    if (observer && resourceTry(() => (observer.observe({ type: 'resource', buffered: true }), true), false) === false) {
+      observer = null;
+    }
+  }
+
+  function onError(event) {
+    resourceTry(() => {
+      if (!isOn()) return;
+      const target = resourceLoadTarget(event.target);
+      if (target) push(loadErrors, { t: now(), url: target.url, kind: target.kind }, RESOURCE_LIMITS.loadErrors);
+    });
+  }
+
+  const listening = !!add && resourceTry(() => (reflectApply(add, win, ['error', onError, true]), true), false);
+  resourceTry(() => resourceHooksActive.set(win, true));
+
+  function sync() {
+    if (!observer || !active) return [];
+    return resourceTry(() => handle(observer.takeRecords()), []);
+  }
+
+  function adjust(items) {
+    let list = resourceCopies(items).concat(sync());
+    list = resourceTry(() => correlateSizes(list, rtRing.slice(), { docOrigin }), list);
+    return resourceTry(() => mergeLoadErrors(list, loadErrors.slice()), list);
+  }
+
+  function restore() {
+    if (!active) return;
+    active = false;
+    if (observer) resourceTry(() => observer.disconnect());
+    if (listening && remove) resourceTry(() => reflectApply(remove, win, ['error', onError, true]));
+    rtRing.length = 0;
+    loadErrors.length = 0;
+    resourceTry(() => resourceHooksActive.delete(win));
+  }
+
+  return { adjust, documentStatus, sync, restore };
+}
+return Object.freeze({ RESOURCE_LIMITS: RESOURCE_LIMITS, installResourceHooks: installResourceHooks });
+})();
+
+// module: page/hooks-frames.js
+const __pds_m10 = (function () {
+const { installConsoleHook } = __pds_m4;
+const { installErrorHooks } = __pds_m5;
+// Same-origin iframe hooks for the MAIN-world recorder (design E2-D6, E2-T8).
+// From the top document: existing <iframe> elements + a MutationObserver for new ones. Every accessible same-origin
+// frame window gets console.error and window error/unhandledrejection hooks; records go to the caller's `record`
+// with `frame` (the frame URL). Each `load` of the element restores the previous install and installs again,
+// because the WindowProxy survives a frame navigation. Cross-origin frames throw on access and are skipped.
+// Nested frames are followed to depth 2; at most 20 frames are hooked at a time (removed frames free a slot).
+// Known limitation: errors a frame raises before we hook it (before its `load`) are lost.
+
+
+const FRAME_LIMITS = Object.freeze({ frames: 20, depth: 2, urlChars: 4000 });
+
+function framesTry(fn, fallback) {
+  try {
+    return fn();
+  } catch {
+    return fallback;
+  }
+}
+
+function frameUrlOf(frameWin) {
+  return framesTry(() => {
+    const href = String(frameWin.location.href);
+    return href.length > FRAME_LIMITS.urlChars ? href.slice(0, FRAME_LIMITS.urlChars) : href;
+  }, null);
+}
+
+// The frame window when the browser lets us in and its origin is ours ('null' for about:blank/srcdoc that
+// inherited our origin — reading its document already proved access). Anything else → null.
+function sameOriginWindow(el, topOrigin) {
+  return framesTry(() => {
+    const frameWin = el.contentWindow;
+    if (!frameWin) return null;
+    const origin = String(frameWin.location.origin);
+    if (origin !== topOrigin && origin !== 'null') return null;
+    if (!frameWin.document || !frameWin.console) return null;
+    return frameWin;
+  }, null);
+}
+
+function isIframe(node) {
+  return framesTry(() => node.nodeType === 1 && String(node.localName) === 'iframe', false);
+}
+
+function installFrameHooks({ win, doc, now, record, json, intrinsics = {}, depth = 0, shared = null }) {
+  // Shared by the whole tree of nested installs: frame budget, on/off and the top document's origin.
+  const ctx = shared || { count: 0, active: true, origin: framesTry(() => String(win.location.origin), null) };
+  const add = intrinsics.addEventListener || framesTry(() => win.EventTarget.prototype.addEventListener, null);
+  const remove = intrinsics.removeEventListener || framesTry(() => win.EventTarget.prototype.removeEventListener, null);
+  const Observer = intrinsics.MutationObserver || framesTry(() => win.MutationObserver, null);
+  const topOrigin = ctx.origin;
+  if (!add || !remove || !doc || topOrigin === null) return () => {};
+
+  // iframe element -> { onLoad, restoreFrame }
+  const tracked = new Map();
+  let observer = null;
+
+  function hookFrame(el, state) {
+    framesTry(() => state.restoreFrame());
+    state.restoreFrame = () => {};
+    if (!ctx.active) return;
+    const frameWin = sameOriginWindow(el, topOrigin);
+    if (!frameWin) return;
+    const fallbackUrl = frameUrlOf(frameWin);
+    const frameRecord = (section, entry) => {
+      entry.frame = frameUrlOf(frameWin) ?? fallbackUrl;
+      record(section, entry);
+    };
+    const restores = [];
+    const hooks = [
+      () => installConsoleHook({ win: frameWin, now, record: frameRecord, json, levels: ['error'], intrinsics }),
+      () => installErrorHooks({ win: frameWin, now, record: frameRecord, json, intrinsics }),
+    ];
+    if (depth + 1 < FRAME_LIMITS.depth) {
+      hooks.push(() =>
+        installFrameHooks({ win: frameWin, doc: frameWin.document, now, record, json, intrinsics, depth: depth + 1, shared: ctx }),
+      );
+    }
+    for (const hook of hooks) {
+      const restoreHook = framesTry(hook, null);
+      if (typeof restoreHook === 'function') restores.push(restoreHook);
+    }
+    state.restoreFrame = () => {
+      for (const restoreHook of restores) framesTry(restoreHook);
+    };
+  }
+
+  function track(el) {
+    if (tracked.has(el) || ctx.count >= FRAME_LIMITS.frames) return;
+    const state = { onLoad: null, restoreFrame: () => {} };
+    state.onLoad = () => hookFrame(el, state);
+    const listening = framesTry(() => {
+      add.call(el, 'load', state.onLoad);
+      return true;
+    }, false);
+    if (!listening) return;
+    tracked.set(el, state);
+    ctx.count += 1;
+    // Already loaded (or about:blank that fired `load` synchronously on insertion) — hook now.
+    hookFrame(el, state);
+  }
+
+  function untrack(el, state) {
+    framesTry(() => remove.call(el, 'load', state.onLoad));
+    framesTry(() => state.restoreFrame());
+    tracked.delete(el);
+    ctx.count -= 1;
+  }
+
+  function scan(root) {
+    if (isIframe(root)) track(root);
+    const found = framesTry(() => root.querySelectorAll('iframe'), null);
+    if (!found) return;
+    for (let i = 0; i < found.length && ctx.count < FRAME_LIMITS.frames; i += 1) track(found[i]);
+  }
+
+  function onMutations(mutations) {
+    if (!ctx.active) return;
+    let removed = false;
+    for (const mutation of mutations) {
+      if (mutation.removedNodes && mutation.removedNodes.length) removed = true;
+      const added = mutation.addedNodes || [];
+      for (let i = 0; i < added.length; i += 1) {
+        if (framesTry(() => added[i].nodeType === 1, false)) scan(added[i]);
+      }
+    }
+    if (removed) {
+      for (const [el, state] of tracked) {
+        if (!framesTry(() => el.isConnected, true)) untrack(el, state);
+      }
+    }
+  }
+
+  scan(doc);
+  if (Observer) {
+    observer = framesTry(() => {
+      const obs = new Observer((mutations) => framesTry(() => onMutations(mutations)));
+      obs.observe(doc, { childList: true, subtree: true });
+      return obs;
+    }, null);
+  }
+
+  let restored = false;
+  return function restore() {
+    if (restored) return;
+    restored = true;
+    if (!shared) ctx.active = false;
+    if (observer) framesTry(() => observer.disconnect());
+    observer = null;
+    for (const [el, state] of [...tracked]) untrack(el, state);
+  };
+}
+return Object.freeze({ FRAME_LIMITS: FRAME_LIMITS, installFrameHooks: installFrameHooks });
+})();
+
+// module: page/vitals-math.js
+const __pds_m11 = (function () {
+// Pure metric math for Core Web Vitals (design D1, E2-T1a): ratings, CLS session windows, INP percentile,
+// INP phases and the top long animation frames. No DOM and no observers here (those live in vitals.js),
+// so every rule is checked with plain entry vectors. Definitions follow web.dev (as of E2); review them
+// in every epic that touches metrics.
+
+// [good, poor] upper bounds: value <= good → good, value <= poor → needs-improvement, above → poor.
+const THRESHOLDS = Object.freeze({
+  LCP: Object.freeze([2500, 4000]),
+  CLS: Object.freeze([0.1, 0.25]),
+  INP: Object.freeze([200, 500]),
+  FCP: Object.freeze([1800, 3000]),
+  TTFB: Object.freeze([800, 1800]),
+});
+
+const LONG_TASKS_MAX = 20;
+
+// CLS session window: a shift starts a new window after a gap of 1 s or once the window would span 5 s.
+const VITALS_CLS_GAP_MS = 1000;
+const VITALS_CLS_WINDOW_MS = 5000;
+// INP: interactions kept as candidates for the ~p98 pick, and one candidate skipped per 50 interactions.
+const VITALS_INP_CANDIDATES = 10;
+const VITALS_INP_PER_SKIP = 50;
+// Limits for long-animation-frame script attribution (strings come from the page).
+const VITALS_SCRIPTS_MAX = 10;
+const VITALS_URL_MAX = 4000;
+const VITALS_NAME_MAX = 500;
+
+function rate(name, value) {
+  const bounds = Object.prototype.hasOwnProperty.call(THRESHOLDS, name) ? THRESHOLDS[name] : null;
+  if (!bounds || typeof value !== 'number' || !Number.isFinite(value)) return null;
+  if (value <= bounds[0]) return 'good';
+  if (value <= bounds[1]) return 'needs-improvement';
+  return 'poor';
+}
+
+function unavailable(reason) {
+  return { available: false, reason };
+}
+
+// Largest session window of layout shifts without recent input. `t` is the start time of the window's
+// last shift (when the value was reached); `value` is rounded to 3 places.
+function clsFromShifts(entries) {
+  const shifts = (entries || []).filter((e) => e && !e.hadRecentInput).slice().sort((a, b) => a.startTime - b.startTime);
+  let best = [];
+  let bestValue = 0;
+  let current = [];
+  let currentValue = 0;
+  for (const entry of shifts) {
+    const first = current[0];
+    const last = current[current.length - 1];
+    if (current.length && entry.startTime - last.startTime < VITALS_CLS_GAP_MS
+      && entry.startTime - first.startTime < VITALS_CLS_WINDOW_MS) {
+      current.push(entry);
+      currentValue += entry.value;
+    } else {
+      current = [entry];
+      currentValue = entry.value;
+    }
+    if (currentValue > bestValue) {
+      bestValue = currentValue;
+      best = current.slice();
+    }
+  }
+  return {
+    value: Math.round(bestValue * 1000) / 1000,
+    t: best.length ? best[best.length - 1].startTime : null,
+    windowEntries: best,
+  };
+}
+
+// INP from `event` entries: one interaction per interactionId > 0 (its longest entry). Fewer than 50
+// interactions → the longest; otherwise skip one of the longest per 50 interactions (~p98).
+function inpFromEvents(entries) {
+  const longest = new Map();
+  for (const entry of entries || []) {
+    if (!entry || !(entry.interactionId > 0)) continue;
+    const seen = longest.get(entry.interactionId);
+    if (!seen || entry.duration > seen.duration) longest.set(entry.interactionId, entry);
+  }
+  const count = longest.size;
+  if (count === 0) return null;
+  const candidates = [...longest.values()].sort((a, b) => b.duration - a.duration).slice(0, VITALS_INP_CANDIDATES);
+  const entry = candidates[Math.min(candidates.length - 1, Math.floor(count / VITALS_INP_PER_SKIP))];
+  return { value: entry.duration, entry, count };
+}
+
+function inpPhases(entry) {
+  const clamp = (value) => (value > 0 ? value : 0);
+  return {
+    inputDelay: clamp(entry.processingStart - entry.startTime),
+    processing: clamp(entry.processingEnd - entry.processingStart),
+    presentation: clamp(entry.startTime + entry.duration - entry.processingEnd),
+  };
+}
+
+function vitalsCap(value, max) {
+  if (typeof value !== 'string') return value === undefined ? null : value;
+  return value.length > max ? value.slice(0, max) : value;
+}
+
+// The `max` long animation frames with the highest blockingDuration, with script attribution.
+function topLongTasks(loafs, max = LONG_TASKS_MAX) {
+  return (loafs || [])
+    .filter(Boolean)
+    .slice()
+    .sort((a, b) => b.blockingDuration - a.blockingDuration)
+    .slice(0, max)
+    .map((loaf) => ({
+      t: loaf.startTime,
+      duration: loaf.duration,
+      blockingDuration: loaf.blockingDuration,
+      scripts: [...(loaf.scripts || [])].slice(0, VITALS_SCRIPTS_MAX).map((script) => ({
+        url: vitalsCap(script.sourceURL, VITALS_URL_MAX),
+        function: vitalsCap(script.sourceFunctionName, VITALS_NAME_MAX),
+        invoker: vitalsCap(script.invoker, VITALS_NAME_MAX),
+        duration: script.duration,
+      })),
+    }));
+}
+return Object.freeze({ THRESHOLDS: THRESHOLDS, LONG_TASKS_MAX: LONG_TASKS_MAX, rate: rate, unavailable: unavailable, clsFromShifts: clsFromShifts, inpFromEvents: inpFromEvents, inpPhases: inpPhases, topLongTasks: topLongTasks });
+})();
+
+// module: page/vitals.js
+const __pds_m12 = (function () {
+const { rate, unavailable, clsFromShifts, inpFromEvents, inpPhases, topLongTasks, LONG_TASKS_MAX } = __pds_m11;
+// Core Web Vitals observers for the MAIN-world recorder (design D1, E2-T1b, AC-5.1–5.6, AC-5.8).
+// PerformanceObserver with `buffered: true` on paint, largest-contentful-paint, layout-shift, event (+first-input) and
+// long-animation-frame; TTFB from Navigation Timing. Attribution (DOM nodes) is turned into selectors in the
+// callbacks, because nodes cannot leave MAIN. The math lives in vitals-math.js. Availability comes only from
+// feature detection (supportedEntryTypes, interactionId), never from the user agent.
+// Every buffer is bounded; every failure is swallowed. Top-level helpers carry the `vitalsObs` prefix (D6).
+
+
+const VITALS_CLS_SOURCES_MAX = 5;
+
+// Layout shifts kept for the session windows; above it only the largest and the trailing window survive.
+const VITALS_OBS_SHIFTS_MAX = 50;
+// Shifts below this value get no selectors (too small to be the reason).
+const VITALS_OBS_SHIFT_MIN = 0.001;
+// Sources (nodes) attributed per shift.
+const VITALS_OBS_SOURCES_PER_SHIFT = 5;
+// Interactions kept for INP. With >= 500 interactions the ~p98 pick is the 10th longest, so dropping the
+// shortest above this cap does not change the result.
+const VITALS_OBS_INTERACTIONS_MAX = 500;
+const VITALS_OBS_URL_MAX = 4000;
+const VITALS_OBS_EVENT_NAME_MAX = 100;
+
+function vitalsObsTry(fn, fallback) {
+  try {
+    return fn();
+  } catch {
+    return fallback;
+  }
+}
+
+function vitalsObsMs(value) {
+  return Math.round(value * 10) / 10;
+}
+
+function vitalsObsGetter(ctor, name) {
+  return vitalsObsTry(() => {
+    const desc = Object.getOwnPropertyDescriptor(ctor.prototype, name);
+    return desc && typeof desc.get === 'function' ? desc.get : undefined;
+  }, undefined);
+}
+
+// Shifts of the session window that is still open (the last one); only it can still grow.
+function vitalsObsTrailingWindow(shifts) {
+  let current = [];
+  for (const shift of shifts) {
+    const first = current[0];
+    const last = current[current.length - 1];
+    if (current.length && shift.startTime - last.startTime < 1000 && shift.startTime - first.startTime < 5000) current.push(shift);
+    else current = [shift];
+  }
+  return current;
+}
+
+// Captured at document_start, before page scripts can patch the Performance API.
+function captureVitalsIntrinsics(win) {
+  const PO = vitalsObsTry(() => win.PerformanceObserver, undefined);
+  const poProto = vitalsObsTry(() => PO.prototype, {});
+  const perf = vitalsObsTry(() => win.performance, null);
+  const supported = vitalsObsTry(() => PO.supportedEntryTypes, null);
+  return {
+    apply: Reflect.apply,
+    PerformanceObserver: typeof PO === 'function' ? PO : undefined,
+    observe: poProto.observe,
+    disconnect: poProto.disconnect,
+    takeRecords: poProto.takeRecords,
+    getEntries: vitalsObsTry(() => win.PerformanceObserverEntryList.prototype.getEntries, undefined),
+    supportedEntryTypes: Array.isArray(supported) ? supported.slice() : [],
+    hasInteractionId: vitalsObsTry(() => 'interactionId' in win.PerformanceEventTiming.prototype, false),
+    performance: perf,
+    getEntriesByType: vitalsObsTry(() => perf.getEntriesByType, undefined),
+    getVisibilityState: vitalsObsGetter(win.Document, 'visibilityState'),
+  };
+}
+
+/**
+ * @returns {{ snapshot: (opts?: { final?: boolean }) => object, restore: () => void }}
+ */
+function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, options = {} }) {
+  const I = { ...captureVitalsIntrinsics(win), ...intrinsics };
+  const call = (fn, self, ...args) => I.apply(fn, self, args);
+  const types = new Set(I.PerformanceObserver ? I.supportedEntryTypes : []);
+  const since = typeof options.interactionsSince === 'number' && Number.isFinite(options.interactionsSince)
+    ? options.interactionsSince
+    : -Infinity;
+  const ok = (t) => typeof t === 'number' && Number.isFinite(t) && (typeof accept !== 'function' || vitalsObsTry(() => accept(t) !== false, false));
+  const select = (node) => {
+    const sel = node ? vitalsObsTry(() => selectorOf(node), null) : null;
+    return typeof sel === 'string' ? sel : null;
+  };
+  const visibility = () => vitalsObsTry(() => (I.getVisibilityState ? call(I.getVisibilityState, doc) : doc.visibilityState), 'visible');
+
+  let active = true;
+  let firstHidden = visibility() === 'hidden' ? 0 : Infinity;
+  let fcp = null;
+  let lcp = null;
+  let shifts = [];
+  const interactions = new Map();
+  let interactionsSeen = 0;
+  let loafs = [];
+
+  function onPaint(entry) {
+    if (entry.name !== 'first-contentful-paint' || fcp || !(entry.startTime < firstHidden) || !ok(entry.startTime)) return;
+    fcp = { startTime: entry.startTime };
+  }
+
+  function onLcp(entry) {
+    if (!(entry.startTime < firstHidden) || !ok(entry.startTime)) return;
+    const url = typeof entry.url === 'string' && entry.url !== '' ? entry.url.slice(0, VITALS_OBS_URL_MAX) : null;
+    lcp = { startTime: entry.startTime, selector: select(entry.element), url };
+  }
+
+  function onShift(entry) {
+    if (entry.hadRecentInput || typeof entry.value !== 'number' || !ok(entry.startTime)) return;
+    const selectors = [];
+    if (entry.value >= VITALS_OBS_SHIFT_MIN) {
+      for (const source of [...(entry.sources || [])].slice(0, VITALS_OBS_SOURCES_PER_SHIFT)) {
+        const sel = select(source && source.node);
+        if (sel) selectors.push(sel);
+      }
+    }
+    shifts.push({ startTime: entry.startTime, value: entry.value, hadRecentInput: false, selectors });
+    if (shifts.length > VITALS_OBS_SHIFTS_MAX) {
+      const keep = new Set([...clsFromShifts(shifts).windowEntries, ...vitalsObsTrailingWindow(shifts)]);
+      shifts = shifts.filter((shift) => keep.has(shift)).slice(-VITALS_OBS_SHIFTS_MAX);
+    }
+  }
+
+  function onEvent(entry) {
+    const id = entry.interactionId;
+    if (!(id > 0) || !(entry.startTime >= since) || !ok(entry.startTime)) return;
+    const seen = interactions.get(id);
+    if (seen && seen.duration >= entry.duration) return;
+    if (!seen) interactionsSeen += 1;
+    interactions.set(id, {
+      interactionId: id,
+      name: String(entry.name).slice(0, VITALS_OBS_EVENT_NAME_MAX),
+      startTime: entry.startTime,
+      duration: entry.duration,
+      processingStart: entry.processingStart,
+      processingEnd: entry.processingEnd,
+      selector: select(entry.target),
+    });
+    if (interactions.size > VITALS_OBS_INTERACTIONS_MAX) {
+      let shortest = null;
+      for (const item of interactions.values()) if (!shortest || item.duration < shortest.duration) shortest = item;
+      interactions.delete(shortest.interactionId);
+    }
+  }
+
+  function onLoaf(entry) {
+    if (!ok(entry.startTime)) return;
+    loafs.push({
+      startTime: entry.startTime,
+      duration: entry.duration,
+      blockingDuration: entry.blockingDuration,
+      scripts: [...(entry.scripts || [])].slice(0, 10).map((s) => ({
+        sourceURL: s.sourceURL,
+        sourceFunctionName: s.sourceFunctionName,
+        invoker: s.invoker,
+        duration: s.duration,
+      })),
+    });
+    if (loafs.length > 2 * LONG_TASKS_MAX) {
+      loafs = loafs.sort((a, b) => b.blockingDuration - a.blockingDuration).slice(0, LONG_TASKS_MAX);
+    }
+  }
+
+  const observed = [
+    ['paint', onPaint],
+    ['largest-contentful-paint', onLcp],
+    ['layout-shift', onShift],
+    ['event', onEvent, { durationThreshold: 16 }],
+    ['first-input', onEvent],
+    ['long-animation-frame', onLoaf],
+  ];
+
+  function feed(handler, entries) {
+    for (const entry of entries || []) vitalsObsTry(() => entry && handler(entry));
+  }
+
+  const observers = [];
+  for (const [type, handler, extra] of observed) {
+    if (!types.has(type)) continue;
+    vitalsObsTry(() => {
+      const observer = new I.PerformanceObserver((list) => {
+        if (!active) return;
+        feed(handler, vitalsObsTry(() => (I.getEntries ? call(I.getEntries, list) : list.getEntries()), []));
+      });
+      call(I.observe, observer, { type, buffered: true, ...(extra || {}) });
+      observers.push({ observer, handler });
+    });
+  }
+
+  const onVisibility = () => {
+    vitalsObsTry(() => {
+      if (visibility() === 'hidden') firstHidden = Math.min(firstHidden, now());
+    });
+  };
+  const add = I.addEventListener || vitalsObsTry(() => doc.addEventListener, null);
+  const remove = I.removeEventListener || vitalsObsTry(() => doc.removeEventListener, null);
+  vitalsObsTry(() => call(add, doc, 'visibilitychange', onVisibility, true));
+
+  function navigationEntry() {
+    return vitalsObsTry(() => call(I.getEntriesByType, I.performance, 'navigation')[0], undefined);
+  }
+
+  function activationStart() {
+    const start = vitalsObsTry(() => navigationEntry().activationStart, 0);
+    return typeof start === 'number' && start > 0 ? start : 0;
+  }
+
+  const metric = (name, value, t, finalized, extra = {}) => ({
+    available: true,
+    value,
+    rating: rate(name, value),
+    t,
+    finalized,
+    ...extra,
+  });
+
+  function ttfb() {
+    if (typeof I.getEntriesByType !== 'function') return unavailable('unsupported-browser');
+    const nav = navigationEntry();
+    const start = nav && nav.responseStart;
+    if (typeof start !== 'number' || !(start > 0) || !ok(start)) return unavailable('no-data');
+    return metric('TTFB', vitalsObsMs(Math.max(start - activationStart(), 0)), vitalsObsMs(start), true);
+  }
+
+  function paintLike(name, type, seen, finalized, extra) {
+    if (!types.has(type)) return unavailable('unsupported-browser');
+    if (!seen) return unavailable(firstHidden === 0 ? 'hidden-at-start' : 'no-data');
+    return metric(name, vitalsObsMs(Math.max(seen.startTime - activationStart(), 0)), vitalsObsMs(seen.startTime), finalized, extra);
+  }
+
+  function cls(final) {
+    if (!types.has('layout-shift')) return unavailable('unsupported-browser');
+    const result = clsFromShifts(shifts);
+    const sources = [];
+    const ranked = result.windowEntries.slice().sort((a, b) => b.value - a.value);
+    for (const shift of ranked) {
+      for (const selector of shift.selectors) {
+        if (sources.length < VITALS_CLS_SOURCES_MAX) {
+          sources.push({ selector, value: Math.round(shift.value * 1000) / 1000, t: vitalsObsMs(shift.startTime) });
+        }
+      }
+    }
+    return metric('CLS', result.value, result.t === null ? null : vitalsObsMs(result.t), final, { sources });
+  }
+
+  function inp(final) {
+    if (!types.has('event') || !I.hasInteractionId) return unavailable('unsupported-browser');
+    const result = inpFromEvents([...interactions.values()]);
+    if (!result) return unavailable('no-interaction');
+    const { entry } = result;
+    const phases = inpPhases(entry);
+    const extra = {};
+    if (entry.selector) extra.selector = entry.selector;
+    extra.eventType = entry.name;
+    extra.inputDelay = vitalsObsMs(phases.inputDelay);
+    extra.processing = vitalsObsMs(phases.processing);
+    extra.presentation = vitalsObsMs(phases.presentation);
+    extra.interactions = Math.max(result.count, interactionsSeen);
+    return metric('INP', vitalsObsMs(result.value), vitalsObsMs(entry.startTime), final, extra);
+  }
+
+  function longTasks() {
+    if (!types.has('long-animation-frame')) return unavailable('unsupported-browser');
+    return { available: true, items: topLongTasks(loafs, LONG_TASKS_MAX) };
+  }
+
+  function snapshot({ final = false } = {}) {
+    if (active) {
+      for (const { observer, handler } of observers) feed(handler, vitalsObsTry(() => call(I.takeRecords, observer), []));
+    }
+    const finalized = final === true;
+    const lcpExtra = {};
+    if (lcp && lcp.selector) lcpExtra.selector = lcp.selector;
+    if (lcp && lcp.url) lcpExtra.url = lcp.url;
+    return {
+      TTFB: vitalsObsTry(ttfb, unavailable('no-data')),
+      FCP: vitalsObsTry(() => paintLike('FCP', 'paint', fcp, true), unavailable('no-data')),
+      LCP: vitalsObsTry(() => paintLike('LCP', 'largest-contentful-paint', lcp, finalized, lcpExtra), unavailable('no-data')),
+      CLS: vitalsObsTry(() => cls(finalized), unavailable('no-data')),
+      INP: vitalsObsTry(() => inp(finalized), unavailable('no-data')),
+      longTasks: vitalsObsTry(longTasks, unavailable('no-data')),
+    };
+  }
+
+  function restore() {
+    if (!active) return;
+    // Pending records are taken first, so a stopped recorder keeps what was observed until now.
+    for (const { observer, handler } of observers) {
+      feed(handler, vitalsObsTry(() => call(I.takeRecords, observer), []));
+      vitalsObsTry(() => call(I.disconnect, observer));
+    }
+    active = false;
+    vitalsObsTry(() => call(remove, doc, 'visibilitychange', onVisibility, true));
+  }
+
+  return { snapshot, restore };
+}
+return Object.freeze({ VITALS_CLS_SOURCES_MAX: VITALS_CLS_SOURCES_MAX, captureVitalsIntrinsics: captureVitalsIntrinsics, installVitals: installVitals });
 })();
 
 // module: page/constants.js
-const __pds_m5 = (function () {
+const __pds_m13 = (function () {
 // Shared constants of the page recorder (E1 D5/D6). RECORDER_VERSION must equal `version` in
 // src/manifest.base.json (guarded by tests/unit/recorder.test.js), so a release has to run `npm run gen`.
 
 const RECORDER_VERSION = '0.3.0';
 
-// Version of the MAIN <-> ISOLATED message protocol.
-const PROTOCOL = 1;
+// Version of the MAIN <-> ISOLATED message protocol; 2 = `collect` result with steps, vitals, documentStatus
+// (E2 D8). Mirrored by RESULT_PROTOCOL in src/lib/save.js.
+const PROTOCOL = 2;
 
 // Per-document buffer limits (D5): entries per section, chars per serialized value, chars of all entries.
+// `responseBodyChars`/`stackChars`/`longTasks` mirror the limits enforced in hooks-network, serialize and
+// vitals-math, so the package can report them; `responseBodyTotalChars` is the per-document preview budget (D3).
 const LIMITS = Object.freeze({
   consoleLogs: 5000,
   runtimeErrors: 1000,
   network: 5000,
-  entryChars: 10000,
+  steps: 2000,
+  entryChars: 40000, // a 16 000-char stack plus a 5-level cause chain fit in one console entry (E2-T7a)
+  stackChars: 16000,
+  responseBodyChars: 4096,
+  responseBodyTotalChars: 262144,
+  longTasks: 20,
   documentChars: 4000000,
 });
 
@@ -748,21 +2584,31 @@ return Object.freeze({ RECORDER_VERSION: RECORDER_VERSION, PROTOCOL: PROTOCOL, L
 })();
 
 // module: page/recorder.js
-const __pds_m6 = (function () {
+const __pds_m14 = (function () {
 const { serializeCapped } = __pds_m0;
 const { createBuffer } = __pds_m1;
-const { installFetchHook, installXhrHook } = __pds_m2;
-const { installConsoleHook } = __pds_m3;
-const { installErrorHooks } = __pds_m4;
-const { RECORDER_VERSION, PROTOCOL, LIMITS, MARKER_KEY, CONFIG_TIMEOUT_MS, CONSOLE_LEVELS } = __pds_m5;
-// MAIN-world recorder (E1 D5, D10): composes the console/error/network hooks over bounded buffers,
-// guards the window with an install marker, stops on the time limit and removes itself without a config.
+const { installFetchHook, installXhrHook } = __pds_m3;
+const { installConsoleHook } = __pds_m4;
+const { installErrorHooks } = __pds_m5;
+const { captureSelectorIntrinsics, createSelectorOf } = __pds_m6;
+const { installStepsHook } = __pds_m7;
+const { installResourceHooks } = __pds_m9;
+const { installFrameHooks } = __pds_m10;
+const { installVitals } = __pds_m12;
+const { RECORDER_VERSION, PROTOCOL, LIMITS, MARKER_KEY, CONFIG_TIMEOUT_MS, CONSOLE_LEVELS } = __pds_m13;
+// MAIN-world recorder (E1 D5, D10; E2 D2–D4, D6, D8): composes the console/error/network hooks, the user
+// steps, the resource observer, same-origin frames and the Web Vitals observers over bounded buffers,
+// guards the window with an install marker, stops on the time limit (also checked at every recorded event
+// and on visibilitychange, so a sleeping device stops at the first event after waking) and removes itself
+// without a config.
 // Buffers live only in this closure; nothing is exposed on the page window except the frozen marker.
 // Every recorder failure is swallowed and the recorder never writes to `console` (AC-4.7).
 // Top-level helpers carry the `recorder` prefix (D6: all page modules end up in one IIFE).
 
 
-const RECORDER_SECTIONS = ['consoleLogs', 'runtimeErrors', 'network'];
+const RECORDER_SECTIONS = ['consoleLogs', 'runtimeErrors', 'network', 'steps'];
+// Fields a hook may attach to its network entry later (response body preview, D3).
+const RECORDER_ATTACH_FIELDS = ['responseBodyPreview', 'responseBodyTruncated'];
 const RECORDER_URL_MAX = 4000;
 
 function recorderTry(fn, fallback) {
@@ -797,12 +2643,15 @@ function isInstalled(win) {
 /**
  * @param {object} input
  * @param {Window} input.win
- * @param {{ limits?: object, configTimeoutMs?: number, onStopped?: (reason: string) => void }} [input.options]
+ * @param {{ limits?: object, configTimeoutMs?: number, onStopped?: (reason: string) => void,
+ *   interactionsSince?: number }} [input.options] `interactionsSince` (performance.now() ms): INP counts only
+ *   later interactions (console fallback, AC-5.8).
  */
 function createRecorder({ win, options = {} }) {
   const limits = { ...LIMITS, ...(options.limits || {}) };
   const onStopped = typeof options.onStopped === 'function' ? options.onStopped : null;
   const configTimeoutMs = recorderFinite(options.configTimeoutMs) ?? CONFIG_TIMEOUT_MS;
+  const interactionsSince = recorderFinite(options.interactionsSince);
 
   // Intrinsics captured before page scripts run (document_start).
   const perf = recorderTry(() => win.performance, null);
@@ -811,13 +2660,17 @@ function createRecorder({ win, options = {} }) {
   const setTimer = recorderTry(() => win.setTimeout, null);
   const clearTimer = recorderTry(() => win.clearTimeout, null);
   const proto = recorderTry(() => win.EventTarget.prototype, null);
+  const doc = recorderTry(() => win.document, null);
   const intrinsics = {
     Reflect,
     Proxy,
     Error,
     addEventListener: recorderTry(() => proto.addEventListener, undefined),
     removeEventListener: recorderTry(() => proto.removeEventListener, undefined),
+    // Frames: new iframes are found by a MutationObserver the page cannot replace later (E2-D6).
+    MutationObserver: recorderTry(() => win.MutationObserver, undefined),
   };
+  const selectorIntrinsics = recorderTry(() => captureSelectorIntrinsics(win), null);
   const defineProperty = Object.defineProperty;
   const freeze = Object.freeze;
   const markerSymbol = Symbol.for(MARKER_KEY);
@@ -826,10 +2679,16 @@ function createRecorder({ win, options = {} }) {
   const now = () => (perfNow ? Reflect.apply(perfNow, perf, []) : dateNow() - startDate);
   const timeOrigin = recorderTry(() => recorderFinite(perf.timeOrigin), null) ?? startDate - recorderTry(now, 0);
 
+  // Response previews are attached to network entries after they were pushed (the buffer cannot grow an
+  // entry), so their budget is reserved inside the network buffer's char limit when it fits (D3).
+  const networkChars = limits.documentChars > 2 * limits.responseBodyTotalChars
+    ? limits.documentChars - limits.responseBodyTotalChars
+    : limits.documentChars;
   const buffers = {};
   const counts = {};
   for (const section of RECORDER_SECTIONS) {
-    buffers[section] = createBuffer({ maxItems: limits[section], maxChars: limits.documentChars });
+    const maxChars = section === 'network' ? networkChars : limits.documentChars;
+    buffers[section] = createBuffer({ maxItems: limits[section], maxChars });
     counts[section] = 0;
   }
 
@@ -841,6 +2700,14 @@ function createRecorder({ win, options = {} }) {
   let configTimer = null;
   let limitTimer = null;
   let pendingChars = 0;
+  // Set while stop() drains the observers: records are then checked only by their own `t` (decision 4).
+  let stopping = false;
+  let bodyChars = 0;
+  let bodiesTruncated = false;
+  let resources = null;
+  let vitals = null;
+  // Network items with sizes and load errors merged, fixed at stop (the resource rings go with the hooks).
+  let frozenNetwork = null;
 
   const later = (fn, ms) => recorderTry(() => Reflect.apply(setTimer, win, [fn, ms]), null);
   const cancel = (id) => {
@@ -856,20 +2723,52 @@ function createRecorder({ win, options = {} }) {
 
   // `deadline` is wall-clock epoch (background Date.now()); the monotonic clock stands still while the device
   // sleeps, so the time limit is checked against Date.now() too.
-  const pastDeadline = (t) => deadline !== null && (timeOrigin + t >= deadline || dateNow() >= deadline);
+  const pastByTime = (t) => deadline !== null && timeOrigin + t >= deadline;
+  const pastDeadline = (t) => pastByTime(t) || (!stopping && deadline !== null && dateNow() >= deadline);
 
+  // Any event past the deadline stops the recording at once (E2 D8, AC-2.2); the entry itself is dropped.
   function record(section, entry) {
     const chars = pendingChars;
     pendingChars = 0;
     try {
       if (state !== 'recording' || !buffers[section] || !entry || typeof entry !== 'object') return;
       if (recorderFinite(entry.t) === null) entry.t = now();
-      if (pastDeadline(entry.t)) return;
+      if (pastDeadline(entry.t)) {
+        if (!stopping) stop('time-limit');
+        return;
+      }
       counts[section] += 1;
       buffers[section].push(entry, chars + recorderShallowChars(entry));
     } catch {
       // never let a recorder failure reach the page
     }
+  }
+
+  // Response body preview of a recorded network entry (hooks-network `ctx.attach`). Over the per-document
+  // budget the field is left out and `truncated.responseBodies` is set (D3).
+  function attach(entry, fields, chars) {
+    try {
+      if (state !== 'recording' || !entry || typeof entry !== 'object' || !fields || typeof fields !== 'object') return;
+      const preview = fields.responseBodyPreview;
+      if (typeof preview !== 'string') return;
+      const capped = preview.length > limits.responseBodyChars ? preview.slice(0, limits.responseBodyChars) : preview;
+      const size = Math.max(capped.length, Math.min(recorderFinite(chars) ?? 0, limits.responseBodyChars));
+      if (bodyChars + size > limits.responseBodyTotalChars) {
+        bodiesTruncated = true;
+        return;
+      }
+      bodyChars += size;
+      for (const key of RECORDER_ATTACH_FIELDS) {
+        if (key === 'responseBodyPreview') entry[key] = capped;
+        else if (typeof fields[key] === 'boolean') entry[key] = fields[key] || capped !== preview;
+      }
+    } catch {
+      // never let a recorder failure reach the page
+    }
+  }
+
+  function onVisibility() {
+    if (state === 'recording' && deadline !== null && dateNow() >= deadline) stop('time-limit');
   }
 
   function removeHooks() {
@@ -887,13 +2786,27 @@ function createRecorder({ win, options = {} }) {
       buffers[section].clear();
       counts[section] = 0;
     }
+    bodyChars = 0;
+    bodiesTruncated = false;
+    frozenNetwork = null;
   }
 
+  // Stops every hook and observer (History, frames, PerformanceObservers, listeners); buffers stay for collect.
+  // Entries still queued in the observers are drained first and kept when they started before the deadline.
   function stop(reason) {
-    if (state !== 'recording') return;
-    state = 'stopped';
-    stopReason = typeof reason === 'string' ? reason.slice(0, 64) : 'user';
-    removeHooks();
+    if (state !== 'recording' || stopping) return;
+    stopping = true;
+    try {
+      stopReason = typeof reason === 'string' ? reason.slice(0, 64) : 'user';
+      if (resources) {
+        const current = resources;
+        frozenNetwork = recorderTry(() => current.adjust(buffers.network.items()), null);
+      }
+      state = 'stopped';
+      removeHooks();
+    } finally {
+      stopping = false;
+    }
     if (onStopped) recorderTry(() => onStopped(stopReason));
   }
 
@@ -901,6 +2814,8 @@ function createRecorder({ win, options = {} }) {
     if (state === 'recording') state = 'stopped';
     removeHooks();
     clearBuffers();
+    resources = null;
+    vitals = null;
     state = 'destroyed';
   }
 
@@ -927,11 +2842,31 @@ function createRecorder({ win, options = {} }) {
     }
     state = 'recording';
     const ctx = { win, now, record, json, intrinsics };
+    const enabled = () => state === 'recording';
+    const selectorOf = (selectorIntrinsics && doc && recorderTry(() => createSelectorOf({ doc, intrinsics: selectorIntrinsics }), null))
+      || (() => null);
+    // Vitals entries are judged by their own start time: a record drained after the deadline still counts
+    // when it happened before it (decision 4).
+    const accept = (t) => !pastByTime(t);
     const installers = [
       () => installConsoleHook({ ...ctx, levels: CONSOLE_LEVELS }),
       () => installErrorHooks(ctx),
-      () => installFetchHook({ ...ctx, enabled: () => state === 'recording' }),
-      () => installXhrHook({ ...ctx, enabled: () => state === 'recording' }),
+      () => installFetchHook({ ...ctx, enabled, attach }),
+      () => installXhrHook({ ...ctx, enabled, attach }),
+      () => installStepsHook({ ...ctx, doc, selectorOf }),
+      () => {
+        resources = installResourceHooks({ ...ctx, doc, enabled });
+        return resources.restore;
+      },
+      () => installFrameHooks({ ...ctx, doc }),
+      () => {
+        vitals = installVitals({ win, doc, now, selectorOf, intrinsics, accept, options: { interactionsSince } });
+        return vitals.restore;
+      },
+      () => {
+        Reflect.apply(intrinsics.addEventListener, doc, ['visibilitychange', onVisibility, true]);
+        return () => Reflect.apply(intrinsics.removeEventListener, doc, ['visibilitychange', onVisibility, true]);
+      },
     ];
     for (const installer of installers) {
       const restore = recorderTry(installer, null);
@@ -960,6 +2895,7 @@ function createRecorder({ win, options = {} }) {
     if (deadline !== null) onLimit();
   }
 
+  // Raw buffer copies with `doc`; `network` without the Resource Timing adjustments (see snapshot()).
   function exportBuffers() {
     const out = { truncated: {}, counts: {} };
     for (const section of RECORDER_SECTIONS) {
@@ -967,12 +2903,28 @@ function createRecorder({ win, options = {} }) {
       out.truncated[section] = buffers[section].truncated;
       out.counts[section] = counts[section];
     }
+    out.truncated.responseBodies = bodiesTruncated;
     return out;
   }
 
-  // Current-document part of the `collect` result (flat, as assemblePackage reads it); the entry point adds
-  // the collector sections.
-  function snapshot() {
+  // Network items with `sizeBytes` from Resource Timing and element load errors merged (copies, D2).
+  function adjustedNetwork() {
+    if (frozenNetwork) return frozenNetwork.map((entry) => ({ ...entry, doc: docId }));
+    const items = buffers.network.items();
+    const current = resources;
+    const adjusted = state === 'recording' && current ? recorderTry(() => current.adjust(items), null) : null;
+    return (Array.isArray(adjusted) ? adjusted : items).map((entry) => ({ ...entry, doc: docId }));
+  }
+
+  // Current-document part of the `collect`/`flush` result (flat, as assemblePackage reads it); the entry point
+  // adds the collector sections. `final`: the page is going away or hidden, so LCP/CLS/INP cannot grow (AC-5.6).
+  function snapshot({ final = false } = {}) {
+    // Resource entries still queued in the observer become records (and count) before the export.
+    const current = resources;
+    if (state === 'recording' && current) recorderTry(() => current.sync());
+    const buffered = exportBuffers();
+    buffered.network = adjustedNetwork();
+    const currentVitals = vitals;
     const url = recorderTry(() => String(win.location.href).slice(0, RECORDER_URL_MAX), null);
     const navigationType = recorderTry(() => {
       const nav = perf.getEntriesByType('navigation')[0];
@@ -986,7 +2938,9 @@ function createRecorder({ win, options = {} }) {
       timeOrigin,
       navigationType,
       stopReason,
-      ...exportBuffers(),
+      ...buffered,
+      vitals: currentVitals ? recorderTry(() => currentVitals.snapshot({ final: final === true }), null) : null,
+      documentStatus: current ? recorderTry(() => current.documentStatus(), null) : null,
     };
   }
 
@@ -1013,7 +2967,7 @@ return Object.freeze({ isInstalled: isInstalled, createRecorder: createRecorder 
 })();
 
 // module: page/channel.js
-const __pds_m7 = (function () {
+const __pds_m15 = (function () {
 // Private MAIN <-> ISOLATED channel (design D3), not window messaging: the two worlds bind
 // synchronously at document_start on a detached DOM node handed over in
 // MouseEvent.relatedTarget, then talk only through CustomEvents on that node. The page has no
@@ -1031,7 +2985,8 @@ const CHANNEL_EVENTS = Object.freeze({
 });
 
 // Public message types per direction; 'bind' and 'hello' are internal handshake messages.
-const I2M_TYPES = Object.freeze(['config', 'collect', 'destroy']);
+// 'stop' (E2-T9b): the background's time-limit stop, relayed by the bridge.
+const I2M_TYPES = Object.freeze(['config', 'collect', 'destroy', 'stop']);
 const M2I_TYPES = Object.freeze(['result', 'flush', 'stopped']);
 
 const CHANNEL_BIND_TIMEOUT_MS = 10000;
@@ -1275,7 +3230,7 @@ return Object.freeze({ CHANNEL_PROTOCOL: CHANNEL_PROTOCOL, CHANNEL_EVENTS: CHANN
 })();
 
 // module: page/collector.js
-const __pds_m8 = (function () {
+const __pds_m16 = (function () {
 // Page state collector (environment / DOM / performance / storage) for the MAIN world.
 // Logic moved 1:1 from E0 page-debug-snapshot.js; v2 keeps these sections "bez zmian treści".
 // Every function takes (win, doc, deps); deps.safeSlice is injected (src/page/serialize.js in the recorder).
@@ -1593,15 +3548,16 @@ return Object.freeze({ COLLECTOR_LIMITS: COLLECTOR_LIMITS, getAttributes: getAtt
 
 // module: page/main-entry.js
 (function () {
-const { isInstalled, createRecorder } = __pds_m6;
-const { connectMain } = __pds_m7;
-const { collectPageState } = __pds_m8;
+const { isInstalled, createRecorder } = __pds_m14;
+const { connectMain } = __pds_m15;
+const { collectPageState } = __pds_m16;
 const { safeSlice } = __pds_m0;
-const { RECORDER_VERSION } = __pds_m5;
+const { RECORDER_VERSION } = __pds_m13;
 // MAIN-world entry point (E1 D1, D3, D4), bundled into src/content/main-world.js by `npm run gen`.
 // Installs the recorder at document_start, binds the private channel to the ISOLATED bridge and
 // answers its messages: `config` (per-document gate), `collect` (current document as a JSON string),
-// `destroy`. At `beforeunload` and `pagehide` it hands the buffers over (`flush`) so a reload or a jump
+// `stop` (time limit from the background; hooks go, buffers stay), `destroy`. At `beforeunload` and `pagehide`
+// it hands the buffers over (`flush`, vitals final) so a reload or a jump
 // to another site keeps them. F-2: Firefox drops the pagehide copy of a document left for another site,
 // the beforeunload one arrives; neither listener keeps the page out of the bfcache.
 // No extension API in this world: the bridge is the only way to the background.
@@ -1640,6 +3596,7 @@ function bootMain({ win, doc }) {
   const proto = mainTry(() => win.EventTarget.prototype, null);
   const addListener = mainTry(() => proto.addEventListener, null);
   const removeListener = mainTry(() => proto.removeEventListener, null);
+  const getVisibility = mainTry(() => Object.getOwnPropertyDescriptor(win.Document.prototype, 'visibilityState').get, null);
 
   let channel = null;
   let docId = null;
@@ -1663,7 +3620,8 @@ function bootMain({ win, doc }) {
   function flushBuffers() {
     if (!recorded || closed || !channel) return;
     mainTry(() => {
-      const data = { ...rec.snapshot(), docId };
+      // The document is going away: LCP/CLS/INP cannot change any more (AC-5.6).
+      const data = { ...rec.snapshot({ final: true }), docId };
       const mark = mainChangeMark(data);
       if (mark === flushedMark) return;
       if (channel.send('flush', { docId, data })) flushedMark = mark;
@@ -1699,7 +3657,9 @@ function bootMain({ win, doc }) {
   function onCollect(id) {
     let raw;
     try {
-      const result = { ...collectPageState({ win, doc, safeSlice }), ...rec.snapshot() };
+      // A hidden page cannot grow its metrics until it is shown again, so they count as final (AC-5.6).
+      const hidden = getVisibility ? mainTry(() => apply(getVisibility, doc, []) === 'hidden', false) : false;
+      const result = { ...collectPageState({ win, doc, safeSlice }), ...rec.snapshot({ final: hidden }) };
       if (result.docId === null || result.docId === undefined) result.docId = docId;
       raw = apply(stringify, win.JSON, [result]);
     } catch {
@@ -1716,6 +3676,7 @@ function bootMain({ win, doc }) {
       if (closed) return;
       if (type === 'config') onConfig(payload);
       else if (type === 'collect') onCollect(id);
+      else if (type === 'stop') rec.stop(payload && payload.reason === 'time-limit' ? 'time-limit' : 'user');
       else if (type === 'destroy') teardown();
     },
   });

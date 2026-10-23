@@ -202,6 +202,61 @@ describe('popup controller: opening', () => {
   });
 });
 
+describe('popup controller: live tab (E2 AC-2.1)', () => {
+  it('popup refreshes on tabs.onUpdated of its tab and shows otherOrigin; back on origin note disappears', async () => {
+    const t = setup();
+    t.bg.status = recording();
+    await t.controller.init();
+    expect(t.last()).toMatchObject({ section: 'recording', note: '' });
+
+    t.bg.status = recording({ otherOrigin: true });
+    t.fake.navigateTab(7, 'http://localhost:8080/');
+    await flush();
+    expect(t.last()).toMatchObject({ section: 'recording', note: MESSAGES.otherOrigin });
+
+    t.bg.status = recording();
+    t.fake.navigateTab(7, URL_WEB);
+    await flush();
+    expect(t.last()).toMatchObject({ section: 'recording', note: '' });
+  });
+
+  it('onUpdated of another tab is ignored', async () => {
+    const t = setup();
+    t.bg.status = recording();
+    await t.controller.init();
+    const before = t.sent('getStatus').length;
+    t.bg.status = recording({ otherOrigin: true });
+    t.fake.navigateTab(8, 'http://localhost:8080/');
+    await flush();
+    expect(t.sent('getStatus')).toHaveLength(before);
+    expect(t.last().note).toBe('');
+  });
+
+  it('subscribes without a filter argument and only for a recordable page', async () => {
+    const t = setup();
+    const add = vi.spyOn(t.chrome.tabs.onUpdated, 'addListener');
+    await t.controller.init();
+    expect(add).toHaveBeenCalledTimes(1);
+    expect(add.mock.calls[0]).toHaveLength(1);
+
+    const r = setup({ url: 'chrome://version/' });
+    await r.controller.init();
+    expect(r.chrome.tabs.onUpdated.hasListeners()).toBe(false);
+  });
+
+  it('destroy removes onUpdated listener', async () => {
+    const t = setup();
+    await t.controller.init();
+    expect(t.chrome.tabs.onUpdated.hasListeners()).toBe(true);
+    t.controller.destroy();
+    expect(t.chrome.tabs.onUpdated.hasListeners()).toBe(false);
+    const before = t.sent('getStatus').length;
+    t.fake.navigateTab(7, 'http://localhost:8080/');
+    await flush();
+    expect(t.sent('getStatus')).toHaveLength(before);
+  });
+});
+
 describe('popup controller: Nagrywaj', () => {
   it('onRecord calls permissions.request in the same tick with exactly [pattern]; armStart sent before, not awaited', async () => {
     const t = setup();

@@ -4,7 +4,7 @@
 // restore() puts back only the levels that still hold our wrapper; a wrapper the page installed on top of ours
 // (Sentry, Datadog, …) stays, and ours becomes a plain passthrough to the original.
 
-export const STACK_MAX_CHARS = 4000;
+export const STACK_MAX_CHARS = 16000;
 
 // win -> true while hooks are installed; a second install in the same window is a no-op.
 const consoleHookActive = new WeakMap();

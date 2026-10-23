@@ -1,7 +1,8 @@
 // MAIN-world entry point (E1 D1, D3, D4), bundled into src/content/main-world.js by `npm run gen`.
 // Installs the recorder at document_start, binds the private channel to the ISOLATED bridge and
 // answers its messages: `config` (per-document gate), `collect` (current document as a JSON string),
-// `destroy`. At `beforeunload` and `pagehide` it hands the buffers over (`flush`) so a reload or a jump
+// `stop` (time limit from the background; hooks go, buffers stay), `destroy`. At `beforeunload` and `pagehide`
+// it hands the buffers over (`flush`, vitals final) so a reload or a jump
 // to another site keeps them. F-2: Firefox drops the pagehide copy of a document left for another site,
 // the beforeunload one arrives; neither listener keeps the page out of the bfcache.
 // No extension API in this world: the bridge is the only way to the background.
@@ -45,6 +46,7 @@ export function bootMain({ win, doc }) {
   const proto = mainTry(() => win.EventTarget.prototype, null);
   const addListener = mainTry(() => proto.addEventListener, null);
   const removeListener = mainTry(() => proto.removeEventListener, null);
+  const getVisibility = mainTry(() => Object.getOwnPropertyDescriptor(win.Document.prototype, 'visibilityState').get, null);
 
   let channel = null;
   let docId = null;
@@ -68,7 +70,8 @@ export function bootMain({ win, doc }) {
   function flushBuffers() {
     if (!recorded || closed || !channel) return;
     mainTry(() => {
-      const data = { ...rec.snapshot(), docId };
+      // The document is going away: LCP/CLS/INP cannot change any more (AC-5.6).
+      const data = { ...rec.snapshot({ final: true }), docId };
       const mark = mainChangeMark(data);
       if (mark === flushedMark) return;
       if (channel.send('flush', { docId, data })) flushedMark = mark;
@@ -104,7 +107,9 @@ export function bootMain({ win, doc }) {
   function onCollect(id) {
     let raw;
     try {
-      const result = { ...collectPageState({ win, doc, safeSlice }), ...rec.snapshot() };
+      // A hidden page cannot grow its metrics until it is shown again, so they count as final (AC-5.6).
+      const hidden = getVisibility ? mainTry(() => apply(getVisibility, doc, []) === 'hidden', false) : false;
+      const result = { ...collectPageState({ win, doc, safeSlice }), ...rec.snapshot({ final: hidden }) };
       if (result.docId === null || result.docId === undefined) result.docId = docId;
       raw = apply(stringify, win.JSON, [result]);
     } catch {
@@ -121,6 +126,7 @@ export function bootMain({ win, doc }) {
       if (closed) return;
       if (type === 'config') onConfig(payload);
       else if (type === 'collect') onCollect(id);
+      else if (type === 'stop') rec.stop(payload && payload.reason === 'time-limit' ? 'time-limit' : 'user');
       else if (type === 'destroy') teardown();
     },
   });

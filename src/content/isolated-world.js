@@ -21,7 +21,8 @@ const CHANNEL_EVENTS = Object.freeze({
 });
 
 // Public message types per direction; 'bind' and 'hello' are internal handshake messages.
-const I2M_TYPES = Object.freeze(['config', 'collect', 'destroy']);
+// 'stop' (E2-T9b): the background's time-limit stop, relayed by the bridge.
+const I2M_TYPES = Object.freeze(['config', 'collect', 'destroy', 'stop']);
 const M2I_TYPES = Object.freeze(['result', 'flush', 'stopped']);
 
 const CHANNEL_BIND_TIMEOUT_MS = 10000;
@@ -269,7 +270,7 @@ return Object.freeze({ CHANNEL_PROTOCOL: CHANNEL_PROTOCOL, CHANNEL_EVENTS: CHANN
 const { connectIsolated } = __pds_m0;
 // ISOLATED-world entry point (E1 D1, D3, D4), bundled into src/content/isolated-world.js by `npm run gen`.
 // The bridge: asks the background whether this document is recorded (`hello`) and forwards the answer
-// to MAIN as `config`; relays `collect`/`destroy` from the background to MAIN and `flush`/`stopped`
+// to MAIN as `config`; relays `collect`/`destroy`/`stop` from the background to MAIN and `flush`/`stopped`
 // from MAIN to the background. The document token from `hello` stays here and goes only with `flush`. Sees no page JavaScript; the only module that uses the extension API.
 // When the extension context is gone (update, reload) every call fails and the bridge stays silent.
 
@@ -405,6 +406,11 @@ function bootIsolated({ win, doc, api }) {
       return true;
     }
     if (message.type === 'destroy' && !finished) finish();
+    // Time limit reached in the background (E2 D8): MAIN stops its hooks and keeps the buffers for collect.
+    if (message.type === 'stop' && !finished) {
+      const reason = bridgeTry(() => String(message.reason ?? 'user').slice(0, BRIDGE_REASON_MAX), 'user');
+      channel.send('stop', { reason });
+    }
     return false;
   }
 

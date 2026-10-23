@@ -142,7 +142,7 @@ Nie istnieją jeszcze (planowane w kolejnych epikach, patrz `docs/BACKLOG.md`).
 
 ## Uprawnienia
 
-- `activeTab` — dostęp do bieżącej karty tylko po kliknięciu ikony rozszerzenia; daje adres strony, aby zaproponować nagranie tej witryny.
+- `activeTab` — dostęp do bieżącej karty tylko po kliknięciu ikony rozszerzenia; daje adres strony, aby zaproponować nagranie tej witryny, a po kliknięciu „Zapisz paczkę” pozwala dołączyć do raportu zrzut widocznej części tej karty (tylko gdy pokazuje nagrywaną witrynę).
 - `scripting` — rejestracja dołączonego skryptu nagrywania tylko dla jednej wybranej witryny (od początku ładowania strony); skrypt jest wyrejestrowywany po zapisie raportu.
 - `storage` — stan nagrania oraz dane zebrane z podstron przeładowanych w trakcie nagrania, w pamięci sesji (`storage.session`) czyszczonej przez przeglądarkę przy zamknięciu i niedostępnej dla stron; usuwane po zapisaniu pliku, nic nie trafia do pamięci trwałej.
 - `downloads` — zapis pliku raportu do folderu pobranych i sprawdzenie, że plik naprawdę powstał.
@@ -153,8 +153,8 @@ Rozszerzenie nie dostaje przy instalacji dostępu do wszystkich witryn i niczego
 Wersje do formularzy sklepów (Chrome Web Store, AMO):
 
 - `activeTab`
-  - PL: Po kliknięciu ikony rozszerzenie odczytuje wyłącznie adres bieżącej karty, aby zaproponować nagranie tej witryny; bez kliknięcia nie ma dostępu do żadnej strony.
-  - EN: When the user clicks the toolbar icon, the extension reads the address of the current tab only, to offer recording of that site; without the click it cannot access any website.
+  - PL: Po kliknięciu ikony rozszerzenie odczytuje wyłącznie adres bieżącej karty, aby zaproponować nagranie tej witryny, a gdy użytkownik kliknie „Zapisz paczkę”, robi jeden zrzut widocznej części tej karty do raportu; bez kliknięcia nie ma dostępu do żadnej strony.
+  - EN: When the user clicks the toolbar icon, the extension reads the address of the current tab only, to offer recording of that site, and when the user clicks "Save" it takes one screenshot of the visible part of that tab for the report; without the click it cannot access any website.
 - `scripting`
   - PL: Rejestruje dołączony do rozszerzenia skrypt nagrywania tylko dla witryny wybranej przez użytkownika, aby działał od początku ładowania strony, i usuwa go po zapisaniu raportu.
   - EN: Registers the bundled recording script only for the site the user chose to record, so it runs from the start of the page load, and removes it after the report is saved.

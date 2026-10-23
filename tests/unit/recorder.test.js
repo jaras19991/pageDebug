@@ -5,7 +5,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createRecorder, isInstalled } from '../../src/page/recorder.js';
-import { RECORDER_VERSION, LIMITS, MARKER_KEY, CONFIG_TIMEOUT_MS } from '../../src/page/constants.js';
+import { RECORDER_VERSION, PROTOCOL, LIMITS, MARKER_KEY, CONFIG_TIMEOUT_MS } from '../../src/page/constants.js';
+import { createFakePerformance } from './helpers/fake-performance.js';
 
 // Most tests use a fake window (an EventTarget with its own console/fetch/XHR/performance), so the test
 // runner's console is never hooked and the clock is fully controlled by vitest fake timers.
@@ -14,10 +15,10 @@ const LEVELS = ['log', 'info', 'warn', 'error', 'debug'];
 const MARKER = Symbol.for(MARKER_KEY);
 const TIME_ORIGIN = 1768471200000;
 
-function makeWin() {
-  const win = new EventTarget();
+function makeWin({ Target = EventTarget } = {}) {
+  const win = new Target();
   const startedAt = Date.now();
-  win.EventTarget = EventTarget;
+  win.EventTarget = Target;
   win.console = Object.fromEntries(LEVELS.map((l) => [l, vi.fn()]));
   win.fetch = vi.fn(async () => ({ status: 200, statusText: 'OK', ok: true, redirected: false, headers: new Headers() }));
   class FakeXhr extends EventTarget {
@@ -113,8 +114,9 @@ describe('createRecorder', () => {
     expect(out.consoleLogs).toHaveLength(1);
     expect(out.network.map((n) => n.type)).toEqual(['fetch', 'xhr']);
     expect(out.runtimeErrors).toHaveLength(1);
-    expect(out.counts).toEqual({ consoleLogs: 1, runtimeErrors: 1, network: 2 });
-    expect(out.truncated).toEqual({ consoleLogs: false, runtimeErrors: false, network: false });
+    // steps: the navigate step recorded at install (E2-T9a).
+    expect(out.counts).toEqual({ consoleLogs: 1, runtimeErrors: 1, network: 2, steps: 1 });
+    expect(out.truncated).toEqual({ consoleLogs: false, runtimeErrors: false, network: false, steps: false, responseBodies: false });
     rec.destroy();
   });
 
@@ -207,7 +209,7 @@ describe('createRecorder', () => {
     const out = rec.exportBuffers();
     expect(out.consoleLogs).toEqual([]);
     expect(out.runtimeErrors).toEqual([]);
-    expect(out.counts).toEqual({ consoleLogs: 0, runtimeErrors: 0, network: 0 });
+    expect(out.counts).toEqual({ consoleLogs: 0, runtimeErrors: 0, network: 0, steps: 0 });
     expect(rec.isActive).toBe(false);
   });
 
@@ -317,7 +319,7 @@ describe('createRecorder', () => {
     expect(rec.snapshot().stopReason).toBe('time-limit');
   });
 
-  it('records after deadline are dropped even if timer is late', () => {
+  it('records after deadline are dropped and stop the recording even if timer is late (E2 D8)', () => {
     const win = makeWin();
     const rec = createRecorder({ win });
     rec.install();
@@ -328,7 +330,8 @@ describe('createRecorder', () => {
     vi.setSystemTime(Date.now() + 1);
     win.console.log('at deadline');
     dispatchError(win, { message: 'late' });
-    expect(rec.isActive).toBe(true);
+    // E1 waited for the timer here; since E2 the first event past the deadline stops at once.
+    expect(rec.isActive).toBe(false);
     const out = rec.exportBuffers();
     expect(out.consoleLogs.map((l) => [l.args[0], l.t])).toEqual([['just before', 4999]]);
     expect(out.runtimeErrors).toEqual([]);
@@ -428,8 +431,8 @@ describe('createRecorder', () => {
     win.console.log('x');
     const snap = rec.snapshot();
     expect(Object.keys(snap).sort()).toEqual(
-      ['consoleLogs', 'counts', 'docId', 'navigationType', 'network', 'protocol', 'recorderVersion',
-        'runtimeErrors', 'stopReason', 'timeOrigin', 'truncated', 'url'].sort(),
+      ['consoleLogs', 'counts', 'docId', 'documentStatus', 'navigationType', 'network', 'protocol', 'recorderVersion',
+        'runtimeErrors', 'steps', 'stopReason', 'timeOrigin', 'truncated', 'url', 'vitals'].sort(),
     );
     expect(snap.docId).toBe(9);
     expect(snap.timeOrigin).toBe(TIME_ORIGIN);
@@ -442,5 +445,252 @@ describe('createRecorder', () => {
   it('RECORDER_VERSION equals manifest.base.json version', () => {
     const manifest = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/manifest.base.json'), 'utf8'));
     expect(RECORDER_VERSION).toBe(manifest.version);
+  });
+});
+
+// ---- E2-T9a: steps, resources, vitals, frames, deadline at the event, response-body budget ----
+
+// EventTarget that remembers its listeners, so a test can hand them trusted-looking events (jsdom and node
+// events are always untrusted) and check that the recorder removed every listener it added.
+const targetListeners = new WeakMap();
+class ListenedTarget extends EventTarget {
+  addEventListener(type, fn, opts) {
+    const list = targetListeners.get(this) || [];
+    list.push([type, fn]);
+    targetListeners.set(this, list);
+    return super.addEventListener(type, fn, opts);
+  }
+
+  removeEventListener(type, fn, opts) {
+    const list = targetListeners.get(this) || [];
+    const i = list.findIndex(([t, f]) => t === type && f === fn);
+    if (i >= 0) list.splice(i, 1);
+    return super.removeEventListener(type, fn, opts);
+  }
+}
+
+const listenersOf = (target) => (targetListeners.get(target) || []).map(([type]) => type);
+
+function fireTrusted(target, type, props = {}) {
+  const event = { type, isTrusted: true, ...props };
+  for (const [t, fn] of [...(targetListeners.get(target) || [])]) if (t === type) fn.call(target, event);
+}
+
+class FakeElement {
+  closest() {
+    return null;
+  }
+
+  getAttribute() {
+    return null;
+  }
+}
+
+// makeWin() plus History, a Performance Timeline (fake-performance.js), Resource Timing with responseStatus,
+// a listened document and a MutationObserver — everything the E2 hooks install on.
+function makeRichWin({ navigation = { responseStart: 47, activationStart: 0, type: 'navigate', responseStatus: 200 } } = {}) {
+  const win = makeWin({ Target: ListenedTarget });
+  const fake = createFakePerformance({ navigation });
+  Object.assign(win.performance, fake.win.performance);
+  win.PerformanceObserver = fake.win.PerformanceObserver;
+  win.PerformanceEventTiming = fake.win.PerformanceEventTiming;
+  function PerformanceResourceTiming() {}
+  Object.defineProperty(PerformanceResourceTiming.prototype, 'responseStatus', { get: () => 0 });
+  win.PerformanceResourceTiming = PerformanceResourceTiming;
+  class FakeHistory {}
+  FakeHistory.prototype.pushState = function pushState() {};
+  FakeHistory.prototype.replaceState = function replaceState() {};
+  win.History = FakeHistory;
+  win.Element = FakeElement;
+  const mutationObservers = [];
+  win.MutationObserver = class {
+    constructor(cb) {
+      this.cb = cb;
+      this.disconnected = false;
+      mutationObservers.push(this);
+    }
+
+    observe() {}
+
+    disconnect() {
+      this.disconnected = true;
+    }
+  };
+  const doc = new ListenedTarget();
+  doc.baseURI = 'http://127.0.0.1:8080/page.html';
+  doc.visibilityState = 'visible';
+  doc.querySelectorAll = () => [];
+  win.document = doc;
+  win.location = { href: 'http://127.0.0.1:8080/page.html', origin: 'http://127.0.0.1:8080' };
+  const history = { pushState: FakeHistory.prototype.pushState, replaceState: FakeHistory.prototype.replaceState };
+  return { win, doc, fake, history, mutationObservers };
+}
+
+function startRich(opts = {}, setup = {}) {
+  const env = makeRichWin(setup);
+  const onStopped = vi.fn();
+  const rec = createRecorder({ win: env.win, options: { onStopped, ...opts } });
+  rec.install();
+  return { ...env, rec, onStopped };
+}
+
+describe('createRecorder — E2 hooks (E2-T9a)', () => {
+  it('constants: protocol 2 and the v3 limits', () => {
+    expect(PROTOCOL).toBe(2);
+    expect(LIMITS).toMatchObject({
+      steps: 2000, responseBodyChars: 4096, responseBodyTotalChars: 262144, longTasks: 20, stackChars: 16000,
+    });
+  });
+
+  it('install adds steps/resources/vitals/frames; destroy restores History methods, disconnects observers, removes listeners', () => {
+    const { win, doc, fake, history, mutationObservers, rec } = startRich();
+    rec.setConfig({ record: true, docId: 0 });
+    expect(win.History.prototype.pushState).not.toBe(history.pushState);
+    expect(win.History.prototype.replaceState).not.toBe(history.replaceState);
+    const watched = fake.observers.flatMap((o) => o.options.map((opt) => opt.type));
+    expect(watched).toEqual(expect.arrayContaining(['resource', 'paint', 'largest-contentful-paint', 'layout-shift', 'event', 'long-animation-frame']));
+    expect(mutationObservers).toHaveLength(1);
+    expect(listenersOf(win)).toEqual(expect.arrayContaining(['click', 'input', 'change', 'submit', 'keydown', 'popstate', 'hashchange']));
+    expect(listenersOf(doc)).toContain('visibilitychange');
+    // Navigate step at install (D4).
+    expect(rec.exportBuffers().steps.map((s) => [s.type, s.via, s.doc])).toEqual([['navigate', 'navigate', 0]]);
+
+    rec.destroy();
+    expect(win.History.prototype.pushState).toBe(history.pushState);
+    expect(win.History.prototype.replaceState).toBe(history.replaceState);
+    expect(fake.observers.every((o) => o.disconnected)).toBe(true);
+    expect(mutationObservers.every((o) => o.disconnected)).toBe(true);
+    expect(listenersOf(win)).toEqual([]);
+    expect(listenersOf(doc)).toEqual([]);
+    expect(rec.exportBuffers().steps).toEqual([]);
+  });
+
+  it('3000 clicks keep newest 2000 and truncated.steps (AC-3.6)', () => {
+    const { win, rec } = startRich();
+    rec.setConfig({ record: true, docId: 1 });
+    for (let i = 0; i < 3000; i++) {
+      vi.advanceTimersByTime(1);
+      fireTrusted(win, 'click', { target: new FakeElement() });
+    }
+    const out = rec.exportBuffers();
+    expect(out.steps).toHaveLength(LIMITS.steps);
+    expect(out.steps.every((s) => s.type === 'click' && s.doc === 1)).toBe(true);
+    expect(out.steps[0].t).toBe(1001);
+    expect(out.steps.at(-1).t).toBe(3000);
+    expect(out.truncated.steps).toBe(true);
+    expect(out.counts.steps).toBe(3001);
+    rec.destroy();
+  });
+
+  it('Date.now() 11 min past deadline, timer not fired: next console.log stops recording with time-limit and calls onStopped; entry dropped (AC-2.2)', () => {
+    const { win, rec, onStopped } = startRich();
+    rec.setConfig({ record: true, docId: 0, deadline: Date.now() + 600_000 });
+    win.console.log('before sleep');
+    // Laptop asleep: only the wall clock moves (setSystemTime does not advance the monotonic clock here).
+    vi.setSystemTime(Date.now() + 11 * 60_000);
+    win.console.log('after wake');
+    expect(rec.isActive).toBe(false);
+    expect(rec.stopReason).toBe('time-limit');
+    expect(onStopped).toHaveBeenCalledTimes(1);
+    expect(onStopped).toHaveBeenCalledWith('time-limit');
+    expect(rec.exportBuffers().consoleLogs.map((l) => l.args[0])).toEqual(['before sleep']);
+    expect(rec.snapshot().stopReason).toBe('time-limit');
+  });
+
+  it('visibilitychange after deadline stops', () => {
+    const { doc, rec, onStopped } = startRich();
+    rec.setConfig({ record: true, docId: 0, deadline: Date.now() + 600_000 });
+    doc.dispatchEvent(new Event('visibilitychange'));
+    expect(rec.isActive).toBe(true);
+    vi.setSystemTime(Date.now() + 11 * 60_000);
+    doc.visibilityState = 'visible';
+    doc.dispatchEvent(new Event('visibilitychange'));
+    expect(rec.isActive).toBe(false);
+    expect(onStopped).toHaveBeenCalledWith('time-limit');
+  });
+
+  it('attach over the response-body budget drops the field and sets truncated.responseBodies', async () => {
+    vi.useRealTimers();
+    const { win, rec } = startRich({ limits: { responseBodyTotalChars: 10_000 } });
+    rec.setConfig({ record: true, docId: 0 });
+    const body = JSON.stringify({ error: 'boom', detail: 'a b '.repeat(1500) });
+    win.fetch.mockImplementation(async () => new Response(body, { status: 500, headers: { 'content-type': 'application/json' } }));
+    for (let i = 0; i < 3; i++) await win.fetch(`/api/${i}`);
+    for (let i = 0; i < 50 && rec.snapshot().truncated.responseBodies !== true; i++) await new Promise((r) => setTimeout(r, 10));
+    const snap = rec.snapshot();
+    const previews = snap.network.map((n) => n.responseBodyPreview);
+    expect(previews[0].length).toBeLessThanOrEqual(LIMITS.responseBodyChars);
+    expect(previews[0].length).toBeGreaterThan(4000);
+    expect(previews.filter((p) => typeof p === 'string')).toHaveLength(2);
+    expect(snap.network[2]).not.toHaveProperty('responseBodyPreview');
+    expect(snap.network[2]).not.toHaveProperty('responseBodyTruncated');
+    expect(snap.truncated.responseBodies).toBe(true);
+    rec.destroy();
+  });
+
+  it('snapshot contains steps, vitals, documentStatus, resource records with doc and fetch sizes; protocol 2', async () => {
+    const { win, fake, rec } = startRich();
+    rec.setConfig({ record: true, docId: 4 });
+    vi.advanceTimersByTime(10);
+    await win.fetch('/api/data');
+    fake.queue('resource', [
+      { name: 'http://127.0.0.1:8080/api/data', initiatorType: 'fetch', startTime: 10.5, duration: 2, responseStatus: 200, encodedBodySize: 23 },
+      { name: 'http://127.0.0.1:8080/img/missing.png', initiatorType: 'img', startTime: 12, duration: 1, responseStatus: 404, encodedBodySize: 9 },
+    ]);
+    fake.queue('largest-contentful-paint', [{ startTime: 300, element: null, url: '' }]);
+    const snap = rec.snapshot();
+    expect(snap.protocol).toBe(2);
+    expect(snap.steps.map((s) => s.type)).toEqual(['navigate']);
+    expect(snap.documentStatus).toEqual({ status: 200 });
+    expect(snap.vitals.LCP).toMatchObject({ available: true, value: 300, finalized: false });
+    expect(snap.vitals.TTFB).toMatchObject({ available: true, value: 47 });
+    expect(rec.snapshot({ final: true }).vitals.LCP.finalized).toBe(true);
+    expect(snap.network.map((n) => [n.type, n.status, n.sizeBytes, n.doc])).toEqual([
+      ['fetch', 200, 23, 4],
+      ['img', 404, 9, 4],
+    ]);
+    expect(snap.truncated).toMatchObject({ steps: false, network: false, responseBodies: false });
+    expect(snap.counts.network).toBe(2);
+    rec.destroy();
+  });
+
+  it('stop(time-limit) freezes vitals and steps (no entries after); queued entries from before the deadline are kept', async () => {
+    const { win, fake, rec } = startRich();
+    rec.setConfig({ record: true, docId: 0, deadline: Date.now() + 600_000 });
+    vi.advanceTimersByTime(1000);
+    await win.fetch('/api/data');
+    fake.queue('largest-contentful-paint', [{ startTime: 400, element: null, url: '' }]);
+    fake.queue('resource', [
+      { name: 'http://127.0.0.1:8080/api/data', initiatorType: 'fetch', startTime: 1000.5, duration: 2, responseStatus: 200, encodedBodySize: 23 },
+      { name: 'http://127.0.0.1:8080/a.css', initiatorType: 'link', startTime: 900, duration: 1, responseStatus: 200, encodedBodySize: 5 },
+    ]);
+    vi.setSystemTime(Date.now() + 11 * 60_000);
+    fireTrusted(win, 'click', { target: new FakeElement() });
+    expect(rec.isActive).toBe(false);
+    // Hooks are off: no listener left, observers disconnected.
+    fireTrusted(win, 'click', { target: new FakeElement() });
+    fake.emit('largest-contentful-paint', [{ startTime: 900, element: null, url: '' }]);
+    const snap = rec.snapshot({ final: true });
+    expect(snap.steps.map((s) => s.type)).toEqual(['navigate']);
+    expect(snap.vitals.LCP).toMatchObject({ available: true, value: 400 });
+    expect(snap.network.map((n) => [n.type, n.sizeBytes])).toEqual([
+      ['fetch', 23],
+      ['css', 5],
+    ]);
+    expect(snap.stopReason).toBe('time-limit');
+  });
+
+  it('interactionsSince reaches vitals; entries with startTime past the deadline are rejected', () => {
+    const { fake, rec } = startRich({ interactionsSince: 500 });
+    rec.setConfig({ record: true, docId: 0, deadline: TIME_ORIGIN + 2000 });
+    fake.queue('event', [
+      { name: 'click', interactionId: 1, startTime: 100, duration: 300, processingStart: 110, processingEnd: 380, target: null },
+      { name: 'click', interactionId: 2, startTime: 600, duration: 120, processingStart: 610, processingEnd: 700, target: null },
+    ]);
+    fake.queue('largest-contentful-paint', [{ startTime: 2500, element: null, url: '' }]);
+    const snap = rec.snapshot();
+    expect(snap.vitals.INP).toMatchObject({ available: true, value: 120 });
+    expect(snap.vitals.LCP).toMatchObject({ available: false, reason: 'no-data' });
+    rec.destroy();
   });
 });

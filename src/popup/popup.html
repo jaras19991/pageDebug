@@ -7,7 +7,8 @@
     body {
       margin: 0;
       padding: 16px;
-      width: 280px;
+      /* 328 + 2 × 16 padding = 360 px, the default popup width (E2 AC-1.3). */
+      width: 328px;
       font-family: Arial, sans-serif;
       background: #ffffff;
       color: #111111;
@@ -20,7 +21,7 @@
     }
 
     p {
-      margin: 0 0 12px;
+      margin: 0 0 10px;
       font-size: 13px;
       line-height: 1.4;
       color: #444;
@@ -32,11 +33,15 @@
     }
 
     ul {
-      margin: 0 0 12px;
-      padding-left: 18px;
-      font-size: 13px;
-      line-height: 1.4;
+      margin: 0 0 10px;
+      padding-left: 16px;
+      font-size: 12px;
+      line-height: 1.35;
       color: #444;
+    }
+
+    li + li {
+      margin-top: 2px;
     }
 
     #note:empty {
@@ -47,6 +52,14 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
+    }
+
+    /* Keeps "Nagrywaj" fully visible in a 600 px popup however long the disclosure gets (AC-1.3). */
+    #ready .actions {
+      position: sticky;
+      bottom: 0;
+      background: #ffffff;
+      padding: 8px 0;
     }
 
     button {
@@ -87,9 +100,12 @@
     <p id="disclosureTitle" class="lead">Do pliku trafią:</p>
     <ul id="disclosure">
       <li>adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu</li>
+      <li>kroki: co klikasz i na jakich stronach — bez treści, które wpisujesz</li>
       <li>logi konsoli i błędy</li>
       <li>zapytania sieciowe strony: adresy, nagłówki i wysyłana treść (mogą zawierać dane logowania) oraz adresy wczytanych plików</li>
+      <li>fragmenty odpowiedzi serwera, gdy coś się nie uda</li>
       <li>treść i struktura strony, w tym wartości wpisane w formularze (bez haseł i pól ukrytych)</li>
+      <li>zrzut widocznej części strony w chwili zapisu</li>
       <li>ciasteczka i dane zapisane przez stronę (mogą zawierać dane logowania)</li>
     </ul>
     <p id="noUpload">Plik zostaje na Twoim dysku, rozszerzenie niczego nie wysyła.</p>

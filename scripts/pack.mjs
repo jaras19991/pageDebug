@@ -1,4 +1,4 @@
-// Release packaging (design D5): build, then one zip per target in dist/.
+// Release packaging (design D5): release check (E2-IN5), build, then one zip per target in dist/.
 // Entries are sorted, use `/` separators and a fixed mtime, so the same build gives byte-identical zips.
 // `manifest.json` sits at the zip root. Pure JS (fflate), no native binaries.
 //
@@ -9,19 +9,23 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { zipSync } from 'fflate';
 import { build } from './build.mjs';
+import { checkRelease } from './check-release.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // Local time on purpose: fflate encodes DOS time from local fields and rejects years before 1980.
 const MTIME = new Date(1980, 0, 1, 0, 0, 0);
 
 /**
- * Builds all targets into `distDir` and zips each one next to it.
- * @param {{ distDir?: string }} [options]
+ * Checks the release (version, fresh bundles), builds all targets into `distDir` and zips each one next to it.
+ * Throws with the list of problems, before building anything, when the check fails.
+ * @param {{ root?: string, distDir?: string }} [options]
  * @returns {Promise<string[]>} absolute paths of the written zips
  */
-export async function pack({ distDir = join(ROOT, 'dist') } = {}) {
+export async function pack({ root = ROOT, distDir = join(root, 'dist') } = {}) {
   distDir = resolve(distDir);
-  const built = await build({ outDir: distDir });
+  const errors = await checkRelease({ root });
+  if (errors.length) throw new Error(`release check failed:\n${errors.map((e) => `- ${e}`).join('\n')}`);
+  const built = await build({ srcDir: join(root, 'src'), outDir: distDir });
   const zips = [];
 
   for (const [target, files] of Object.entries(built)) {

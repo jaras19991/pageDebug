@@ -15,6 +15,7 @@
 //           isRecordingTab, otherTabRecording, otherOrigin, lastSaved: { fileName, downloadId, at } | null,
 //           lastError: outcome kind | null (one-shot) }
 // 'starting' = armed request for this tab, not started yet; 'stopped' = time limit reached (D10).
+// otherOrigin comes from the background's tabs.get; the popup re-asks on tabs.onUpdated of its tab (E2 D8).
 import { classifyUrl, isFileAccessAllowed, isFirefoxRuntime } from './target.js';
 import { originPatternFor } from '../lib/origin.js';
 import { renderModel } from './view.js';
@@ -169,6 +170,11 @@ export function createController(api) {
     refresh();
   };
 
+  // Chrome has no tabId filter for onUpdated: other tabs are filtered here.
+  const onTabUpdated = (tabId) => {
+    if (tabId === ctx.tab?.id) refresh();
+  };
+
   async function init() {
     ctx.target = await classify();
     if (ctx.target !== 'web') {
@@ -177,6 +183,7 @@ export function createController(api) {
     }
     render();
     api.storage?.session?.onChanged?.addListener(onStorageChanged);
+    api.tabs?.onUpdated?.addListener(onTabUpdated);
     await refresh();
   }
 
@@ -321,6 +328,7 @@ export function createController(api) {
   function destroy() {
     destroyed = true;
     api.storage?.session?.onChanged?.removeListener(onStorageChanged);
+    api.tabs?.onUpdated?.removeListener(onTabUpdated);
     if (save) {
       clearTimer(save.timer);
       if (save.url) api.URL.revokeObjectURL(save.url);

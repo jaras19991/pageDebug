@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MESSAGES, formatClock, messageFor } from '../../src/popup/messages.js';
 
 const FORBIDDEN = ['executeScript', 'inject', 'undefined', 'Error:', 'stack', 'PageDebugSnapshot'];
+// E2 AC-1.2: jargon of the new categories. Checked case-insensitively in the disclosure and
+// case-sensitively elsewhere, so the plain "http://" scheme in fileUnsupportedFirefox stays allowed.
+const FORBIDDEN_E2 = ['CWV', 'LCP', 'webRequest', 'HTTP', 'base64', 'selector'];
 const SAMPLE_FILE = 'page-debug-snapshot-1700000000000.json';
 const SAMPLE_ARGS = { saved: SAMPLE_FILE, recordingSince: '2026-10-22T14:03:21.000Z' };
 
@@ -69,16 +72,43 @@ describe('MESSAGES', () => {
     }
   });
 
-  it('disclosure lists the five categories from AC-1.1 and the no-upload sentence verbatim', () => {
+  it('messages contain no forbidden words incl. CWV, LCP, webRequest, HTTP, base64, selector', () => {
+    for (const [key, text] of allTexts()) {
+      for (const word of FORBIDDEN_E2) {
+        expect(text, `${key} contains ${word}`).not.toContain(word);
+      }
+    }
+    const disclosure = [MESSAGES.disclosureTitle, ...MESSAGES.disclosureItems];
+    for (const text of disclosure) {
+      for (const word of FORBIDDEN_E2) {
+        expect(text.toLowerCase(), `disclosure contains ${word}`).not.toContain(word.toLowerCase());
+      }
+    }
+  });
+
+  it('disclosure lists the eight categories from E1 AC-1.1 and E2 AC-1.1 and the no-upload sentence verbatim', () => {
     expect(MESSAGES.disclosureTitle).toBe('Do pliku trafią:');
     expect(MESSAGES.disclosureItems).toEqual([
       'adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu',
+      'kroki: co klikasz i na jakich stronach — bez treści, które wpisujesz',
       'logi konsoli i błędy',
       'zapytania sieciowe strony: adresy, nagłówki i wysyłana treść (mogą zawierać dane logowania) oraz adresy wczytanych plików',
+      'fragmenty odpowiedzi serwera, gdy coś się nie uda',
       'treść i struktura strony, w tym wartości wpisane w formularze (bez haseł i pól ukrytych)',
+      'zrzut widocznej części strony w chwili zapisu',
       'ciasteczka i dane zapisane przez stronę (mogą zawierać dane logowania)',
     ]);
     expect(MESSAGES.noUpload).toBe('Plik zostaje na Twoim dysku, rozszerzenie niczego nie wysyła.');
+  });
+
+  it('disclosure lists steps without typed text, screenshot and server responses on errors', () => {
+    const items = MESSAGES.disclosureItems;
+    const steps = items.find((item) => item.startsWith('kroki'));
+    expect(steps).toContain('co klikasz');
+    expect(steps).toContain('na jakich stronach');
+    expect(steps).toMatch(/bez treści, które wpisujesz/);
+    expect(items.some((item) => item.includes('zrzut widocznej części strony w chwili zapisu'))).toBe(true);
+    expect(items.some((item) => item.includes('odpowiedzi serwera') && item.includes('gdy coś się nie uda'))).toBe(true);
   });
 
   it('consent notice (store review F2) warns about personal data and ties "Nagrywaj" to consent, verbatim', () => {

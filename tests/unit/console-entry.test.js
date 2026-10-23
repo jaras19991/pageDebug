@@ -6,6 +6,8 @@ import vm from 'node:vm';
 import { JSDOM, VirtualConsole } from 'jsdom';
 import { bundle } from '../../scripts/gen-content.mjs';
 import { RECORDER_VERSION } from '../../src/page/constants.js';
+import { assertValidSnapshot, REQUIRED_KEYS } from '../helpers/snapshot-validator.js';
+import { createFakePerformance } from './helpers/fake-performance.js';
 
 // E1-T7 (AC-7.1–7.3): the console fallback is the generated bundle of src/page/console-entry.js.
 // Each test evaluates the committed bundle in a fresh jsdom window, like pasting it into DevTools.
@@ -17,7 +19,7 @@ const HINT = 'Zbieram od teraz. Odtwórz problem i wywołaj PageDebugSnapshot.do
 
 let windows = [];
 
-function makePage() {
+function makePage({ perf = null } = {}) {
   const virtualConsole = new VirtualConsole();
   const logs = [];
   for (const level of ['log', 'info', 'warn', 'error', 'debug']) {
@@ -29,6 +31,11 @@ function makePage() {
     virtualConsole,
   });
   windows.push(dom.window);
+  if (perf) {
+    // jsdom has no PerformanceObserver; the fake one feeds the vitals observers (fake-performance.js).
+    dom.window.PerformanceObserver = perf.win.PerformanceObserver;
+    dom.window.PerformanceEventTiming = perf.win.PerformanceEventTiming;
+  }
   return { win: dom.window, logs, paste: () => dom.window.eval(read(BUNDLE_FILE)) };
 }
 
@@ -51,13 +58,13 @@ describe('console-snapshot.js (generated from src/page/console-entry.js)', () =>
     expect(logs).toEqual([{ level: 'info', text: HINT }]);
   });
 
-  it('snapshot has schemaVersion 2, source console, recordingStartedAt = paste time and a note about earlier data (AC-7.3)', () => {
+  it('snapshot has schemaVersion 3, source console, recordingStartedAt = paste time and a note about earlier data (AC-7.3)', () => {
     const { win, paste } = makePage();
     const pastedAt = Date.now();
     paste();
     win.console.log('after paste', { a: 1 });
     const pkg = win.PageDebugSnapshot.snapshot();
-    expect(pkg.schemaVersion).toBe(2);
+    expect(pkg.schemaVersion).toBe(3);
     expect(pkg.source).toBe('console');
     expect(pkg.extensionVersion).toBe(RECORDER_VERSION);
     const started = Date.parse(pkg.recordingStartedAt);
@@ -133,7 +140,75 @@ describe('console-snapshot.js (generated from src/page/console-entry.js)', () =>
     expect(win.document.querySelectorAll('a[download]')).toHaveLength(0);
     expect(blob.type).toBe('application/json');
     const pkg = JSON.parse(await blob.text());
-    expect(pkg).toMatchObject({ schemaVersion: 2, source: 'console' });
+    expect(pkg).toMatchObject({ schemaVersion: 3, source: 'console' });
+    assertValidSnapshot(pkg);
+  });
+});
+
+// E2-T7b (AC-7.5, AC-7.1, AC-5.8): the console package is a full v3 package; what needs the extension is empty with a note.
+describe('console-snapshot.js package v3 (E2-T7b)', () => {
+  const INP_NOTE = 'INP covers only interactions after the script was pasted.';
+  const SHOT_NOTE = 'Screenshots are not available without the extension.';
+
+  it('console package has every required v3 key and passes validator (AC-7.5, AC-7.1)', () => {
+    const { win, paste } = makePage();
+    paste();
+    win.console.error('boom');
+    const pkg = JSON.parse(JSON.stringify(win.PageDebugSnapshot.snapshot()));
+    expect(Object.keys(pkg)).toEqual([...REQUIRED_KEYS]);
+    assertValidSnapshot(pkg);
+    expect(pkg.overview).toMatchObject({ consoleErrors: 1, screenshot: false });
+    expect(pkg.documents[0]).toMatchObject({ current: true, recorded: true, flushed: true });
+  });
+
+  it('screenshots [] and attachments {} with note (AC-7.5)', () => {
+    const { win, paste } = makePage();
+    paste();
+    const pkg = win.PageDebugSnapshot.snapshot();
+    expect(pkg.screenshots).toEqual([]);
+    expect(pkg.attachments).toEqual({});
+    expect(pkg.notes).toContain(SHOT_NOTE);
+    expect(pkg.notes.filter((n) => /screenshot/i.test(n))).toEqual([SHOT_NOTE]);
+  });
+
+  it('vitals present from buffered entries; INP only after paste with note (AC-5.8)', () => {
+    const fake = createFakePerformance();
+    // Before the paste: FCP/LCP in the buffer and an interaction the console fallback must not count.
+    fake.buffer('paint', [{ name: 'first-contentful-paint', startTime: 0.5 }]);
+    fake.buffer('largest-contentful-paint', [{ startTime: 0.7, url: '', element: null }]);
+    fake.buffer('event', [{ name: 'click', interactionId: 7, startTime: 0.1, duration: 900, processingStart: 0.2, processingEnd: 0.3 }]);
+    const { win, paste } = makePage({ perf: fake });
+    paste();
+    let pkg = win.PageDebugSnapshot.snapshot();
+    assertValidSnapshot(pkg);
+    expect(pkg.vitals).toHaveLength(1);
+    expect(pkg.vitals[0]).toMatchObject({ doc: 0, FCP: { available: true, value: 0.5 }, LCP: { available: true, value: 0.7 } });
+    expect(pkg.vitals[0].INP).toMatchObject({ available: false, reason: 'no-interaction' });
+    expect(pkg.notes).toContain(INP_NOTE);
+
+    const at = win.performance.now() + 5;
+    fake.emit('event', [{ name: 'keydown', interactionId: 8, startTime: at, duration: 120, processingStart: at + 1, processingEnd: at + 2 }]);
+    pkg = win.PageDebugSnapshot.snapshot();
+    assertValidSnapshot(pkg);
+    expect(pkg.vitals[0].INP).toMatchObject({ available: true, value: 120 });
+    expect(pkg.notes.filter((n) => n === INP_NOTE)).toHaveLength(1);
+  });
+
+  it('steps recorded after paste', () => {
+    const { win, paste } = makePage();
+    win.document.body.insertAdjacentHTML('beforeend', '<form id="f"><button>OK</button></form>');
+    const form = win.document.getElementById('f');
+    form.addEventListener('submit', (e) => e.preventDefault());
+    form.requestSubmit(); // before the paste: not recorded
+    paste();
+    form.requestSubmit(); // jsdom marks a requestSubmit() submit event trusted
+    const pkg = win.PageDebugSnapshot.snapshot();
+    assertValidSnapshot(pkg);
+    const submits = pkg.steps.filter((s) => s.type === 'submit');
+    expect(submits).toHaveLength(1); // the one before the paste is not in the package
+    expect(submits[0]).toMatchObject({ doc: 0, selector: '#f' });
+    expect(pkg.overview.steps).toBe(pkg.steps.length);
+    expect(pkg.notes).not.toContain('No user steps were recorded.');
   });
 });
 

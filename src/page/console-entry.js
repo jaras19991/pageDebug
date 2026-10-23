@@ -1,7 +1,8 @@
 // Entry of the console fallback (E1-T7, US-7): bundled by scripts/gen-content.mjs into
 // src/standalone/console-snapshot.js, which a developer pastes into DevTools when the extension is not installed.
 // Same recorder and collector as the extension; there is no background, so it records from the paste on,
-// without a time limit, and saves the v2 package itself through <a download>.
+// without a time limit, and saves the v3 package itself through <a download>. What needs the extension
+// (screenshots) is empty with a note; INP counts only interactions after the paste (AC-7.5, AC-5.8).
 // window.PageDebugSnapshot is the only page global, a deliberate exception to AC-5.4 for this mode:
 // the user needs a name to call download() on. No extension APIs here (runs as a page script).
 // Top-level helpers carry the `console` prefix (D6: all modules end up in one IIFE).
@@ -14,6 +15,7 @@ import { assemblePackage, packageFileName } from '../lib/package.js';
 
 const CONSOLE_GLOBAL = 'PageDebugSnapshot';
 const CONSOLE_REVOKE_MS = 60000;
+const CONSOLE_INP_NOTE = 'INP covers only interactions after the script was pasted.';
 
 const CONSOLE_TEXT = {
   started: 'Zbieram od teraz. Odtwórz problem i wywołaj PageDebugSnapshot.download().',
@@ -21,6 +23,14 @@ const CONSOLE_TEXT = {
   extension: 'Rozszerzenie już nagrywa tę stronę — użyj przycisku „Zapisz paczkę”.',
   stopped: 'Zbieranie zatrzymane. Aby zbierać od nowa, odśwież stronę i wklej skrypt jeszcze raz.',
 };
+
+function consoleTry(fn, fallback) {
+  try {
+    return fn();
+  } catch {
+    return fallback;
+  }
+}
 
 function consoleBoot(win) {
   // Captured before the console hook is installed, so our own messages are not recorded.
@@ -39,17 +49,29 @@ function consoleBoot(win) {
     return;
   }
 
-  const rec = createRecorder({ win });
+  // Buffered entries give TTFB/FCP/LCP/CLS from before the paste; interactions from then are not seen whole.
+  const pastedAt = consoleTry(() => win.performance.now(), null);
+  const rec = createRecorder({ win, options: typeof pastedAt === 'number' ? { interactionsSince: pastedAt } : {} });
   const startedAt = Date.now();
   if (!rec.install()) return;
   rec.setConfig({ record: true });
 
   function snapshot() {
     const current = { ...collectPageState({ win, doc: win.document, safeSlice }), ...rec.snapshot() };
-    return assemblePackage({
-      meta: { extensionVersion: RECORDER_VERSION, source: 'console', startedAt, collectedAt: Date.now(), stopReason: null },
+    const pkg = assemblePackage({
+      meta: {
+        extensionVersion: RECORDER_VERSION,
+        source: 'console',
+        startedAt,
+        collectedAt: Date.now(),
+        stopReason: null,
+        screenshots: [],
+        screenshotNote: 'Screenshots are not available without the extension.',
+      },
       current,
     });
+    if (pkg.vitals.some((v) => v.INP)) pkg.notes.push(CONSOLE_INP_NOTE);
+    return pkg;
   }
 
   function download() {

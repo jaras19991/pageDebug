@@ -91,9 +91,30 @@ export function createRecordingHandlers({
   const asStopped = (rec) => ({ ...rec, status: 'stopped', stopReason: STOP_TIME_LIMIT });
 
   // D10: after the stop no new document is recorded (scripts gone); buffers and docs stay for the save.
+  // E2 D8: the live document is told to stop its hooks too (bridge relays `stop` to MAIN). Not awaited:
+  // a page without a receiver or one that never answers must not hold up the status.
   async function afterStop(rec) {
     await unregisterAll(chrome.scripting);
     await setBadge(chrome.action, rec.tabId, 'stopped');
+    try {
+      Promise.resolve(
+        chrome.tabs.sendMessage(rec.tabId, { type: 'stop', reason: STOP_TIME_LIMIT }, { frameId: 0 }),
+      ).catch(() => {});
+    } catch {
+      // No receiver: the page is gone or never had the bridge.
+    }
+  }
+
+  // E2 D8 (IN1): the tab's current URL is the truth, the popup's copy is stale after a navigation.
+  // No `url` means no host permission for the new site, so it is another origin.
+  async function isOtherOrigin(rec, url) {
+    let tab;
+    try {
+      tab = await chrome.tabs.get(rec.tabId);
+    } catch {
+      return typeof url === 'string' && url !== '' && !isSameOrigin(url, rec.origin);
+    }
+    return !isSameOrigin(tab?.url, rec.origin);
   }
 
   // Lazy end of a recording past its deadline (no timers in the background). Runs once per recording.
@@ -338,7 +359,7 @@ export function createRecordingHandlers({
         stopReason: isRecordingTab ? rec.stopReason : null,
         isRecordingTab,
         otherTabRecording: !!rec && rec.tabId !== tabId,
-        otherOrigin: isRecordingTab && typeof url === 'string' && url !== '' && !isSameOrigin(url, rec.origin),
+        otherOrigin: isRecordingTab && (await isOtherOrigin(rec, url)),
         lastSaved: typeof tabId === 'number' ? await store.getLast(tabId) : null,
         lastError,
       };

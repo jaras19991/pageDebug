@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { JSDOM, VirtualConsole } from 'jsdom';
 import { createFakeChrome } from './helpers/fake-chrome.js';
+import { createFakePerformance } from './helpers/fake-performance.js';
 import { generateAll, BUNDLES, HEADER } from '../../scripts/gen-content.mjs';
 import { collectReachable } from '../../scripts/lib/reachability.mjs';
 import { RECORDER_VERSION, PROTOCOL, MARKER_KEY } from '../../src/page/constants.js';
@@ -56,8 +57,17 @@ function defaultReply(msg) {
   return { ok: true };
 }
 
-async function startPage({ reply, order = 'isolated-first' } = {}) {
+async function startPage({ reply, order = 'isolated-first', perf = false, visibility = null } = {}) {
   const win = makePage();
+  if (visibility) {
+    Object.defineProperty(win.Document.prototype, 'visibilityState', { configurable: true, get: () => visibility.state });
+  }
+  if (perf) {
+    // jsdom has no PerformanceObserver; the fake one lets the vitals observers run (CLS with no shifts = 0).
+    const fake = createFakePerformance();
+    win.PerformanceObserver = fake.win.PerformanceObserver;
+    win.PerformanceEventTiming = fake.win.PerformanceEventTiming;
+  }
   const original = { log: win.console.log, xhr: win.XMLHttpRequest };
   const { chrome, sent } = attachChrome(win, reply);
   if (order === 'isolated-first') {
@@ -171,6 +181,96 @@ describe('MAIN + ISOLATED entries', () => {
     expect(win.console.log).toBe(original.log);
     expect(win.XMLHttpRequest).toBe(original.xhr);
     expect(chrome.runtime.onMessage.hasListeners()).toBe(false);
+  });
+
+  // E2-T9b: the background's `{ type: 'stop', reason: 'time-limit' }` (T11) reaches MAIN through the bridge.
+  it('background stop message reaches MAIN and stops hooks (console native again), buffers kept (AC-2.2)', async () => {
+    const { win, chrome, sent, original } = await startPage();
+    win.console.log('przed limitem');
+    expect(win.console.log).not.toBe(original.log);
+    const results = chrome.runtime.onMessage.dispatch({ type: 'stop', reason: 'time-limit' }, FROM_BACKGROUND, () => {});
+    expect(results).toEqual([false]);
+    expect(win.console.log).toBe(original.log);
+    expect(win.XMLHttpRequest).toBe(original.xhr);
+    win.console.log('po limicie');
+    await settle();
+    expect(sent).toContainEqual({ type: 'stopped', reason: 'time-limit' });
+    const result = JSON.parse(collect(chrome).response);
+    expect(result.stopReason).toBe('time-limit');
+    expect(result.consoleLogs).toHaveLength(1);
+    expect(JSON.stringify(result.consoleLogs)).toContain('przed limitem');
+    // Idempotent: a second stop changes nothing and sends no second `stopped`.
+    chrome.runtime.onMessage.dispatch({ type: 'stop', reason: 'time-limit' }, FROM_BACKGROUND, () => {});
+    await settle();
+    expect(sent.filter((m) => m.type === 'stopped')).toHaveLength(1);
+  });
+
+  it('stop with another reason stops as user', async () => {
+    const { chrome } = await startPage();
+    chrome.runtime.onMessage.dispatch({ type: 'stop', reason: '<script>' }, FROM_BACKGROUND, () => {});
+    expect(JSON.parse(collect(chrome).response).stopReason).toBe('user');
+  });
+
+  it('stop from page-forged event is ignored (nonce; AC-5.6 E1)', async () => {
+    const { win, chrome, original } = await startPage();
+    const forged = JSON.stringify({ n: null, v: 1, id: null, type: 'stop', payload: { reason: 'time-limit' } });
+    for (const target of [win.document, win, win.document.documentElement]) {
+      target.dispatchEvent(new win.CustomEvent('pds:i2m', { detail: forged, bubbles: true }));
+    }
+    // A forged isolated-ready with the page's own node cannot rebind MAIN either.
+    const node = win.document.createElement('div');
+    win.document.dispatchEvent(new win.MouseEvent('pds:isolated-ready', { relatedTarget: node }));
+    node.dispatchEvent(new win.CustomEvent('pds:i2m', { detail: forged }));
+    expect(win.console.log).not.toBe(original.log);
+    win.console.log('dalej nagrywam');
+    const result = JSON.parse(collect(chrome).response);
+    expect(result.stopReason).toBeNull();
+    expect(result.consoleLogs).toHaveLength(1);
+  });
+
+  it('isolated ignores stop from a tab sender', async () => {
+    const { win, chrome, original } = await startPage();
+    const results = chrome.runtime.onMessage.dispatch({ type: 'stop', reason: 'time-limit' }, { id: EXT_ID, tab: { id: 1 } }, () => {});
+    expect(results).toEqual([false]);
+    expect(win.console.log).not.toBe(original.log);
+    expect(JSON.parse(collect(chrome).response).stopReason).toBeNull();
+  });
+
+  it('flush payload marks vitals finalized, collect while visible does not (AC-5.6)', async () => {
+    const { win, chrome, sent } = await startPage({ perf: true });
+    const visible = JSON.parse(collect(chrome).response);
+    expect(visible.vitals.CLS).toMatchObject({ available: true, value: 0, finalized: false });
+    win.console.log('przed wyjściem');
+    win.dispatchEvent(new win.Event('pagehide'));
+    await settle();
+    const [flush] = sent.filter((m) => m.type === 'flush');
+    expect(flush.data.vitals.CLS).toMatchObject({ available: true, finalized: true });
+  });
+
+  it('collect on a hidden page marks vitals finalized', async () => {
+    // MAIN reads visibilityState through the getter captured at document_start, so the test controls it from before the boot.
+    const visibility = { state: 'visible' };
+    const { chrome } = await startPage({ perf: true, visibility });
+    expect(JSON.parse(collect(chrome).response).vitals.CLS.finalized).toBe(false);
+    visibility.state = 'hidden';
+    expect(JSON.parse(collect(chrome).response).vitals.CLS.finalized).toBe(true);
+  });
+
+  it('collect result has protocol 2, steps, vitals, documentStatus', async () => {
+    const { win, chrome } = await startPage({ perf: true });
+    win.history.pushState({}, '', '/page/next');
+    const result = JSON.parse(collect(chrome).response);
+    expect(PROTOCOL).toBe(2);
+    expect(result.protocol).toBe(2);
+    // The document's own load is the first step, the pushState the second.
+    expect(result.steps).toEqual([
+      expect.objectContaining({ type: 'navigate', doc: 1, via: 'navigate' }),
+      expect.objectContaining({ type: 'navigate', doc: 1, via: 'pushState', url: 'https://example.test/page/next' }),
+    ]);
+    expect(result.counts.steps).toBe(2);
+    expect(result.vitals).toEqual(expect.objectContaining({ TTFB: expect.any(Object), CLS: expect.any(Object), INP: expect.any(Object) }));
+    expect(result).toHaveProperty('documentStatus');
+    expect(result.truncated).toHaveProperty('responseBodies', false);
   });
 
   it('second evaluation of main bundle in the same window is a no-op (AC-5.5)', async () => {

@@ -323,11 +323,41 @@ describe('getStatus', () => {
     });
   });
 
-  it('getStatus marks otherOrigin when tab url origin differs (AC-3.4)', async () => {
+  it('getStatus marks otherOrigin from the live tab url, not the stale one from the popup (AC-3.4, E2 AC-2.1)', async () => {
     await startRecording(env);
-    expect((await env.h.getStatus({ tabId: TAB, url: 'http://127.0.0.1:8081/' })).otherOrigin).toBe(true);
-    expect((await env.h.getStatus({ tabId: TAB, url: `${ORIGIN}/other` })).otherOrigin).toBe(false);
+    env.fake.setTab({ id: TAB, url: 'http://127.0.0.1:8081/' });
+    expect((await env.h.getStatus({ tabId: TAB, url: URL_A })).otherOrigin).toBe(true);
+    env.fake.setTab({ id: TAB, url: `${ORIGIN}/other` });
+    expect((await env.h.getStatus({ tabId: TAB, url: 'http://127.0.0.1:8081/' })).otherOrigin).toBe(false);
     expect((await env.h.getStatus({ tabId: TAB })).otherOrigin).toBe(false);
+    expect(named(env.calls, 'tabs.get').at(-1).args).toEqual([TAB]);
+  });
+
+  it('getStatus: tab url hidden (no permission) → otherOrigin true; same origin other path → false', async () => {
+    env = setup({ granted: [PATTERN] });
+    env.fake.hideUrlsWithoutPermission = true;
+    await startRecording(env);
+    env.fake.setTab({ id: TAB, url: 'https://elsewhere.example/' });
+    expect((await env.h.getStatus({ tabId: TAB, url: URL_A })).otherOrigin).toBe(true);
+    env.fake.setTab({ id: TAB, url: `${ORIGIN}/other/path` });
+    expect((await env.h.getStatus({ tabId: TAB, url: URL_A })).otherOrigin).toBe(false);
+  });
+
+  it('getStatus: tabs.get failing falls back to the url from the message', async () => {
+    await startRecording(env);
+    env.chrome.tabs.get = async () => {
+      throw new Error('No tab with id: 5.');
+    };
+    expect((await env.h.getStatus({ tabId: TAB, url: 'http://127.0.0.1:8081/' })).otherOrigin).toBe(true);
+    expect((await env.h.getStatus({ tabId: TAB, url: `${ORIGIN}/x` })).otherOrigin).toBe(false);
+    expect((await env.h.getStatus({ tabId: TAB })).otherOrigin).toBe(false);
+  });
+
+  it('getStatus asks tabs.get only for the recording tab', async () => {
+    await startRecording(env);
+    const before = named(env.calls, 'tabs.get').length;
+    await env.h.getStatus({ tabId: OTHER_TAB, url: URL_B });
+    expect(named(env.calls, 'tabs.get')).toHaveLength(before);
   });
 
   it('stale pending without permission is reported once as permissionDenied by getStatus (AC-1.4)', async () => {
@@ -385,6 +415,17 @@ describe('cleanup', () => {
     expect(rec(env)).toBeUndefined();
     expect(env.fake.registered.size).toBe(0);
     expect(await env.store.listDocs()).toEqual([]);
+  });
+
+  it('onInstalled after update clears recording and scripts (AC-1.6, regression)', async () => {
+    await startRecording(env);
+    await env.h.hello({ type: 'hello' }, bridge(TAB, URL_A));
+    expect(env.fake.registered.size).toBe(2);
+    const updated = env.fresh();
+    await updated.onInstalled({ reason: 'update', previousVersion: '0.3.0' });
+    expect(env.fake.registered.size).toBe(0);
+    expect(rec(env)).toBeUndefined();
+    expect((await updated.getStatus({ tabId: TAB, url: URL_A })).state).toBe('idle');
   });
 
   it.each(['onStartup', 'onInstalled'])('%s unregisters scripts and clears state (AC-2.6)', async (name) => {
@@ -469,6 +510,33 @@ describe('time limit (D10, AC-1.9)', () => {
     await env.h.getStatus({ tabId: OTHER_TAB, url: URL_B });
     expect(named(env.calls, 'scripting.unregisterContentScripts')).toHaveLength(unregisters);
     expect(named(env.calls, 'scripting.getRegisteredContentScripts').length).toBeGreaterThan(0);
+  });
+
+  it('Date.now() 11 min past start, timer not fired: getStatus → state stopped, stopReason time-limit, stop sent to tab', async () => {
+    await startRecording(env);
+    await env.h.hello({ type: 'hello' }, bridge(TAB, URL_A));
+    clock.t += 11 * 60_000;
+    const status = await env.h.getStatus({ tabId: TAB, url: URL_A });
+    expect(status).toMatchObject({ state: 'stopped', stopReason: 'time-limit', isRecordingTab: true });
+    expect(env.fake.registered.size).toBe(0);
+    expect(env.fake.badges.get(TAB).text).toBe('■');
+    const stops = named(env.calls, 'tabs.sendMessage').filter((c) => c.args[1]?.type === 'stop');
+    expect(stops).toHaveLength(1);
+    expect(stops[0].args).toEqual([TAB, { type: 'stop', reason: 'time-limit' }, { frameId: 0 }]);
+    // Expired once: later status calls send nothing more.
+    await env.h.getStatus({ tabId: TAB, url: URL_A });
+    expect(named(env.calls, 'tabs.sendMessage').filter((c) => c.args[1]?.type === 'stop')).toHaveLength(1);
+  });
+
+  it('stop to the tab is best effort: a page without a receiver or a hanging one does not block getStatus', async () => {
+    await startRecording(env);
+    clock.t += RECORDING_LIMIT_MS;
+    env.fake.sendMessage = () => new Promise(() => {});
+    expect((await env.h.getStatus({ tabId: TAB, url: URL_A })).state).toBe('stopped');
+    env = setup();
+    await startRecording(env);
+    clock.t += RECORDING_LIMIT_MS;
+    expect((await env.h.getStatus({ tabId: TAB, url: URL_A })).state).toBe('stopped');
   });
 
   it('stopped message from bridge sets stopped and badge (AC-1.9)', async () => {

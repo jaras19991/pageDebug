@@ -11,6 +11,8 @@ import { bundle, generateAll, BUNDLES, HEADER } from '../../scripts/gen-content.
 // tests/fixtures/modules/; the real entries come with T15.
 const FIXTURES = fileURLToPath(new URL('../fixtures/modules/', import.meta.url));
 const sha256 = (text) => createHash('sha256').update(text).digest('hex');
+// ESLint tests only (see below).
+const ESLINT_TIMEOUT_MS = 60000;
 
 // Runs a bundle in a fresh context; returns what it pushed to __out and the keys left on the global.
 function run(code) {
@@ -147,8 +149,43 @@ describe('bundle', () => {
     const entry = code.slice(code.indexOf('// module: entry.js'));
     expect(entry).toMatch(/^\/\/ module: entry\.js\n\(function \(\) \{\n/);
     expect(entry).not.toMatch(/const __pds_m\d+ = /);
-    expect(code.match(/^const __pds_m\d+ = /gm)).toHaveLength(6);
+    expect(code.match(/^const __pds_m\d+ = /gm)).toHaveLength(5);
   });
+
+  // E2-IN4: `import './x.js'` alone must not leave an unused `const __pds_mN` behind.
+  it('side-effect-only module is emitted without const binding', () => {
+    const code = graph();
+    const block = code.slice(code.indexOf('// module: side-effect.js'), code.indexOf('// module: entry.js'));
+    expect(block).toMatch(/^\/\/ module: side-effect\.js\n\(function \(\) \{\n/);
+    expect(block).not.toMatch(/const __pds_m\d+ = /);
+    expect(run(code).out).toContain('side effect');
+  });
+
+  it('module used by named import keeps binding', async () => {
+    const code = graph();
+    for (const name of ['log.js', 'counter.js', 'util.js', 'constants.js', 'reexport.js']) {
+      expect(code, name).toMatch(new RegExp(`// module: ${name.replace('.', '\\.')}\nconst __pds_m\\d+ = \\(function \\(\\) \\{`));
+    }
+    // Imported for side effect in one place and by name in another: still bound.
+    const dir = join(tmp, 'mixed-side-effect');
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'entry.js'), "import './b.js';\nimport { a } from './a.js';\n\nglobalThis.__out.push(a);\n");
+    await writeFile(join(dir, 'b.js'), "import './a.js';\n\nglobalThis.__out.push('b');\n");
+    await writeFile(join(dir, 'a.js'), "export const a = 'a';\n");
+    const mixed = bundle({ entry: 'entry.js', srcDir: dir });
+    expect(mixed).toMatch(/\/\/ module: a\.js\nconst __pds_m0 = /);
+    expect(mixed).toMatch(/\/\/ module: b\.js\n\(function \(\) \{/);
+    expect(run(mixed).out).toEqual(['b', 'a']);
+  });
+
+  // Loading ESLint and its config takes 6–8 s on a Windows drive mounted in WSL (/mnt/c); the default 5 s timeout is too short there.
+  it('ESLint no-unused-vars passes on a bundle with side-effect import', async () => {
+    const { ESLint } = await import('eslint');
+    const root = fileURLToPath(new URL('../../', import.meta.url));
+    const eslint = new ESLint({ cwd: root });
+    const [result] = await eslint.lintText(graph(), { filePath: join(root, 'src', 'content', 'main-world.js') });
+    expect(result.messages.filter((m) => m.ruleId === 'no-unused-vars').map((m) => `${m.line}: ${m.message}`)).toEqual([]);
+   }, ESLINT_TIMEOUT_MS);
 
   it('real bundles pass eslint with the project config (no exceptions for generated code)', async () => {
     const { ESLint } = await import('eslint');
@@ -159,7 +196,7 @@ describe('bundle', () => {
       const [result] = await eslint.lintText(code, { filePath: join(root, 'src', out) });
       expect(result.messages.map((m) => `${m.line}: ${m.ruleId} ${m.message}`), out).toEqual([]);
     }
-  });
+   }, ESLINT_TIMEOUT_MS);
 
   it('throws SyntaxError on duplicate top-level names within one module', async () => {
     const dir = join(tmp, 'dup');

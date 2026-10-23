@@ -137,6 +137,7 @@ export function bundle({ entry, srcDir = join(ROOT, 'src', 'page'), banner = HEA
         for (const { name: n } of named) {
           if (!target.exportNames.includes(n)) fail(where, `${target.name} does not export '${n}'`);
         }
+        if (named.length || namespace) target.bound = true;
         if (named.length) {
           const parts = named.map(({ name: n, as }) => (n === as ? n : `${n}: ${as}`));
           prologue.push(`const { ${parts.join(', ')} } = ${target.id};`);
@@ -166,6 +167,7 @@ export function bundle({ entry, srcDir = join(ROOT, 'src', 'page'), banner = HEA
         m = RE.exportListFrom.exec(line);
         if (m) {
           const target = dep(m[3], where);
+          target.bound = true;
           for (const { name: n, as } of parseSpecList(m[1], where)) {
             if (!target.exportNames.includes(n)) fail(where, `${target.name} does not export '${n}'`);
             addExport(as, `${target.id}.${n}`, where);
@@ -175,6 +177,7 @@ export function bundle({ entry, srcDir = join(ROOT, 'src', 'page'), banner = HEA
         m = RE.exportStar.exec(line);
         if (m) {
           const target = dep(m[3], where);
+          target.bound = true;
           if (m[1]) addExport(m[1], target.id, where);
           else for (const n of target.exportNames.filter((x) => x !== 'default')) addExport(n, `${target.id}.${n}`, where);
           return;
@@ -204,10 +207,11 @@ export function bundle({ entry, srcDir = join(ROOT, 'src', 'page'), banner = HEA
       name,
       id: `__pds_m${modules.size}`,
       exportNames: exports.map(([n]) => n),
-      code: [
-        `// module: ${name}`,
-        // The entry (loaded last, nothing imports it) only runs: binding it would be an unused const.
-        importer ? `const __pds_m${modules.size} = (function () {` : '(function () {',
+      // Set by importers that read the exports (named/namespace import, `export … from`). The entry
+      // and modules imported only for their side effect (`import './x.js'`) just run: binding them
+      // would be an unused const (E2-IN4). Known only after all importers are parsed.
+      bound: false,
+      body: [
         ...prologue,
         source.replace(/\n+$/, ''),
         `return Object.freeze({ ${exports.map(([n, e]) => `${n}: ${e}`).join(', ')} });`,
@@ -219,7 +223,8 @@ export function bundle({ entry, srcDir = join(ROOT, 'src', 'page'), banner = HEA
   }
 
   load(resolve(base, entry), null);
-  const code = `${banner}\n(function () {\n  'use strict';\n\n${[...modules.values()].map((m) => m.code).join('\n\n')}\n})();\n`;
+  const emit = (m) => `// module: ${m.name}\n${m.bound ? `const ${m.id} = (function () {` : '(function () {'}\n${m.body}`;
+  const code = `${banner}\n(function () {\n  'use strict';\n\n${[...modules.values()].map(emit).join('\n\n')}\n})();\n`;
   new vm.Script(code, { filename: outFile ?? entry }); // syntax check only; throws SyntaxError
   if (outFile) {
     mkdirSync(dirname(outFile), { recursive: true });

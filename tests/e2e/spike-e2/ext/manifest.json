@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "PDS Spike E2-T0",
+  "version": "0.0.1",
+  "description": "Throwaway spike for E2-T0 (captureVisibleTab with activeTab, webRequest without host permission).",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "background": { "service_worker": "sw.js", "type": "module" },
+  "action": { "default_popup": "popup.html", "default_title": "PDS spike E2" }
+}

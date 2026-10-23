@@ -2,13 +2,17 @@
 // never reach this dictionary — they go to the popup's console.error for developers only.
 // Static texts (disclosure, notices) are duplicated in popup.html; a unit test keeps them equal.
 export const MESSAGES = Object.freeze({
-  // Ready state: what lands in the file, shown above the "Nagrywaj" button (AC-1.1).
+  // Ready state: what lands in the file, shown above the "Nagrywaj" button (E1 AC-1.1, E2 AC-1.1:
+  // steps, server responses on errors and the screenshot).
   disclosureTitle: 'Do pliku trafią:',
   disclosureItems: Object.freeze([
     'adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu',
+    'kroki: co klikasz i na jakich stronach — bez treści, które wpisujesz',
     'logi konsoli i błędy',
     'zapytania sieciowe strony: adresy, nagłówki i wysyłana treść (mogą zawierać dane logowania) oraz adresy wczytanych plików',
+    'fragmenty odpowiedzi serwera, gdy coś się nie uda',
     'treść i struktura strony, w tym wartości wpisane w formularze (bez haseł i pól ukrytych)',
+    'zrzut widocznej części strony w chwili zapisu',
     'ciasteczka i dane zapisane przez stronę (mogą zawierać dane logowania)',
   ]),
   noUpload: 'Plik zostaje na Twoim dysku, rozszerzenie niczego nie wysyła.',

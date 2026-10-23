@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createSaveHandlers, COLLECT_TIMEOUT_MS, DOWNLOAD_TIMEOUT_MS } from '../../src/lib/save.js';
+import { createSaveHandlers, COLLECT_TIMEOUT_MS, DOWNLOAD_TIMEOUT_MS, RESULT_PROTOCOL } from '../../src/lib/save.js';
 import { createStore, KEYS } from '../../src/lib/session-store.js';
-import { createFakeChrome } from './helpers/fake-chrome.js';
+import { createFakeChrome, jpegDataUrl } from './helpers/fake-chrome.js';
 
 const T0 = Date.UTC(2026, 9, 22, 10, 0, 0);
 const TAB = 7;
+const WINDOW = 3;
 const ORIGIN = 'https://example.com';
 
 const REC = {
@@ -42,7 +43,7 @@ const PRIOR = {
 
 function resultOf(over = {}) {
   return JSON.stringify({
-    protocol: 1,
+    protocol: RESULT_PROTOCOL,
     recorderVersion: '0.3.0',
     docId: 2,
     timeOrigin: T0 + 5000,
@@ -62,8 +63,8 @@ function resultOf(over = {}) {
 
 let env;
 
-async function setup({ rec = REC, prior = [PRIOR], url = 'https://example.com/b', answer } = {}) {
-  const { chrome, calls, fake } = createFakeChrome({ tabs: [{ id: TAB, url }] });
+async function setup({ rec = REC, prior = [PRIOR], url = 'https://example.com/b', active = true, answer } = {}) {
+  const { chrome, calls, fake } = createFakeChrome({ tabs: [{ id: TAB, url, active, windowId: WINDOW }] });
   const store = createStore(chrome.storage.session);
   if (rec) await store.updateRec(() => structuredClone(rec));
   for (const doc of prior) await store.putDoc(doc.docId, doc);
@@ -107,8 +108,8 @@ describe('collect', () => {
     expect(env.calls.find((c) => c.name === 'tabs.sendMessage').args).toEqual([TAB, { type: 'collect' }, { frameId: 0 }]);
 
     const pkg = JSON.parse(res.json);
-    expect(res.json).toContain('\n  "schemaVersion": 2');
-    expect(pkg.schemaVersion).toBe(2);
+    expect(res.json).toContain('\n  "schemaVersion": 3');
+    expect(pkg.schemaVersion).toBe(3);
     expect(pkg.extensionVersion).toBe('0.3.0');
     expect(pkg.source).toBe('extension');
     expect(pkg.recordingStartedAt).toBe(new Date(T0).toISOString());
@@ -201,7 +202,7 @@ describe('collect', () => {
     const res = await env.handlers.collect({ tabId: TAB });
     expect(res.fileName).toBe(`page-debug-snapshot-${T0 + 60_000}.json`);
     const pkg = JSON.parse(res.json);
-    expect(pkg.schemaVersion).toBe(2);
+    expect(pkg.schemaVersion).toBe(3);
     expect(res.json).not.toContain('evil.json');
     expect(res.json).not.toContain('forged');
     // Popup-supplied name is ignored too: the saved name comes from downloads.search.
@@ -269,6 +270,158 @@ describe('collect', () => {
     await setup({ rec: { ...REC, tabId: 99 } });
     expect(await env.handlers.collect({ tabId: TAB })).toEqual({ ok: false, reason: 'failed' });
     expect(env.calls.some((c) => c.name === 'tabs.sendMessage')).toBe(false);
+  });
+});
+
+describe('screenshot at save (E2 D5)', () => {
+  const shotNotes = (pkg) => pkg.notes.filter((n) => /^No screenshot/.test(n));
+  const captures = () => env.calls.filter((c) => c.name === 'tabs.captureVisibleTab');
+
+  it('RESULT_PROTOCOL is 2 (PROTOCOL of the E2 recorder)', () => {
+    expect(RESULT_PROTOCOL).toBe(2);
+  });
+
+  it('save on recorded origin includes one screenshot with reason save, jpeg, dims, bytes (AC-6.1)', async () => {
+    await setup();
+    const res = await env.handlers.collect({ tabId: TAB });
+    expect(res.ok).toBe(true);
+    expect(captures().map((c) => c.args)).toEqual([[WINDOW, { format: 'jpeg', quality: 60 }]]);
+    const pkg = JSON.parse(res.json);
+    expect(pkg.screenshots).toHaveLength(1);
+    const [shot] = pkg.screenshots;
+    expect(shot).toMatchObject({ doc: 1, reason: 'save', mime: 'image/jpeg', width: 1280, height: 720, attachment: 'screenshot-0' });
+    expect(shot.bytes).toBeGreaterThan(0);
+    // Taken at the click (fake clock frozen at T0 + 60 s), relative to the current document.
+    expect(shot.t).toBe(60_000 - 5000);
+    expect(pkg.attachments['screenshot-0']).toBe(jpegDataUrl());
+    expect(shotNotes(pkg)).toEqual([]);
+    expect(Object.keys(pkg).at(-1)).toBe('attachments');
+  });
+
+  it('capture happens before page collect (state at the click)', async () => {
+    await setup();
+    await env.handlers.collect({ tabId: TAB });
+    const names = env.calls.map((c) => c.name);
+    const capture = names.indexOf('tabs.captureVisibleTab');
+    const collect = env.calls.findIndex((c) => c.name === 'tabs.sendMessage' && c.args[1].type === 'collect');
+    expect(capture).toBeGreaterThanOrEqual(0);
+    expect(collect).toBeGreaterThan(capture);
+    // tabs.get before the capture and again after it (origin check, D5).
+    expect(names.slice(0, collect).filter((n) => n === 'tabs.get')).toHaveLength(2);
+  });
+
+  it.each([
+    ['another site', 'http://localhost:3000/'],
+    ['a special page', 'chrome://version/'],
+  ])('tab on %s → no capture call, note (AC-6.3)', async (_label, url) => {
+    await setup({ url });
+    const res = await env.handlers.collect({ tabId: TAB });
+    expect(res.ok).toBe(true);
+    expect(captures()).toEqual([]);
+    const pkg = JSON.parse(res.json);
+    expect(pkg.screenshots).toEqual([]);
+    expect(pkg.attachments).toEqual({});
+    expect(shotNotes(pkg)).toEqual(['No screenshot: the tab showed a page outside the recorded site.']);
+  });
+
+  it('origin changed during capture → screenshot discarded, note (AC-6.3)', async () => {
+    await setup();
+    env.fake.captureVisibleTab = async () => {
+      env.fake.setTab({ id: TAB, url: 'http://localhost:3000/', active: true, windowId: WINDOW });
+      return jpegDataUrl();
+    };
+    const res = await env.handlers.collect({ tabId: TAB });
+    expect(res.ok).toBe(true);
+    const pkg = JSON.parse(res.json);
+    expect(pkg.screenshots).toEqual([]);
+    expect(pkg.attachments).toEqual({});
+    expect(res.json).not.toContain('data:image/jpeg');
+    expect(shotNotes(pkg)).toEqual(['No screenshot: the tab showed a page outside the recorded site.']);
+    // The page is no longer ours either: nothing is asked of it.
+    expect(env.calls.some((c) => c.name === 'tabs.sendMessage')).toBe(false);
+  });
+
+  it('captureVisibleTab throws → package saved, screenshots [], note; result ok (AC-6.4)', async () => {
+    await setup();
+    env.fake.captureVisibleTab = env.fake.captureThrows;
+    const res = await env.handlers.collect({ tabId: TAB });
+    expect(res.ok).toBe(true);
+    const pkg = JSON.parse(res.json);
+    expect(pkg.screenshots).toEqual([]);
+    expect(shotNotes(pkg)).toEqual(['No screenshot: capture failed (capture-failed).']);
+    // The page was still collected and the download can go on.
+    expect(pkg.dom).toEqual({ title: 'b' });
+    expect((await rec()).save.phase).toBe('collecting');
+  });
+
+  it('hanging capture → timeout after 3 s, save goes on within the collect limit (AC-6.4, AC-1.x)', async () => {
+    await setup();
+    env.fake.captureVisibleTab = () => new Promise(() => {});
+    const promise = env.handlers.collect({ tabId: TAB });
+    await vi.advanceTimersByTimeAsync(3000);
+    const res = await promise;
+    expect(res.ok).toBe(true);
+    expect(shotNotes(JSON.parse(res.json))).toEqual(['No screenshot: capture failed (timeout).']);
+  });
+
+  it('capture time counts towards the 15 s collect limit', async () => {
+    await setup({ answer: () => new Promise(() => {}) });
+    env.fake.captureVisibleTab = () => new Promise(() => {});
+    const promise = env.handlers.collect({ tabId: TAB });
+    let settled = null;
+    promise.then((r) => (settled = r));
+    // 3 s of capture + 12 s of waiting for the page = the same 15 s as without a screenshot.
+    await vi.advanceTimersByTimeAsync(COLLECT_TIMEOUT_MS - 1);
+    expect(settled).toBeNull();
+    await vi.advanceTimersByTimeAsync(2);
+    expect(settled).toEqual({ ok: false, reason: 'pageBusy' });
+  });
+
+  it('image that cannot be made small enough → too-large note', async () => {
+    await setup();
+    // Over 300 KB and no codec injected to shrink it.
+    env.fake.captureVisibleTab = async () => jpegDataUrl(3840, 2160, 400_000);
+    const pkg = JSON.parse((await env.handlers.collect({ tabId: TAB })).json);
+    expect(pkg.screenshots).toEqual([]);
+    expect(shotNotes(pkg)).toEqual(['No screenshot: the image could not be made smaller than 300 KB.']);
+  });
+
+  it('injected codec is used to fit a large image', async () => {
+    await setup();
+    env.fake.captureVisibleTab = async () => jpegDataUrl(3840, 2160, 400_000);
+    const encoded = [];
+    const codec = {
+      decode: async () => ({ bitmap: { close() {} }, width: 3840, height: 2160 }),
+      encode: async (_bitmap, w, h, quality) => {
+        encoded.push([w, h, quality]);
+        return new Blob([new Uint8Array(1000)], { type: 'image/jpeg' });
+      },
+    };
+    env.handlers = createSaveHandlers({ store: env.store, ...env.chrome, codec });
+    const pkg = JSON.parse((await env.handlers.collect({ tabId: TAB })).json);
+    expect(encoded).toEqual([[3840, 2160, 45]]);
+    expect(pkg.screenshots[0]).toMatchObject({ width: 3840, height: 2160, bytes: 1000 });
+  });
+
+  it('inactive tab → no screenshot, note', async () => {
+    await setup({ active: false });
+    const res = await env.handlers.collect({ tabId: TAB });
+    expect(res.ok).toBe(true);
+    expect(captures()).toEqual([]);
+    const pkg = JSON.parse(res.json);
+    expect(pkg.screenshots).toEqual([]);
+    expect(shotNotes(pkg)).toEqual(['No screenshot: the tab was not visible.']);
+    // The page itself is still collected.
+    expect(pkg.dom).toEqual({ title: 'b' });
+  });
+
+  it('tab closed → no capture call, package saved', async () => {
+    await setup();
+    env.fake.removeTab(TAB);
+    const res = await env.handlers.collect({ tabId: TAB });
+    expect(res.ok).toBe(true);
+    expect(captures()).toEqual([]);
+    expect(JSON.parse(res.json).screenshots).toEqual([]);
   });
 });
 

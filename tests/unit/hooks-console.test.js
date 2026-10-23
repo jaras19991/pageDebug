@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { installConsoleHook, stackFromHere, parseStack, STACK_MAX_CHARS } from '../../src/page/hooks-console.js';
+import { serializeCapped } from '../../src/page/serialize.js';
+import { LIMITS } from '../../src/page/constants.js';
 
 // Hooks are tested against a fake `win` with its own `console`, so the test runner's console is never touched.
 
@@ -251,8 +253,46 @@ describe('stack parsing', () => {
   it(`stack is capped at ${STACK_MAX_CHARS} chars`, () => {
     const frames = Array.from({ length: 2000 }, (_, i) => `    at f${i} (https://example.com/a.js:1:1)`);
     const out = parseStack('Error\n' + frames.join('\n'), 0);
-    expect(STACK_MAX_CHARS).toBe(4000);
-    expect(out.length).toBeLessThanOrEqual(4000);
+    expect(STACK_MAX_CHARS).toBe(16000);
+    expect(out.length).toBeLessThanOrEqual(16000);
     expect(out.startsWith('    at f0 ')).toBe(true);
+  });
+});
+
+describe('installConsoleHook — full stacks and cause (E2-T7a, AC-4.8)', () => {
+  const frames = (n, prefix = 'f') =>
+    Array.from({ length: n }, (_, i) => `    at ${prefix}${i} (https://example.com/${'u'.repeat(300)}.js:${i + 1}:1)`);
+
+  it('console stack equals call stack for stacks up to 16000 chars; longer is cut at 16000', () => {
+    const fit = frames(45);
+    expect(fit.join('\n').length).toBeGreaterThan(14000);
+    expect(parseStack('Error\n    at wrapper (x.js:1:1)\n' + fit.join('\n'), 1)).toBe(fit.join('\n'));
+    const long = frames(80).join('\n');
+    expect(parseStack('Error\n' + long, 0)).toBe(long.slice(0, 16000));
+  });
+
+  it('console.error(err) args contain name, message, full stack and cause chain of 5 levels; 6th level marked', () => {
+    const { win, records } = setup({ json: (v) => serializeCapped(v, LIMITS.entryChars).value });
+    let err = new Error('level 6');
+    for (let level = 5; level >= 0; level--) {
+      err = new Error(`level ${level}`, { cause: err });
+      err.stack = `Error: level ${level}\n` + frames(level === 0 ? 45 : 12, `l${level}_`).join('\n');
+    }
+    win.console.error(err);
+    const [arg] = records[0].entry.args;
+    expect(LIMITS.entryChars).toBe(40000);
+    expect(arg).not.toHaveProperty('truncated');
+    expect(arg.name).toBe('Error');
+    expect(arg.message).toBe('level 0');
+    expect(arg.stack).toBe(err.stack);
+    let node = arg;
+    let cause = err;
+    for (let level = 1; level <= 5; level++) {
+      node = node.cause;
+      cause = cause.cause;
+      expect(node.message).toBe(`level ${level}`);
+      expect(node.stack).toBe(cause.stack.slice(0, 4000));
+    }
+    expect(node.cause).toBe('[cause depth limit]');
   });
 });

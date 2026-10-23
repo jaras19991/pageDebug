@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: selectors</title>
+</head>
+<body>
+  <!-- E2-T5a (AC-3.2): 20 targets marked with class "t" — with a unique id, with a test attribute, with neither,
+       duplicate ids and ids that need CSS escaping. tests/unit/selector.test.js loads this file into jsdom. -->
+  <header id="top" class="t">
+    <nav>
+      <a href="#a" class="t">Start</a>
+      <a href="#b" class="t" data-testid="nav-offer">Oferta</a>
+      <a href="#c">Kontakt</a>
+    </nav>
+  </header>
+  <main>
+    <form id="loginForm" class="t">
+      <input type="email" class="t">
+      <input type="password" id="pass" class="t">
+      <label><input type="checkbox" data-testid="terms" class="t"> Regulamin</label>
+      <select data-qa="country" class="t"><option>PL</option></select>
+      <button type="submit" id="login" class="t">Zaloguj</button>
+    </form>
+    <section>
+      <p class="t">Pierwszy akapit</p>
+      <p class="t">Drugi akapit</p>
+      <div id="dup" class="t">duplikat id 1</div>
+      <div id="dup" class="t" data-cy="dup-second">duplikat id 2</div>
+      <div id="dup">duplikat id 3 <span class="t">w środku</span></div>
+      <button class="t" data-test="same">Taki sam</button>
+      <button class="t" data-test="same">Taki sam</button>
+    </section>
+    <ul>
+      <li id="a:b" class="t">dwukropek</li>
+      <li id="with space" class="t">spacja</li>
+      <li id="1st" class="t">cyfra na początku</li>
+    </ul>
+    <div contenteditable="true" class="t">Edytowalny</div>
+  </main>
+</body>
+</html>

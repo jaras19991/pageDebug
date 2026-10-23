@@ -2,8 +2,26 @@
 // Every API call is appended to `calls` as { name: 'tabs.reload', args: [...] }.
 // Test-only knobs live on `fake`, never on the `chrome` object itself.
 
+import { originPatternFor } from '../../../src/lib/origin.js';
+
 const NO_RECEIVER = 'Could not establish connection. Receiving end does not exist.';
 const QUOTA_MESSAGE = 'Session storage quota bytes exceeded. Values were not stored.';
+
+// Chrome's answer to captureVisibleTab without activeTab (spike E2-T0).
+const NO_ACTIVE_TAB = "Either the '<all_urls>' or 'activeTab' permission is required.";
+
+/**
+ * Minimal JPEG data URL (SOI + SOF0 with the given size + EOI) that `jpegDimensions` can read;
+ * `padBytes` zero bytes before EOI make it as large as a test needs.
+ */
+export function jpegDataUrl(width = 1280, height = 720, padBytes = 0) {
+  const head = [0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, height >> 8, height & 0xff, width >> 8, width & 0xff,
+    0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01];
+  let bin = '';
+  for (const b of head) bin += String.fromCharCode(b);
+  bin += '\0'.repeat(padBytes) + '\xff\xd9';
+  return `data:image/jpeg;base64,${btoa(bin)}`;
+}
 
 // Mirrors the JSON serialization the real storage applies (undefined dropped, no shared refs).
 const clone = (value) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
@@ -21,7 +39,8 @@ export function createEvent() {
 }
 
 /**
- * @param {{ quotaBytes?: number, tabs?: Array<{id:number,url:string}>, granted?: string[],
+ * Tabs may carry `active` and `windowId` like real ones (the screenshot needs both).
+ * @param {{ quotaBytes?: number, tabs?: Array<{id:number,url:string,active?:boolean,windowId?:number}>, granted?: string[],
  *           version?: string, extensionId?: string }} [options]
  */
 export function createFakeChrome({
@@ -53,10 +72,24 @@ export function createFakeChrome({
     sendMessage: async () => {
       throw new Error(NO_RECEIVER);
     },
+    /**
+     * Handler for tabs.captureVisibleTab(windowId, options). Default: a 1280×720 JPEG data URL. Tests swap it
+     * for one that throws (`fake.captureVisibleTab = fake.captureThrows`) or never settles (`() => new Promise(() => {})`).
+     */
+    captureVisibleTab: async () => jpegDataUrl(),
+    /** Ready-made failing handler: what Chrome says without activeTab. */
+    captureThrows: async () => {
+      throw new Error(NO_ACTIVE_TAB);
+    },
     /** Handler for runtime.sendMessage(message) (popup → background); default: no receiver. */
     runtimeSendMessage: async () => {
       throw new Error(NO_RECEIVER);
     },
+    /**
+     * Like the browser without the `tabs` permission: tabs.get / onUpdated hide `url` (and `title`)
+     * of a tab whose site is not in `grantedOrigins`. Off by default (older tests see every URL).
+     */
+    hideUrlsWithoutPermission: false,
     /** Tab returned by tabs.query({ active: true }); default: the first tab. */
     activeTabId: tabs[0]?.id ?? null,
     sessionData,
@@ -65,6 +98,11 @@ export function createFakeChrome({
     grantedOrigins,
     downloadItems,
     setTab: (tab) => tabMap.set(tab.id, { ...tab }),
+    /** Navigation committed in a tab: new URL, then tabs.onUpdated like the browser does. */
+    navigateTab: (tabId, url) => {
+      tabMap.set(tabId, { ...tabMap.get(tabId), id: tabId, url });
+      chrome.tabs.onUpdated.fire(tabId, { status: 'loading', url });
+    },
     removeTab: (tabId) => {
       tabMap.delete(tabId);
       chrome.tabs.onRemoved.dispatch(tabId, { windowId: 1, isWindowClosing: false });
@@ -161,6 +199,26 @@ export function createFakeChrome({
     },
   });
 
+  // What an extension without the `tabs` permission sees of a tab (see hideUrlsWithoutPermission).
+  const visibleTab = (tab) => {
+    if (!fake.hideUrlsWithoutPermission) return { ...tab };
+    const pattern = originPatternFor(tab.url)?.pattern;
+    if (pattern && grantedOrigins.has(pattern)) return { ...tab };
+    const rest = { ...tab };
+    delete rest.url;
+    delete rest.title;
+    return rest;
+  };
+
+  const onUpdated = createEvent();
+  /** Test helper: fires onUpdated(tabId, changeInfo, tab) with what the extension may see. */
+  onUpdated.fire = (tabId, changeInfo = {}) => {
+    const tab = visibleTab(tabMap.get(tabId) ?? { id: tabId });
+    const info = { ...changeInfo };
+    if (!('url' in tab)) delete info.url;
+    return onUpdated.dispatch(tabId, info, tab);
+  };
+
   const chrome = {
     storage,
     scripting: {
@@ -192,6 +250,7 @@ export function createFakeChrome({
     },
     tabs: {
       onRemoved: createEvent(),
+      onUpdated,
       async reload(tabId, props) {
         log('tabs.reload', [tabId, props]);
         if (!tabMap.has(tabId)) throw new Error(`No tab with id: ${tabId}.`);
@@ -199,11 +258,15 @@ export function createFakeChrome({
       async get(tabId) {
         log('tabs.get', [tabId]);
         if (!tabMap.has(tabId)) throw new Error(`No tab with id: ${tabId}.`);
-        return { ...tabMap.get(tabId) };
+        return visibleTab(tabMap.get(tabId));
       },
       async sendMessage(tabId, message, options) {
         log('tabs.sendMessage', [tabId, message, options]);
         return fake.sendMessage(tabId, message, options);
+      },
+      async captureVisibleTab(windowId, options) {
+        log('tabs.captureVisibleTab', [windowId, options]);
+        return fake.captureVisibleTab(windowId, options);
       },
       async query(queryInfo) {
         log('tabs.query', [queryInfo]);

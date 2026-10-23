@@ -312,7 +312,25 @@ describe('session store: documents', () => {
     delete data.counts;
     fake.failNextSet = new Error('quota');
     await store.putDoc(0, data);
-    expect((await store.listDocs())[0].data.counts).toEqual({ consoleLogs: 3, runtimeErrors: 0, network: 0 });
+    expect((await store.listDocs())[0].data.counts).toEqual({ consoleLogs: 3, runtimeErrors: 0, network: 0, steps: 0 });
+  });
+
+  it('store trims steps of a flushed document over budget (E2-T10a, D4)', async () => {
+    const { chrome } = createFakeChrome();
+    const store = createStore(chrome.storage.session, { docBudgetBytes: 3_000, totalBudgetBytes: 100_000 });
+    const data = docData(0);
+    data.steps = Array.from({ length: 200 }, (_, i) => ({ t: i, type: 'click', selector: `#button-${i}` }));
+    data.counts.steps = 200;
+    data.truncated.steps = false;
+    expect(await store.putDoc(0, data)).toEqual({ stored: 'truncated' });
+    const [{ data: saved }] = await store.listDocs();
+    expect(JSON.stringify(saved).length).toBeLessThanOrEqual(3_000);
+    const kept = saved.steps.map((s) => s.t);
+    expect(kept.length).toBeGreaterThan(0);
+    expect(kept.length).toBeLessThan(200);
+    expect(kept.at(-1)).toBe(199);
+    expect(saved.truncated.steps).toBe(true);
+    expect(saved.counts.steps).toBe(200);
   });
 });
 
