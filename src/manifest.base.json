@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Page Debug Snapshot",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Zapisuje do jednego pliku dane diagnostyczne bieżącej strony, aby przekazać je developerowi przy zgłoszeniu błędu.",
   "permissions": ["activeTab", "scripting", "storage", "downloads"],
   "optional_host_permissions": ["http://*/*", "https://*/*", "file:///*"],

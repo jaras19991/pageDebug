@@ -723,7 +723,7 @@ const __pds_m5 = (function () {
 // Shared constants of the page recorder (E1 D5/D6). RECORDER_VERSION must equal `version` in
 // src/manifest.base.json (guarded by tests/unit/recorder.test.js), so a release has to run `npm run gen`.
 
-const RECORDER_VERSION = '0.2.0';
+const RECORDER_VERSION = '0.3.0';
 
 // Version of the MAIN <-> ISOLATED message protocol.
 const PROTOCOL = 1;

@@ -69,53 +69,53 @@ Testy / Review / QA / Docs / Release
 klika *Zapisz*. Paczka zawiera wszystko od pierwszego bajtu strony.
 
 Spec
-- [ ] E1-S1 User story zgłaszającego: 3 stany popupu (Gotowy → Nagrywam od HH:MM:SS → Zapisano).
-- [ ] E1-S2 User story developera: w paczce widzę błędy i zapytania z całego życia strony, z czasem względem `timeOrigin`.
-- [ ] E1-S3 Kryteria akceptacji: błąd rzucony w `<head>` przed DOMContentLoaded jest w paczce.
+- [x] E1-S1 User story zgłaszającego: 3 stany popupu (Gotowy → Nagrywam od HH:MM:SS → Zapisano).
+- [x] E1-S2 User story developera: w paczce widzę błędy i zapytania z całego życia strony, z czasem względem `timeOrigin`.
+- [x] E1-S3 Kryteria akceptacji: błąd rzucony w `<head>` przed DOMContentLoaded jest w paczce.
 
 Design
-- [ ] E1-D1 Mechanizm: `chrome.scripting.registerContentScripts` z `world: 'MAIN'`, `runAt: 'document_start'`,
+- [x] E1-D1 Mechanizm: `chrome.scripting.registerContentScripts` z `world: 'MAIN'`, `runAt: 'document_start'`,
       scope ograniczony do origin aktywnej karty na czas nagrywania; po *Zapisz* wyrejestrowanie.
-- [ ] E1-D2 Stan nagrywania w `chrome.storage.session` (per tabId): start, origin, status.
-- [ ] E1-D7 (store review E0) Uprawnienia: **bez `tabs`** (`activeTab` daje `tab.url`, `tabs.reload` nie wymaga `tabs`,
+- [x] E1-D2 Stan nagrywania w `chrome.storage.session` (per tabId): start, origin, status.
+- [x] E1-D7 (store review E0) Uprawnienia: **bez `tabs`** (`activeTab` daje `tab.url`, `tabs.reload` nie wymaga `tabs`,
       a `tabs` dodaje ostrzeżenie „Read your browsing history”); `permissions.request` tylko o origin bieżącej karty;
       jedno zdanie uzasadnienia EN per nowe uprawnienie (szkice w docs/epics/E0/store-review.md).
-- [ ] E1-D3 Most MAIN ↔ ISOLATED: `window.postMessage` z nonce; ISOLATED przekazuje do popupu/SW.
-- [ ] E1-D4 Bufor między nawigacjami w obrębie karty (SPA i pełne przeładowania) — co trzymamy, co gubimy, limity.
-- [ ] E1-D5 Hooki: `Proxy` na `XMLHttpRequest` i `fetch` zamiast podmiany konstruktora; `console` hook
+- [x] E1-D3 Most MAIN ↔ ISOLATED: `window.postMessage` z nonce; ISOLATED przekazuje do popupu/SW.
+- [x] E1-D4 Bufor między nawigacjami w obrębie karty (SPA i pełne przeładowania) — co trzymamy, co gubimy, limity.
+- [x] E1-D5 Hooki: `Proxy` na `XMLHttpRequest` i `fetch` zamiast podmiany konstruktora; `console` hook
       zapisuje `new Error().stack` i nie psuje źródła logu w DevTools (użyć `console[level].bind` + stack z hooka).
-- [ ] E1-D6 Tło cross-browser: jeden `background.js` jako `service_worker` (Chrome) **i** `scripts` (Firefox event page);
+- [x] E1-D6 Tło cross-browser: jeden `background.js` jako `service_worker` (Chrome) **i** `scripts` (Firefox event page);
       bez `importScripts`, stan tylko w `storage.session`; host permissions zawsze przez `permissions.request` z popupu
       (w Firefoksie MV3 są opcjonalne z definicji).
 
 Implementacja
-- [ ] E1-T1 Tło (SW / event page): komendy `startRecording(tabId)`, `stopAndCollect(tabId)`, `getStatus(tabId)`.
-- [ ] E1-T2 Rejestracja/wyrejestrowanie content scriptu MAIN dla origin karty; auto-reload karty po starcie.
-- [ ] E1-T3 Refaktor `page-debug-snapshot.js` → `recorder.js` (hooki, bufor) + `collector.js` (zrzut DOM/perf/storage).
-- [ ] E1-T4 Proxy-hooki XHR/fetch zachowujące `instanceof`, stałe statyczne, `withCredentials`, `responseType`.
-- [ ] E1-T5 Hooki `error`/`unhandledrejection` z `destroy()` zdejmującym listenery.
-- [ ] E1-T6 Popup z trzema stanami i czasem nagrywania; komunikaty po polsku. **(store review E0 — blocker CWS)**
+- [x] E1-T1 Tło (SW / event page): komendy `startRecording(tabId)`, `stopAndCollect(tabId)`, `getStatus(tabId)`.
+- [x] E1-T2 Rejestracja/wyrejestrowanie content scriptu MAIN dla origin karty; auto-reload karty po starcie.
+- [x] E1-T3 Refaktor `page-debug-snapshot.js` → `recorder.js` (hooki, bufor) + `collector.js` (zrzut DOM/perf/storage).
+- [x] E1-T4 Proxy-hooki XHR/fetch zachowujące `instanceof`, stałe statyczne, `withCredentials`, `responseType`.
+- [x] E1-T5 Hooki `error`/`unhandledrejection` z `destroy()` zdejmującym listenery.
+- [x] E1-T6 Popup z trzema stanami i czasem nagrywania; komunikaty po polsku. **(store review E0 — blocker CWS)**
       Ujawnienie w UI przed zbieraniem: krótka lista PL, co trafia do pliku (cookies, dane stron, treść strony, zapytania,
       pola formularzy) + „Plik zostaje na Twoim dysku, rozszerzenie niczego nie wysyła”; klik pod tekstem = zgoda; test na tekst.
       Przy każdym poszerzeniu zakresu danych (E2) — ponowne ujawnienie po aktualizacji (wymóg CWS 2026).
-- [ ] E1-T7 `console-snapshot.js` (fallback bez instalacji) ma działać na tym samym `recorder.js`
+- [x] E1-T7 `console-snapshot.js` (fallback bez instalacji) ma działać na tym samym `recorder.js`
       i jasno mówić: „zbieram od teraz; odtwórz problem i wywołaj `PageDebugSnapshot.download()`”.
-- [ ] E1-T8 (z review E0, **HIGH — potwierdzone re-QA: 3× „Gotowe” bez pliku**) Prawdziwy wynik zapisu: pobieranie przez `chrome.downloads.download` w tle (permission `downloads` —
+- [x] E1-T8 (z review E0, **HIGH — potwierdzone re-QA: 3× „Gotowe” bez pliku**) Prawdziwy wynik zapisu: pobieranie przez `chrome.downloads.download` w tle (permission `downloads` —
       **zatwierdzone przez użytkownika 2026-10-22**) i sukces dopiero po `onChanged.state === 'complete'`; dziś `<a download>` w stronie daje fałszywy
       sukces przy zablokowanych automatycznych pobraniach.
-- [ ] E1-T9 (z review E0) `runInPage` weryfikuje `pds.version` (z `args`) zamiast ufać dowolnemu `window.PageDebugSnapshot`;
+- [x] E1-T9 (z review E0) `runInPage` weryfikuje `pds.version` (z `args`) zamiast ufać dowolnemu `window.PageDebugSnapshot`;
       marker instalacji pod `Symbol.for('pds.installed')`.
-- [ ] E1-T10 (z review E0) Timeout na `executeScript` (~15 s) → `failed` z komunikatem „strona jeszcze się ładuje”.
-- [ ] E1-T11 (z review E0) Walker builda: rzucać na `url(`/`chrome.runtime.getURL(`/import z template literal, których nie
+- [x] E1-T10 (z review E0) Timeout na `executeScript` (~15 s) → `failed` z komunikatem „strona jeszcze się ładuje”.
+- [x] E1-T11 (z review E0) Walker builda: rzucać na `url(`/`chrome.runtime.getURL(`/import z template literal, których nie
       umie rozwiązać (fail-safe), gdy pojawi się pierwszy CSS lub tło.
 
 Testy / Review / QA / Docs / Release
-- [ ] E1-TEST1 Unit: proxy XHR przechodzi `instanceof`, `XMLHttpRequest.DONE === 4`, axios-like użycie.
-- [ ] E1-TEST2 E2E: strona testowa rzuca błąd w `<head>` i robi fetch 500 przed DCL → oba są w paczce.
-- [ ] E1-TEST3 E2E: SPA z `history.pushState` — nagranie nie urywa się.
-- [ ] E1-R1 Review: brak wycieku `chrome.*` do MAIN world; nonce w postMessage; limity buforów.
-- [ ] E1-Q1 QA: scenariusz zgłaszającego od instalacji do pliku na dysku, z nagraniem ekranu jako dowodem.
-- [ ] E1-DOC1 Instrukcja dla zgłaszającego (PL, 5 kroków, zrzuty ekranu).
+- [x] E1-TEST1 Unit: proxy XHR przechodzi `instanceof`, `XMLHttpRequest.DONE === 4`, axios-like użycie.
+- [x] E1-TEST2 E2E: strona testowa rzuca błąd w `<head>` i robi fetch 500 przed DCL → oba są w paczce.
+- [x] E1-TEST3 E2E: SPA z `history.pushState` — nagranie nie urywa się.
+- [x] E1-R1 Review: brak wycieku `chrome.*` do MAIN world; nonce w postMessage; limity buforów.
+- [x] E1-Q1 QA: scenariusz zgłaszającego od instalacji do pliku na dysku, z nagraniem ekranu jako dowodem.
+- [x] E1-DOC1 Instrukcja dla zgłaszającego (PL, 5 kroków, zrzuty ekranu).
 
 ---
 
@@ -124,6 +124,13 @@ Testy / Review / QA / Docs / Release
 **Problem:** brak CWV, kodów HTTP, treści odpowiedzi, zrzutu ekranu i kroków użytkownika.
 Developer wie, że „coś było wolno”, ale nie wie co, i nie wie, co zgłaszający kliknął.
 **Efekt:** paczka odpowiada na pytania: *co kliknął, co się zepsuło, co było wolne, jak to wyglądało*.
+
+Wejście z E1 (release 0.3.0)
+- [ ] E2-IN1 (LOW, QA) Popup otwarty w trakcie nawigacji karty na inny origin nie odświeża notatki `otherOrigin` (po ponownym otwarciu poprawna).
+- [ ] E2-IN2 (LOW, tester) Teardown e2e: kontrola `git status` zawęzić do ścieżek poza `docs/` (fałszywy alarm przy równoległej pracy nad dokumentacją).
+- [ ] E2-IN3 (LOW, review) Timer limitu nagrywania (`setTimeout`) jest monotoniczny: po uśpieniu komputera `stop('time-limit')` zapada dopiero przy odpaleniu timera (rekordy po terminie są już odrzucane) — dodać kontrolę terminu przy zdarzeniu (np. `visibilitychange`/kolejny rekord).
+- [ ] E2-IN4 (nice-to-have) `scripts/gen-content.mjs`: moduł importowany tylko dla efektu ubocznego nadal dostaje nieużywaną stałą — pomijać przypisanie dla modułów bez użyć.
+- [ ] E2-IN5 (LOW, release) Pilnować zgodności `RECORDER_VERSION` z `manifest.version` przy `npm run pack` (np. `scripts/check-release.mjs`), nie tylko w `npm test`.
 
 Spec
 - [ ] E2-S1 Lista pól wymaganych vs opcjonalnych w paczce; co developer czyta najpierw.

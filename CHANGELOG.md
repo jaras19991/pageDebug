@@ -4,7 +4,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/). Wpisy per epik
 
 ## [Unreleased]
 
-### E1 — Model nagrywania: dane od startu strony (schemat paczki v2; wersję 0.3.0 nada release)
+## [0.3.0] - 2026-10-23
+
+### E1 — Model nagrywania: dane od startu strony (schemat paczki v2)
 
 #### Dodano
 - Przepływ **Nagrywaj → Zapisz paczkę**: po „Nagrywaj” rozszerzenie prosi o dostęp do witryny aktywnej karty (`permissions.request`), rejestruje skrypty (`scripting.registerContentScripts`, `document_start`) i przeładowuje kartę; nagrywanie obejmuje konsolę, błędy i sieć od początku ładowania strony, także po przeładowaniach i nawigacjach w obrębie witryny.

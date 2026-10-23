@@ -1,8 +1,8 @@
 # E1 — Model nagrywania: dane od startu strony — stan
 
-faza: review-qa
+faza: done (release 0.3.0, 2026-10-23)
 rozpoczęto: 2026-10-22
-ostatnia aktualizacja: 2026-10-22
+ostatnia aktualizacja: 2026-10-23
 
 ## Zadania (z backlogu; design doprecyzuje)
 - [x] E1-S1..S3 spec.md (pds-analyst): 7 US, 42 AC, schema v2 — bramka zatwierdzona
@@ -122,10 +122,10 @@ ostatnia aktualizacja: 2026-10-22
 - [x] E1-DOC1 README, INSTRUKCJA (nowy przepływ), snapshot-schema v2 zweryfikowana, CHANGELOG [Unreleased], CLAUDE.md, skille (extension-testing, mv3, snapshot-schema, pds-browser) — commit; brakujące: docs/img/krok-1..7.png
 - [x] re-TEST ✓ 618/618, e2e 40/40 ×3, repeat-each 120/120, 0 flaky/160; dist 158 KB; test-coverage.md zaktualizowany. Uwaga: teardown git-status daje fałszywy alarm przy równoległym docs — zawęzić do ścieżek poza docs (backlog).
 - [x] docs-mini ✓ (snapshot-schema, design D2/D4/D8/D9, README, INSTRUKCJA, CHANGELOG, skill mv3)
-- [~] re-QA F-1..F-4 (Chrome + Firefox) — start
-- Release E1: wersja **0.3.0** (F11). Docs: README cofanie dostępu (F12). E5: F6 źródła dla AMO, F7 notatka, F9, F10.
+- [x] re-QA ✓ **PASS z uwagami** 9/9 (F-1..F-5, Chrome 155 + Firefox 158; czysty klon 618/618). LOW: popup otwarty w trakcie nawigacji cross-origin nie odświeża `otherOrigin` → backlog E2.
+- [x] E1-REL release 0.3.0 (pds-release, 2026-10-23): pre-flight zielony; `RECORDER_VERSION` podbity do 0.3.0 + `npm run gen`; zipy `dist/page-debug-snapshot-{chrome,firefox}-0.3.0.zip` (57 360 B / 57 458 B); tag `v0.3.0` (hash: `git rev-parse v0.3.0`); notatka docs/releases/0.3.0.md; bez push. Docs: README cofanie dostępu (F12). E5: F6 źródła dla AMO, F7 notatka, F9, F10.
     Tester: NFR „save→Zapisano mediana z 5 ≤ 5 s” brak w T19e — dopisać w fazie Testy; `hooks-overhead.json` kasowany przez równoległe przebiegi — QA bierze z przebiegu na wyłączność.
-- [ ] E1-TEST1..3, R1, Q1, DOC1
+- [x] E1-TEST1..3, R1, Q1, DOC1 (zrobione, patrz wyżej)
 
 ## Wejście z E0 (obowiązkowe dla analityka i architekta)
 - docs/epics/E0/store-review.md — ujawnienie w UI (blocker), bez `tabs`, `optional_host_permissions` tylko dla origin karty, uzasadnienia EN per uprawnienie.
@@ -144,10 +144,16 @@ ostatnia aktualizacja: 2026-10-22
 - 2026-10-22 (bramka Design): PB-1 → A (`file:///*` opcjonalne); PB-2 → zgoda z góry (kopia dist dla e2e, jeśli T0 padnie);
   D3 most bez postMessage — zaakceptowany przez orkiestratora z warunkiem testu AC-5.6.
 
+- 2026-10-23 (bramka Release): **0.3.0**; teksty ujawnienia/zgody zaakceptowane; dostęp do witryny po zapisie **zostaje** (decyzja 3 potwierdzona).
+
 ## Historia faz
 - 2026-10-22 init → spec (po zamknięciu E0 v0.2.0)
 - 2026-10-22 spec zatwierdzony (5 decyzji) → design
 - 2026-10-22 design zatwierdzony (PB-1 A, PB-2 tak, D3 ok) → implement. Grupa A: T0 ∥ grupa B (11 zadań) — start równoległy.
+- 2026-10-23 bramka Release zatwierdzona (0.3.0, commit + tag, bez push) → release 0.3.0 (commit `release: v0.3.0 (E1)`, tag `v0.3.0`) → done.
 
 ## Retro
-- (po zamknięciu)
+- Epik był za duży (27 zadań, 7 grup, 3 fazy poprawek): w kolejnych epikach dzielić na wydania ≤ ~12 zadań, z checkpointami.
+- Weryfikacja kosztowała więcej niż implementacja (testy, review, QA ×2, re-test); planować na nią budżet czasu i stabilny harness od początku.
+- Agenci wisieli na komendach (równoległe e2e przebudowujące `dist/`, długie przebiegi) → wprowadzone timeouty w definicjach agentów i `PDS_E2E_NO_BUILD`.
+- QA ręczne w Firefoksie znalazło 3 HIGH (cicha odmowa zgody, utrata danych przy przejściu na inny host, hasła w `outerHTML`), których e2e w Chromium nie widziało — QA obu przeglądarek zostaje obowiązkowe.
