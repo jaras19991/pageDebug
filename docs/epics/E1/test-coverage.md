@@ -1,4 +1,4 @@
-# E1 — Pokrycie AC testami (faza Testy, 2026-10-22)
+# E1 — Pokrycie AC testami (faza Testy, 2026-10-22; re-Testy po I1/I2, 2026-10-23)
 
 Przebieg na wyłączność: lint 0 errors (web-ext 0 errors / 2 warnings `strict_min_version` — dopuszczone jak w E0) · `npm test` 593/593 w 37 plikach, 2,6–3,0 s (3 przebiegi) · `npm run test:e2e` 39/39 (3 przebiegi po 65–67 s, zero porażek) + `--repeat-each 3` 111/111 (3,0 min) · `gen --check` 0 · dist 186 KB / target (150 KB plików).
 Skróty: U = vitest (`tests/unit/<plik>::<nazwa>`), E = Playwright (`tests/e2e/<plik>::<nazwa>`), QA-C / QA-F = QA ręczne Chrome / Firefox (F1–F18 z design.md „Plan testów”), R = review, WL = `web-ext lint`.
@@ -52,6 +52,20 @@ Nazwy testów w design.md częściowo się rozjechały z kodem; poniżej nazwy r
 | 7.4 | U build::dist contains no forbidden files |
 
 NFR: rozmiar `dist/*` < 500 KB — U build::each target is under 500 KB (150 KB) + zipy 53 KB; narzut hooków — E perf.spec (przebieg na wyłączność, `test-results/hooks-overhead.json`: fetch mediana −0,1…0 ms, p95 −0,2…0 ms; console p95 narzut 0,01–0,03 ms; spec ≤ 2 / ≤ 0,5 ms); flood 20 000×1 KB → 4,2 MB ≤ 10 MB; save → Zapisano mediana z 5 = 122 ms ≤ 5 s (recording.spec); `npm test` 3 s ≤ 30 s, e2e 66 s ≤ 5 min; prywatność: U save::state lives only in storage.session, background-router::use no … localStorage…; stabilność: 111/111 `--repeat-each 3`, bez `retries`.
+
+## Re-Testy po poprawkach I1/I2 (2026-10-23, na wyłączność)
+lint 0 errors (web-ext 0 errors / 2 warnings `strict_min_version`) · `npm test` 618/618 w 37 plikach (2 przebiegi, 3,2–3,4 s) · `gen --check` 0 · build OK, dist 158 KB / target (19 plików), zipy 54 KB (stare, 0.2.0 — `npm run pack` nie uruchamiany) · e2e 40/40 ×3 (~1,1 min) + `--repeat-each 3` 120/120 (3,1 min), bez `retries`. Pojedyncza uwaga: w przebiegu 1 global-teardown („e2e changed the working tree”) zgłosił zmianę `git status` — wszystkie testy zielone; przyczyna: równoległa edycja docs przez pds-docs (git status wskazuje tylko pliki docs/README/CHANGELOG/skill, brak plików z e2e, kolejne 4 przebiegi czyste). Zalecenie: teardown porównuje cały status — przy równoległych agentach daje fałszywy alarm.
+
+| Poprawka | Testy |
+|---|---|
+| F-1 sticky outcomes (AC-1.4, 1.7) | U popup-controller::permissionDenied stays when the background goes starting → idle without lastError (QA F-1); it.each recordFailed/restricted/fileAccess; E restricted.spec (tekst przeżywa kolejny getStatus) |
+| F-3 outerHTML bez wartości password/hidden | U collector::dom html.outerHTML has no value of password and hidden inputs; the page keeps them (QA F-3); …without secret inputs equals the page markup; dom forms redact password and hidden |
+| F-4 `fileUnsupportedFirefox` (AC-1.7) | U messages::fileUnsupportedFirefox tells to open the page over http(s), verbatim; U popup-controller::Firefox file page → fileUnsupportedFirefox, no consent prompt, no armStart. Firefox na żywo: QA-F |
+| F-5 test niezależny od środowiska (AC-4.8) | U recorder (stały stack przez prepareStackTrace; 6000 console.log keep 5000; osobny test documentChars evicts the oldest) |
+| F-2 token dokumentu + beforeunload (AC-4.4) | U background-recording::flush with the document token is accepted from another frameId and while the tab shows another origin; flush without/wrong token rejected; token from earlier recording invalid; U entries::flush carries the token, MAIN never sees it; beforeunload hands the buffers over…; U package::document tokens never reach the package |
+| nawigacja bezpośrednio na inny host (AC-4.4, 3.4) | E navigation.spec::direct navigation to another host: entries of document 0 are saved, no "not received" note (Chrome); Firefox — QA-F ręcznie (3/3 wg I2) |
+
+Higiena: brak `tests/e2e/zz-*` i `*.spike` poza `tests/e2e/spike*/`; `git status` po e2e identyczny jak przed (nowe/untracked pliki: brak). NFR save→Zapisano mediana 59–123 ms ≤ 5 s; narzut hooków fetch p95 ≤ 0 ms, console p95 ≤ 0,03 ms; flood 20 000×1 KB → 4,2 MB.
 
 ## Regresje E0 — AC zastąpione przez E1
 - AC-2.1 (E0): `manifest-sources` zaktualizowany (permissions ⊆ activeTab/scripting/storage/downloads, `optional_host_permissions` dokładnie http/https/file) — nie usunięty.

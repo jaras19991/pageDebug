@@ -32,7 +32,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/). Wpisy per epik
 - Fałszywy sukces przy zablokowanych pobraniach (F3 z E0): komunikat dopiero po potwierdzeniu `downloads.onChanged`.
 - Błędy i zapytania sprzed kliknięcia nie giną już — recorder działa od `document_start`.
 - Popup nie gubi wyniku `pageBusy` / `failed` / `saveCancelled` przy zmianie stanu tła (komunikat zostaje na ekranie).
-- E2E: `popup.close()` czeka na zamknięcie celu, `openPopupFor` na gotowy dokument; równoległe przebiegi nie przebudowują `dist/` z `PDS_E2E_NO_BUILD=1`.
+- Odmowa zgody na dostęp do witryny pokazuje komunikat zamiast cichego powrotu do stanu początkowego.
+- Firefox + strona z dysku (`file://`): komunikat `fileUnsupportedFirefox` zamiast prośby o zgodę, która nie ma sensu.
+- Dane nie giną przy przejściu na inną witrynę: bufory są przekazywane przy `beforeunload` i `pagehide`, a `flush` z `frameId≠0` jest przyjmowany (uwierzytelnianie tokenem per dokument).
+- E2E: `popup.close() czeka na zamknięcie celu, `openPopupFor` na gotowy dokument; równoległe przebiegi nie przebudowują `dist/` z `PDS_E2E_NO_BUILD=1`.
 
 #### Bezpieczeństwo
 - Ujawnienie danych i zgoda w UI: lista „Do pliku trafią:” (w tym treść żądań sieciowych, ciasteczka i dane strony, „mogą zawierać dane logowania”) oraz zgoda przy „Nagrywaj”.
@@ -40,6 +43,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/). Wpisy per epik
 - Brak globali w trybie rozszerzenia (`window.PageDebugSnapshot`, `__PAGE_DEBUG_SNAPSHOT__`); bufor tylko w domknięciu; po zapisie hooki zdjęte, skrypty wyrejestrowane.
 - Prywatny kanał MAIN ↔ ISOLATED (odłączony węzeł DOM, `CustomEvent` ze stringiem, intrinsics przechwycone na `document_start`) zamiast `postMessage`: skrypty strony nie czytają bufora ani nie podszywają się pod rozszerzenie.
 - Router tła przyjmuje polecenia tylko od popupu rozszerzenia, a wiadomości mostu tylko z ramki głównej karty; wynik zapisu ustala wyłącznie tło.
+- Wartości pól `password` i `hidden` są maskowane (`[redacted]`) także w `dom.html.outerHTML`; reszta HTML nadal jawna do E3.
 - Strażnik przywracania `console`: wrapper założony przez stronę (np. Sentry) zostaje, nasz staje się przelotowy.
 - Znane ograniczenie: **dane nadal niezredagowane** (maskowanie w E3) — ciasteczka, storage, nagłówki i treść żądań, wartości pól formularzy (poza `password`/`hidden`) i `dom.html.outerHTML` trafiają do pliku wprost.
 - Znane ograniczenia: `xhr.constructor === XMLHttpRequest` daje `false`; `fetch.toString()` w trakcie nagrywania nie ma nazwy; auto-stop po uśpieniu komputera zapada przy odpaleniu timera; Firefox bez automatycznego e2e (ręczne QA).

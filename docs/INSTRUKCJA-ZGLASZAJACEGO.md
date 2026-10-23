@@ -72,6 +72,7 @@ Inne komunikaty:
 - „Trwa nagrywanie w innej karcie. Kliknięcie „Nagrywaj” zakończy je bez zapisu.” — nagrywać można w jednej karcie naraz.
   Jeśli chcesz zachować tamto nagranie, najpierw wróć do tamtej karty i kliknij „Zapisz paczkę”.
 - „Zapis został przerwany lub anulowany. Nagrywanie trwa — kliknij „Zapisz paczkę” ponownie.” — spróbuj jeszcze raz.
+- „W Firefoksie nagrywanie plików z dysku nie jest obsługiwane. Otwórz stronę przez http:// lub https://.” — w Firefoksie strony zapisane na komputerze nie da się nagrać; otwórz ją inną drogą albo poproś o pomoc.
 - „To jest plik z dysku. Żeby zapisać paczkę, wpisz w pasku adresu chrome://extensions, kliknij „Szczegóły” przy Page Debug Snapshot
   i włącz „Zezwalaj na dostęp do adresów URL plików”. Potem odśwież stronę i kliknij ponownie.” — otwierasz stronę zapisaną
   na komputerze. Zrób dokładnie to, co jest w komunikacie.

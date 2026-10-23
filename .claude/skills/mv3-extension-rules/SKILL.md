@@ -59,6 +59,9 @@ asynchroniczne, inline'owy skrypt w `<head>` może przechwycić port). Dlatego w
 5. Z MAIN do tła idzie się tylko przez ISOLATED → `runtime.sendMessage` (w MAIN nie ma `chrome.*`). Jeśli handshake się nie uda,
    most zgłasza `bridgeError` (np. `unbound`), a dokument jest oznaczony jako nienagrany; wynik zapisu i nazwę pliku zawsze ustala tło.
 
+6. `flush` z `pagehide` może przyjść z `frameId≠0` i `documentLifecycle: pending_deletion` — nie filtruj po frameId; uwierzytelniaj
+   tokenem (per dokument, z `hello`); wysyłaj też przy `beforeunload` (Firefox gubi `pagehide` przy przejściu na inną witrynę).
+
 Test akceptacyjny: unit `channel.test.js` i e2e `isolation.spec.js` na wrogiej stronie (`hostile.html`).
 
 ## Service worker nie ma pamięci

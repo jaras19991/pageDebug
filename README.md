@@ -206,6 +206,8 @@ Test `tests/unit/icons-script.test.js` pilnuje, by `src/icons/*.png` były ident
 - **„Zapisuję paczkę…” kończy się komunikatem „Strona jeszcze się ładuje albo nie odpowiada”** (`pageBusy`) — tło nie dostało zrzutu
   bieżącej strony w 15 s. Poczekaj, aż strona się załaduje, i kliknij „Zapisz paczkę” ponownie; nagrywanie trwa.
 - **Popup: „Zapis został przerwany lub anulowany”** — pobranie przerwane (np. „Anuluj” w oknie przeglądarki); nagrywanie trwa.
+- **Firefox: „W Firefoksie nagrywanie plików z dysku nie jest obsługiwane. Otwórz stronę przez http:// lub https://.”** — strona `file://`
+  nie jest w Firefoksie nagrywana (popup nie prosi o zgodę). Otwórz ją przez `http(s)://` (np. lokalny serwer).
 - **Firefox: dodatek zniknął** — tymczasowy dodatek znika po restarcie; załaduj ponownie (`npm run dev:firefox`).
   W Firefoksie ikona bywa pod „puzzlem” (panel rozszerzeń), nie na pasku.
 - **Chrome: ikona niewidoczna** — jest pod „puzzlem”; przypnij ją.
@@ -220,11 +222,12 @@ Test `tests/unit/icons-script.test.js` pilnuje, by `src/icons/*.png` były ident
 ## Znane ograniczenia
 
 - **Dane nie są redagowane** (do E3): w pliku są jawnie ciasteczka, storage, nagłówki i treść żądań sieciowych, wartości pól formularzy
-  (poza `password`/`hidden` w `dom.forms`) oraz `dom.html.outerHTML`. Popup mówi to wprost przed „Nagrywaj”.
+  (poza `password`/`hidden` — te są maskowane w `dom.forms` i w `dom.html.outerHTML`) oraz reszta `dom.html.outerHTML`. Popup mówi to wprost przed „Nagrywaj”.
 - `xhr.constructor === XMLHttpRequest` daje `false` (hook to `Proxy`, a `prototype.constructor` wskazuje oryginał); `instanceof`
   i stałe statyczne działają. Instancje XHR mają własne, nieenumerowalne `open`/`send`/`setRequestHeader`.
 - `fetch.toString()` na stronie w trakcie nagrywania daje `function () { [native code] }` (bez nazwy); po zapisie wraca `function fetch() { [native code] }`.
 - W DevTools logi konsoli wskazują jako źródło recorder, nie kod strony; stos wywołania jest w polu `stack` wpisu.
 - Auto-stop po uśpieniu komputera zapada dopiero przy odpaleniu timera; wpisy po terminie są i tak odrzucane przy składaniu paczki.
+- Firefox: wpisy logowane między `beforeunload` a `pagehide` przy przejściu na inną witrynę mogą zostać utracone (Firefox nie dostarcza wtedy `pagehide`).
 - Nagranie obejmuje jedną witrynę (origin) w jednej karcie naraz; strony z innej witryny nie są nagrywane.
 - Dane wydajności (CWV), kroki użytkownika i zrzuty ekranu — dopiero E2. Firefox: bez automatycznego e2e.

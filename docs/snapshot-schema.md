@@ -9,9 +9,9 @@ wersja 1 (tabela migracji na końcu). Przykład v2: `tests/fixtures/snapshots/v2
 
 Paczkę v1 generował `src/page/page-debug-snapshot.js` (metoda `snapshot()`); plik nie ma pola `schemaVersion`.
 
-Redakcja danych wrażliwych **nie istnieje** do E3: wszystkie kolumny „redagowane” poniżej to „nie”, poza jednym wyjątkiem
-opisanym przy `dom.forms` (wartości pól typu `password` i `hidden` są podmieniane na `"[redacted]"`; wartość pola hasła
-pozostaje jednak jawna w `dom.html.outerHTML`). Czasy w rekordach to ciągi ISO (`timestamp`, `startedAt`) — do zmiany w E1.
+Pełna redakcja danych wrażliwych **nie istnieje** do E3: kolumny „redagowane” poniżej to „nie”, poza wyjątkiem
+opisanym przy `dom.forms` i `dom.html` (wartości pól typu `password` i `hidden` są podmieniane na `"[redacted]"`; w `dom.html.outerHTML`
+wartości pól `password`/`hidden` są też zastępowane `[redacted]` od E1, a reszta HTML pozostaje jawna do E3). Czasy w rekordach to ciągi ISO (`timestamp`, `startedAt`) — do zmiany w E1.
 
 ### Klucze najwyższego poziomu
 
@@ -22,7 +22,7 @@ pozostaje jednak jawna w `dom.html.outerHTML`). Czasy w rekordach to ciągi ISO 
 | `initializedAt` | string (ISO) | chwila wstrzyknięcia skryptu na stronę; zbieranie logów zaczyna się wtedy | v1 | nie |
 | `notes` | string[] | ograniczenia zbierania (np. „captured only from initialization time”) | v1 | nie |
 | `environment` | object | `timestamp`, `location` (pełny adres z `search` i `hash`), `document` (tytuł, referrer, stan), `navigator` (userAgent, język, platforma…), `screen`, `viewport` | v1 | nie |
-| `dom` | object | `counts`, `html` (`doctype`, `lang`, `charset`, `outerHTML` do 2 000 000 znaków), `meta`, `canonical`, `hreflangs`, `scripts`, `stylesheets`, `images`, `iframes`, `forms`, `rootMarkers` | v1 | częściowo: `dom.forms[].elements[].value` dla `password`/`hidden` = `"[redacted]"` |
+| `dom` | object | `counts`, `html` (`doctype`, `lang`, `charset`, `outerHTML` do 2 000 000 znaków), `meta`, `canonical`, `hreflangs`, `scripts`, `stylesheets`, `images`, `iframes`, `forms`, `rootMarkers` | v1 | częściowo: `dom.forms[].elements[].value` oraz wartości pól `password`/`hidden` w `outerHTML` = `"[redacted]"`; reszta HTML jawna do E3 |
 | `performance` | object | `timeOrigin`, `navigation` (czasy nawigacji lub `null`), `resources[]` (zasoby załadowane do chwili zrzutu) | v1 | nie |
 | `storage` | object | `cookies` (string z `document.cookie`), `localStorage`, `sessionStorage` (obiekty klucz → wartość, wartość do 5000 znaków) | v1 | nie |
 | `consoleLogs` | object[] | wpisy konsoli od `initializedAt`: `timestamp`, `level` (`log`/`info`/`warn`/`error`/`debug`), `args` | v1 | nie |

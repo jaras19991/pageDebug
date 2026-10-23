@@ -77,6 +77,8 @@ oba skrypty (AC-2.5, AC-2.6). `tabs.reload`, `tabs.sendMessage` i `tabs.onRemove
 Opcje: (a) oba klucze `background` w bazie; (b) `background` w nakładkach: Chrome `{service_worker, type:'module'}`,
 Firefox `{scripts:[…], type:'module'}`; (c) dwa różne pliki tła.
 **Wybór: (b)**, świadome odstępstwo od tabeli w skillu („oba klucze w manifeście”).
+
+(zmienione w implementacji: `flush` jest przyjmowany z dowolnym `frameId` i uwierzytelniany tokenem per dokument, wydawanym w odpowiedzi na `hello`. Chrome dostarcza `flush` z `pagehide` z `frameId≠0` przy nawigacji cross-site, więc filtr „tylko ramka główna” gubił dane.)
 Uzasadnienie: jeden plik `src/background.js` (ES module, bez `importScripts`, bez `window`/`document`/`URL.createObjectURL`)
 działa w obu modelach. Każdy target dostaje wtedy wyłącznie klucz, którego używa: zero ostrzeżeń w `chrome://extensions`,
 w `web-ext lint` i w walidatorze CWS. Wariant (a) zostawia klucz ignorowany przez każdą z przeglądarek, a walidatora sklepu
@@ -129,6 +131,8 @@ Opcje: (a) każdy dokument ma bufor w MAIN, a wcześniejsze dokumenty przepadaj�
 (b) ciągłe strumieniowanie każdego wpisu do tła (wybudzanie tła co sekundę, O(n) zapisów, ryzyko quota);
 (c) bufor w MAIN + **jednorazowy zrzut przy `pagehide`** do `storage.session` w tle (`pds:doc:<id>`), z budżetem.
 **Wybór: (c).**
+
+(zmienione w implementacji: bufory przekazywane przy `beforeunload` **i** `pagehide`; licznik zmian zapobiega duplikatom, gdy oba zdarzenia przyjdą po kolei. Firefox gubi `pagehide` przy przejściu na inną witrynę, więc kopia z `beforeunload` jest jedyną — wpisy między zdarzeniami mogą przepaść.)
 Uzasadnienie: SPA (`pushState`/`replaceState`/`popstate`) nie zmienia dokumentu, więc nagranie trwa bez dodatkowej pracy
 (AC-4.3). Przy pełnym przeładowaniu w obrębie origin (np. wysłanie formularza w MPA) błąd, który poprzedził nawigację,
 jest najcenniejszy, więc go zachowujemy (AC-4.4, wariant „wpisy są w paczce”). Zrzut idzie raz na dokument: MAIN (listener
@@ -230,6 +234,8 @@ większych bramka z `offscreen`.
 Opcje: (a) `host_permissions` dla wzorców http/https (ostrzeżenie „wszystkie strony” przy instalacji); (b) `tabs` do odczytu URL;
 (c) minimum: `activeTab`, `scripting`, `storage`, `downloads` + `optional_host_permissions` z prośbą w locie tylko o origin karty.
 **Wybór: (c).**
+
+(zmienione w implementacji: w Firefoksie `file://` nie jest obsługiwane — popup pokazuje `fileUnsupportedFirefox` i nie wywołuje `permissions.request`.)
 Uzasadnienie: decyzje bramki i store review. `tabs` jest zbędne, bo `tab.url` daje `activeTab` (popup) i uprawnienie
 do origin (tło), a `tabs.reload`/`sendMessage`/`onRemoved` go nie wymagają. Prośba zawsze dotyczy dokładnie jednego wzorca
 (AC-3.2). Uprawnienie zostaje po zapisie (decyzja 3), a README opisuje, jak je cofnąć (DOC1). Nie używamy `alarms`
@@ -241,6 +247,8 @@ zostaje 121.
 Opcje: (a) popup trzyma logikę i stan; (b) popup jako widok: `getStatus` przy otwarciu + `storage.session.onChanged`
 → ponowny `getStatus`, a logika sterująca w `controller.js` z wstrzykiwanym `api`.
 **Wybór: (b).**
+
+(zmienione w implementacji: Firefox + `file://` → komunikat `fileUnsupportedFirefox`, bez `permissions.request` — patrz D8.)
 Uzasadnienie: popup żyje krótko (skill). Klik *Nagrywaj* ma twarde ograniczenie: `permissions.request` musi być wywołane
 synchronicznie w handlerze kliknięcia (Firefox odrzuca wywołanie po `await`, a Chrome traci gest). Dlatego wzorzec origin,
 klasyfikację URL (`classifyUrl`) i sondę `isAllowedFileSchemeAccess` popup liczy **przy otwarciu**. Sam handler robi
