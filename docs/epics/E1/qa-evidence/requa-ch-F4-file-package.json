@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 2,
+  "extensionVersion": "0.2.0",
+  "source": "extension",
+  "collectedAt": "2026-10-23T08:30:28.810Z",
+  "recordingStartedAt": "2026-10-23T08:30:16.040Z",
+  "recordingStoppedReason": null,
+  "timeOrigin": 1792744216058.2,
+  "documents": [
+    {
+      "id": 0,
+      "url": "file:///C:/Agora/pluginDebbuging/tests/fixtures/pages/basic.html",
+      "timeOrigin": 1792744216058.2,
+      "navigationType": "reload",
+      "recorded": true,
+      "flushed": true,
+      "current": true,
+      "counts": {
+        "consoleLogs": 2,
+        "runtimeErrors": 0,
+        "network": 0
+      },
+      "kept": {
+        "consoleLogs": 2,
+        "runtimeErrors": 0,
+        "network": 0
+      }
+    }
+  ],
+  "limits": {
+    "consoleLogs": 5000,
+    "runtimeErrors": 1000,
+    "network": 5000,
+    "entryChars": 10000
+  },
+  "truncated": {
+    "consoleLogs": false,
+    "runtimeErrors": false,
+    "network": false
+  },
+  "notes": [
+    "Recording started at 2026-10-23T08:30:16.040Z (page reloaded); earlier data is not included."
+  ],
+  "environment": {
+    "timestamp": "2026-10-23T08:30:28.801Z",
+    "location": {
+      "href": "file:///C:/Agora/pluginDebbuging/tests/fixtures/pages/basic.html",
+      "origin": "file://",
+      "protocol": "file:",
+      "host": "",
+      "hostname": "",
+      "port": "",
+      "pathname": "/C:/Agora/pluginDebbuging/tests/fixtures/pages/basic.html",
+      "search": "",
+      "hash": ""
+    },
+    "document": {
+      "title": "PDS fixture: basic",
+      "referrer": "",
+      "readyState": "complete",
+      "visibilityState": "visible",
+      "lastModified": "10/22/2026 00:44:31"
+    },
+    "navigator": {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+      "language": "pl-PL",
+      "languages": [
+        "pl-PL",
+        "pl",
+        "en-US",
+        "en"
+      ],
+      "cookieEnabled": true,
+      "onLine": true,
+      "platform": "Win32",
+      "hardwareConcurrency": 32,
+      "deviceMemory": 32
+    },
+    "screen": {
+      "width": 1280,
+      "height": 720,
+      "availWidth": 1280,
+      "availHeight": 720,
+      "colorDepth": 24,
+      "pixelDepth": 24
+    },
+    "viewport": {
+      "innerWidth": 1280,
+      "innerHeight": 720,
+      "outerWidth": 1296,
+      "outerHeight": 854,
+      "devicePixelRatio": 1,
+      "scrollX": 0,
+      "scrollY": 0
+    }
+  },
+  "dom": {
+    "counts": {
+      "totalElements": 9,
+      "scripts": 1,
+      "stylesheets": 0,
+      "images": 0,
+      "links": 0,
+      "iframes": 0,
+      "forms": 0
+    },
+    "html": {
+      "doctype": {
+        "name": "html",
+        "publicId": "",
+        "systemId": ""
+      },
+      "lang": "pl",
+      "charset": "UTF-8",
+      "compatMode": "CSS1Compat",
+      "outerHTML": "<html lang=\"pl\"><head>\n  <meta charset=\"utf-8\">\n  <title>PDS fixture: basic</title>\n  <script>\n    // AC-2.3: record every node added to the DOM after load, so e2e can check that the\n    // extension injects no <script src=\"chrome-extension://...\"> and leaves nothing behind.\n    window.__added = [];\n    new MutationObserver((records) => {\n      for (const record of records) {\n        for (const node of record.addedNodes) {\n          window.__added.push({\n            nodeName: node.nodeName,\n            src: node.nodeType === 1 ? node.getAttribute('src') : null,\n            id: node.nodeType === 1 ? node.id : null,\n          });\n        }\n      }\n    }).observe(document.documentElement, { childList: true, subtree: true });\n    console.log('basic fixture loaded');\n  </script>\n</head>\n<body>\n  <h1>Strona testowa</h1>\n  <p id=\"content\">Syntetyczna treść do testów rozszerzenia Page Debug Snapshot.</p>\n  <button id=\"action\" type=\"button\">Kliknij</button>\n\n\n</body></html>"
+    },
+    "meta": [
+      {
+        "tagName": "META",
+        "id": null,
+        "className": null,
+        "name": null,
+        "type": null,
+        "src": null,
+        "href": null,
+        "text": "",
+        "attributes": {
+          "charset": "utf-8"
+        }
+      }
+    ],
+    "canonical": null,
+    "hreflangs": [],
+    "scripts": [
+      {
+        "src": null,
+        "type": null,
+        "async": false,
+        "defer": false,
+        "textLength": 681,
+        "id": null,
+        "attributes": {}
+      }
+    ],
+    "stylesheets": [],
+    "images": [],
+    "iframes": [],
+    "forms": [],
+    "rootMarkers": {
+      "bodyClassName": null,
+      "htmlClassName": null,
+      "dataAttributesOnHtml": {
+        "lang": "pl"
+      },
+      "dataAttributesOnBody": {}
+    }
+  },
+  "performance": {
+    "timeOrigin": 1792744216058.2,
+    "navigation": {
+      "name": "file:///C:/Agora/pluginDebbuging/tests/fixtures/pages/basic.html",
+      "entryType": "navigation",
+      "startTime": 0,
+      "duration": 24,
+      "initiatorType": "navigation",
+      "nextHopProtocol": "",
+      "renderBlockingStatus": "non-blocking",
+      "workerStart": 0,
+      "redirectStart": 0,
+      "redirectEnd": 0,
+      "fetchStart": 1.1999999284744263,
+      "domainLookupStart": 1.1999999284744263,
+      "domainLookupEnd": 1.1999999284744263,
+      "connectStart": 1.1999999284744263,
+      "secureConnectionStart": 0,
+      "connectEnd": 1.1999999284744263,
+      "requestStart": 1.1999999284744263,
+      "responseStart": 1.1999999284744263,
+      "responseEnd": 3.299999952316284,
+      "domInteractive": 23.699999928474426,
+      "domContentLoadedEventStart": 23.699999928474426,
+      "domContentLoadedEventEnd": 23.699999928474426,
+      "domComplete": 24,
+      "loadEventStart": 24,
+      "loadEventEnd": 24,
+      "transferSize": 1299,
+      "encodedBodySize": 999,
+      "decodedBodySize": 999,
+      "type": "reload"
+    },
+    "resources": []
+  },
+  "storage": {
+    "cookies": "",
+    "localStorage": {},
+    "sessionStorage": {}
+  },
+  "consoleLogs": [
+    {
+      "t": 22.299999952316284,
+      "doc": 0,
+      "level": "log",
+      "args": [
+        "basic fixture loaded"
+      ],
+      "stack": "    at file:///C:/Agora/pluginDebbuging/tests/fixtures/pages/basic.html:21:13"
+    },
+    {
+      "t": 11874.899999976158,
+      "doc": 0,
+      "level": "log",
+      "args": [
+        "file-marker"
+      ],
+      "stack": "    at eval (eval at evaluate (:370:30), <anonymous>:1:13)\n    at UtilityScript.evaluate (<anonymous>:372:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)"
+    }
+  ],
+  "runtimeErrors": [],
+  "network": []
+}

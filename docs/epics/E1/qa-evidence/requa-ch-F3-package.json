@@ -1,0 +1,246 @@
+{
+  "schemaVersion": 2,
+  "extensionVersion": "0.2.0",
+  "source": "extension",
+  "collectedAt": "2026-10-23T08:26:23.887Z",
+  "recordingStartedAt": "2026-10-23T08:26:20.774Z",
+  "recordingStoppedReason": null,
+  "timeOrigin": 1792743980781.8,
+  "documents": [
+    {
+      "id": 0,
+      "url": "http://127.0.0.1:8081/f3.html",
+      "timeOrigin": 1792743980781.8,
+      "navigationType": "reload",
+      "recorded": true,
+      "flushed": true,
+      "current": true,
+      "counts": {
+        "consoleLogs": 1,
+        "runtimeErrors": 0,
+        "network": 0
+      },
+      "kept": {
+        "consoleLogs": 1,
+        "runtimeErrors": 0,
+        "network": 0
+      }
+    }
+  ],
+  "limits": {
+    "consoleLogs": 5000,
+    "runtimeErrors": 1000,
+    "network": 5000,
+    "entryChars": 10000
+  },
+  "truncated": {
+    "consoleLogs": false,
+    "runtimeErrors": false,
+    "network": false
+  },
+  "notes": [
+    "Recording started at 2026-10-23T08:26:20.774Z (page reloaded); earlier data is not included."
+  ],
+  "environment": {
+    "timestamp": "2026-10-23T08:26:23.881Z",
+    "location": {
+      "href": "http://127.0.0.1:8081/f3.html",
+      "origin": "http://127.0.0.1:8081",
+      "protocol": "http:",
+      "host": "127.0.0.1:8081",
+      "hostname": "127.0.0.1",
+      "port": "8081",
+      "pathname": "/f3.html",
+      "search": "",
+      "hash": ""
+    },
+    "document": {
+      "title": "requa F3",
+      "referrer": "",
+      "readyState": "complete",
+      "visibilityState": "visible",
+      "lastModified": "10/23/2026 10:26:23"
+    },
+    "navigator": {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+      "language": "pl-PL",
+      "languages": [
+        "pl-PL",
+        "pl",
+        "en-US",
+        "en"
+      ],
+      "cookieEnabled": true,
+      "onLine": true,
+      "platform": "Win32",
+      "hardwareConcurrency": 32,
+      "deviceMemory": 32
+    },
+    "screen": {
+      "width": 1280,
+      "height": 720,
+      "availWidth": 1280,
+      "availHeight": 720,
+      "colorDepth": 24,
+      "pixelDepth": 24
+    },
+    "viewport": {
+      "innerWidth": 1280,
+      "innerHeight": 720,
+      "outerWidth": 1296,
+      "outerHeight": 854,
+      "devicePixelRatio": 1,
+      "scrollX": 0,
+      "scrollY": 0
+    }
+  },
+  "dom": {
+    "counts": {
+      "totalElements": 11,
+      "scripts": 1,
+      "stylesheets": 0,
+      "images": 0,
+      "links": 0,
+      "iframes": 0,
+      "forms": 1
+    },
+    "html": {
+      "doctype": {
+        "name": "html",
+        "publicId": "",
+        "systemId": ""
+      },
+      "lang": "pl",
+      "charset": "UTF-8",
+      "compatMode": "CSS1Compat",
+      "outerHTML": "<html lang=\"pl\"><head><meta charset=\"utf-8\"><title>requa F3</title></head><body><h1>F3</h1>\n<form onsubmit=\"return false\"><input id=\"pw\" type=\"password\" value=\"[redacted]\"><input type=\"hidden\" name=\"csrf\" value=\"[redacted]\"><input id=\"em\" type=\"email\" value=\"visible@example.org\"></form>\n<script>console.log('f3-loaded')</script>\n</body></html>"
+    },
+    "meta": [
+      {
+        "tagName": "META",
+        "id": null,
+        "className": null,
+        "name": null,
+        "type": null,
+        "src": null,
+        "href": null,
+        "text": "",
+        "attributes": {
+          "charset": "utf-8"
+        }
+      }
+    ],
+    "canonical": null,
+    "hreflangs": [],
+    "scripts": [
+      {
+        "src": null,
+        "type": null,
+        "async": false,
+        "defer": false,
+        "textLength": 24,
+        "id": null,
+        "attributes": {}
+      }
+    ],
+    "stylesheets": [],
+    "images": [],
+    "iframes": [],
+    "forms": [
+      {
+        "id": null,
+        "name": null,
+        "method": "get",
+        "action": "http://127.0.0.1:8081/f3.html",
+        "enctype": "application/x-www-form-urlencoded",
+        "elements": [
+          {
+            "tagName": "INPUT",
+            "type": "password",
+            "name": null,
+            "id": "pw",
+            "value": "[redacted]",
+            "checked": false
+          },
+          {
+            "tagName": "INPUT",
+            "type": "hidden",
+            "name": "csrf",
+            "id": null,
+            "value": "[redacted]",
+            "checked": false
+          },
+          {
+            "tagName": "INPUT",
+            "type": "email",
+            "name": null,
+            "id": "em",
+            "value": "visible@example.org",
+            "checked": false
+          }
+        ]
+      }
+    ],
+    "rootMarkers": {
+      "bodyClassName": null,
+      "htmlClassName": null,
+      "dataAttributesOnHtml": {
+        "lang": "pl"
+      },
+      "dataAttributesOnBody": {}
+    }
+  },
+  "performance": {
+    "timeOrigin": 1792743980781.8,
+    "navigation": {
+      "name": "http://127.0.0.1:8081/f3.html",
+      "entryType": "navigation",
+      "startTime": 0,
+      "duration": 15,
+      "initiatorType": "navigation",
+      "nextHopProtocol": "http/1.1",
+      "renderBlockingStatus": "non-blocking",
+      "workerStart": 0,
+      "redirectStart": 0,
+      "redirectEnd": 0,
+      "fetchStart": 0.30000007152557373,
+      "domainLookupStart": 0.30000007152557373,
+      "domainLookupEnd": 0.30000007152557373,
+      "connectStart": 0.30000007152557373,
+      "secureConnectionStart": 0,
+      "connectEnd": 0.30000007152557373,
+      "requestStart": 1.100000023841858,
+      "responseStart": 1.9000000953674316,
+      "responseEnd": 2.200000047683716,
+      "domInteractive": 14.400000095367432,
+      "domContentLoadedEventStart": 14.400000095367432,
+      "domContentLoadedEventEnd": 14.400000095367432,
+      "domComplete": 15,
+      "loadEventStart": 15,
+      "loadEventEnd": 15,
+      "transferSize": 651,
+      "encodedBodySize": 351,
+      "decodedBodySize": 351,
+      "type": "reload"
+    },
+    "resources": []
+  },
+  "storage": {
+    "cookies": "",
+    "localStorage": {},
+    "sessionStorage": {}
+  },
+  "consoleLogs": [
+    {
+      "t": 13.5,
+      "doc": 0,
+      "level": "log",
+      "args": [
+        "f3-loaded"
+      ],
+      "stack": "    at http://127.0.0.1:8081/f3.html:3:17"
+    }
+  ],
+  "runtimeErrors": [],
+  "network": []
+}

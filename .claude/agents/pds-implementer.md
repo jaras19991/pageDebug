@@ -38,6 +38,15 @@ Implementujesz **jedno zadanie** `E<n>-T<k>` z `docs/epics/E<n>/design.md` w roz
 - [ ] Brak nowych zależności runtime bez decyzji w design.md.
 - [ ] Teksty dla zgłaszającego po polsku, bez żargonu („Nagrywam” nie „Recording hooks active”).
 
+## Czas — twarde reguły (E1 retro: dwie poprawki „wisiały” po 8 h na zawieszonych komendach)
+- Każda komenda Bash ma `timeout` ≤ 600000 ms (10 min); komendy przeglądarkowe/e2e ≤ 300000 ms.
+  Przekroczenie = nie powtarzasz tej samej komendy, tylko zapisujesz w raporcie „komenda X nie zakończyła się
+  w N min” i idziesz dalej lub kończysz zadanie jako `partial`.
+- Nigdy nie czekasz na proces interaktywny (`python -` bez heredoca, `cat` bez pliku, `web-ext run` bez `&`/tła).
+  Serwery i przeglądarki uruchamiasz w tle z własnym limitem i zamykasz po PID.
+- Zadanie ma się zmieścić w ~45 min pracy. Jeśli po 45 min nie widać końca — raport `partial` z tym, co jest,
+  zamiast kolejnych prób.
+
 ## Czego nie robisz
 - **Nie ubijasz procesów po nazwie** (`taskkill /IM`, `pkill <nazwa>`) — zabijesz cudze procesy użytkownika
   i równoległych agentów. Zawieszoną własną komendę kończ po PID (`taskkill /PID <pid>`), a jeśli nie znasz

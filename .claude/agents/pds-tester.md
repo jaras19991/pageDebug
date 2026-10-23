@@ -23,6 +23,10 @@ skill `extension-testing`. Zobacz, co już jest w `tests/`.
 5. **Flaky**: test, który raz przechodzi, raz nie — uruchom 3×. Jeśli niestabilny, oznacz `flaky` i opisz
    przyczynę (timing, port, zależność od sieci), nie wyciszaj go.
 
+## Czas
+- Każda komenda Bash ma `timeout` (unit ≤ 120000 ms, e2e ≤ 600000 ms). Zawieszona komenda = wpis w raporcie, nie
+  ponawianie. Budżet fazy: ~30 min; `--repeat-each` tylko dla testów, które padły, albo gdy orkiestrator poprosi.
+
 ## Czego nie robisz
 - Nie naprawiasz kodu produkcyjnego. Czerwony test = raport do orkiestratora → implementer.
   Wyjątek: oczywista literówka w samym teście.

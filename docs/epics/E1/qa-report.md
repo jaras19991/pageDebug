@@ -96,6 +96,31 @@ Dwa szybkie kliknięcia „Nagrywaj”: 1 bąbel, 1 przeładowanie (FF), 1 bąbe
 | F-7 | LOW | Zamknięcie popupu ≤ 90 ms po „Zapisz paczkę” (Firefox): brak pliku i komunikatu; stan „Zapisuję paczkę…” do 15 s; kolejne „Zapisz” w tym czasie daje mylące „Strona jeszcze się ładuje albo nie odpowiada”. | kliknij Zapisz i od razu zamknij popup | sesja f19e (FF) |
 | F-8 | LOW (UX) | Katalog pobierania tylko do odczytu: Firefox zapisuje po cichu do `~/Downloads`; komunikat mówi „w pobranych plikach”, bez ścieżki. Ujawnienie ma ~25 linii (przycisk poza ekranem na małych oknach), zgoda ukryta w tekście. Okno zgody Firefoksa/Chrome nieczytelne dla laika. | — | `ff-F1-1-ready.png` |
 
-## Werdykt: FAIL (blokujące: F-1, F-2, F-3; do decyzji: F-5 jako warunek E1-Q1)
+## Werdykt pierwotny (fd12166): FAIL (blokujące: F-1, F-2, F-3; do decyzji: F-5 jako warunek E1-Q1) — zastąpiony werdyktem po re-QA na końcu raportu
 
 Nowy model nagrywania działa w obu przeglądarkach (zapis kompletny, jedno przeładowanie, odporność na wyładowanie tła, limit, anulowanie, restart, brak wycieków poza paczkę), ale odmowa zgody jest niema, przejście na inny host traci całe nagranie, a deklaracja „bez haseł i pól ukrytych” jest nieprawdziwa dla atrybutów w markupie.
+
+## Re-QA (commit 17aa3cf)
+
+Środowisko: Chrome stable 155.0.8059.79 (Playwright 1.64.1, pipe + `Extensions.loadUnpacked`, bąbel zgody: UIA `Invoke` „Odmawiaj”), Firefox stable 158.0.1 (web-ext + Marionette, jak w pierwszym QA), Windows 11, Node 26.12.1. `npm run build` raz na początku (dist 158 KB). Zakres: tylko naprawione F-1…F-5. Dowody: `qa-evidence/requa-*`. Metoda i jej ograniczenia jak wyżej (odmowa = programowy klik przycisku w bąblu, nie klik poza popupem).
+
+| Finding | Chrome | Firefox | Dowód / cytat |
+|---|---|---|---|
+| F-1 odmowa zgody | PASS | PASS | Popup został otwarty po odmowie (oba). `#status` = „Bez Twojej zgody na dostęp do tej strony nie da się jej nagrać. Kliknij „Nagrywaj” ponownie i wybierz „Zezwól”." (klasa `error`), stan Gotowy (przycisk Nagrywaj aktywny, brak `pds:rec`, uprawnienia puste, FF: 0 przeładowań). Drugi klik *Nagrywaj*: znów bąbel, „Uruchamiam nagrywanie…”, po drugiej odmowie ten sam komunikat. `requa-ch-F1-denied.png`, `requa-ch-F1-second-denied.png`, `requa-ff-F1-denied.png`, `requa-ff-F1-second-click.png`, `requa-ff-F1-second-denied.png` |
+| F-2 przejście na inny host | PASS 3/3 | PASS 3/3 | `127.0.0.1:8080/basic.html` → `console.log('before-redirect')` → bezpośrednio `http://localhost:8080/basic.html` → Zapisz: `documents[0]` = `{url:"http://127.0.0.1:8080/basic.html", flushed:true, recorded:true}`, `consoleLogs` = „basic fixture loaded”, „before-redirect”; notatki tylko „Recording started at … (page reloaded)…” i „The current page was not available (it left the recorded origin…); environment, dom, performance and storage are null” — brak „not received”. Popup (otwarty od nowa na karcie localhost) pokazuje `otherOrigin`: „Ta karta pokazuje teraz inną stronę. Nagranie obejmuje tylko stronę, na której je rozpoczęto — możesz zapisać to, co zebrano.” Zapis 261–277 ms (FF), 261–542 ms (Chrome). `requa-{ch,ff}-F2-run{1,2,3}-package.json`, `-popup.png`, `requa-ff-F2-otherOrigin.png` |
+| F-2 dodatkowo FF: własny `unload`/`pagehide` | — | obserwacja | 2 przebiegi: wpisy `page-unload-handler` / `page-pagehide-handler` nie trafiły do paczki (znane ograniczenie, jak zapowiedziano); `before-redirect` i `documents[0].flushed:true` zachowane |
+| F-3 password/hidden w markupie | PASS | PASS | Strona z `<input type="password" value="s3cret">` + `<input type="hidden" name="csrf" value="tok123">`: `grep -c "s3cret\|tok123"` = 0 w obu paczkach; `dom.html.outerHTML`: `<input id="pw" type="password" value="[redacted]"><input type="hidden" name="csrf" value="[redacted]">` (2× `[redacted]`), zwykłe pole e-mail zachowane. `page.evaluate` po zapisie: `pw`/`pwAttr` = `s3cret`, `csrf`/`csrfAttr` = `tok123` (strona nietknięta). `requa-ch-F3-package.json`, `requa-ff-F3-package.json` |
+| F-4 `file://` | PASS (bez zmian) | PASS | FF: popup od razu „W Firefoksie nagrywanie plików z dysku nie jest obsługiwane. Otwórz stronę przez http:// lub https://.” (dosłownie `MESSAGES.fileUnsupportedFirefox`); przycisk Nagrywaj nieaktywny, ukryte ujawnienie i #ready, brak bąbla zgody, brak stanu „Nagrywam”, `storage.session` puste (brak `pds:rec`), brak markera w stronie. `requa-ff-F4-file-popup.png`, `requa-ff-F4-file-after-click.png`. Chrome: z włączonym dostępem do plików nagrywanie startuje (uprawnienie `file:///*` nadane bez bąbla), zapis z `file-marker`, `documents[0].url` = `file:///…/basic.html` (`requa-ch-F4-file-package.json`); wariant „bez dostępu do plików” (`fileAccess`) nie powtarzany — w tym profilu dostęp był od razu włączony, a przełączanie go zamykało przeglądarkę |
+| F-5 czysty klon, długa ścieżka | PASS | — | `git clone` HEAD 17aa3cf do `%TEMP%\pds-requa\a\very\long\nested\path\for\checkout\of\the\repository\clone` (104 zn.): `npm ci` 0, `npm test` 0: „Test Files 37 passed (37) / Tests 618 passed (618)” (wcześniej 600/601). `requa-clean-clone-test.log` |
+
+Wynik: 6 findings (F-1…F-5 z 2 przeglądarkami = 9 komórek) — **PASS 9, FAIL 0, BLOCKED 0**; AC 1.4, 3.4, PB-1 (FF), E1-Q1 i prawdziwość deklaracji 1.1 („bez haseł i pól ukrytych”) — teraz PASS.
+
+Uwagi nowe (LOW, nie blokują):
+- Popup pozostawiony otwarty przez nawigację karty na inny origin nie odświeża notatki `otherOrigin` (FF, popup bez przeładowania; po ponownym otwarciu poprawnie). W realnym użyciu popup zamyka się przy zmianie karty/nawigacji — obserwacja, nie odtworzone w realnym kliku.
+- Popup `otherOrigin` zależy od `tab.url` (activeTab po kliknięciu ikony); bez niego (brak dostępu do URL) notatki nie będzie — brak regresji, tylko zależność.
+- Otwarte bez zmian: F-6, F-7, F-8 (LOW), UX z pierwszego raportu (długie ujawnienie, nieczytelne okno zgody przeglądarki).
+
+Sprzątnięcie: usunięte tylko moje: klon `%TEMP%\pds-requa`, profile i katalogi pobrań `%TEMP%\pds-qa-ch-IhrHZa|mlushz|qtrms1`, `%TEMP%\pds-qa-ff-oYsFGM`, `%TEMP%\firefox-profileRSZfw4`; procesy mojego serwera fixtures (:8080) i serwera strony testowej (:8081) zakończone po PID; moje pliki pobrań leżały wyłącznie w katalogach tymczasowych (w `~/Downloads` nic nie powstało). Strona testowa F-3 (`site/f3.html`) w scratchpadzie, repo bez zmian kodu.
+
+## Werdykt końcowy (po re-QA, 17aa3cf): PASS z uwagami
+Blokujące z pierwszego QA (F-1, F-2, F-3) i F-5 zamknięte w Chrome i Firefoksie; F-4 zamknięty. Pozostają niskie: F-6, F-7, F-8 + UX ujawnienia/okna zgody (backlog E2/E4/E5).

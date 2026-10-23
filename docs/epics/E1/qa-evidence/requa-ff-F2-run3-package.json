@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 2,
+  "extensionVersion": "0.2.0",
+  "source": "extension",
+  "collectedAt": "2026-10-23T07:58:15.792Z",
+  "recordingStartedAt": "2026-10-23T07:58:09.366Z",
+  "recordingStoppedReason": null,
+  "timeOrigin": 1792742289373,
+  "documents": [
+    {
+      "id": 0,
+      "url": "http://127.0.0.1:8080/basic.html",
+      "timeOrigin": 1792742289373,
+      "navigationType": "reload",
+      "recorded": true,
+      "flushed": true,
+      "current": false,
+      "counts": {
+        "consoleLogs": 2,
+        "runtimeErrors": 0,
+        "network": 0
+      },
+      "kept": {
+        "consoleLogs": 2,
+        "runtimeErrors": 0,
+        "network": 0
+      }
+    }
+  ],
+  "limits": {
+    "consoleLogs": 5000,
+    "runtimeErrors": 1000,
+    "network": 5000,
+    "entryChars": 10000
+  },
+  "truncated": {
+    "consoleLogs": false,
+    "runtimeErrors": false,
+    "network": false
+  },
+  "notes": [
+    "Recording started at 2026-10-23T07:58:09.366Z (page reloaded); earlier data is not included.",
+    "The current page was not available (it left the recorded origin or did not answer); environment, dom, performance and storage are null."
+  ],
+  "environment": null,
+  "dom": null,
+  "performance": null,
+  "storage": null,
+  "consoleLogs": [
+    {
+      "t": 22,
+      "doc": 0,
+      "level": "log",
+      "args": [
+        "basic fixture loaded"
+      ],
+      "stack": "@http://127.0.0.1:8080/basic.html:21:13"
+    },
+    {
+      "t": 1514,
+      "doc": 0,
+      "level": "log",
+      "args": [
+        "before-redirect"
+      ],
+      "stack": "o<@http://127.0.0.1:8080/basic.html line 2 > injectedScript:1:61\n@http://127.0.0.1:8080/basic.html line 2 > injectedScript:1:96\n@http://127.0.0.1:8080/basic.html line 2 > injectedScript:1:243\n@http://127.0.0.1:8080/basic.html:2:351\n@http://127.0.0.1:8080/basic.html:3:8"
+    }
+  ],
+  "runtimeErrors": [],
+  "network": []
+}

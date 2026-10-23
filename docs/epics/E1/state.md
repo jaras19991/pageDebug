@@ -120,7 +120,9 @@ ostatnia aktualizacja: 2026-10-22
   Docs: zmieniła się treść notatek i `documents[].recorded` przy bridgeError. Backlog E2/E3: timer setTimeout też monotoniczny — stop('time-limit') po uśpieniu zapada dopiero przy odpaleniu timera (rekordy już odrzucane).
 - commit poprawek H1+H2 (fd12166)
 - [x] E1-DOC1 README, INSTRUKCJA (nowy przepływ), snapshot-schema v2 zweryfikowana, CHANGELOG [Unreleased], CLAUDE.md, skille (extension-testing, mv3, snapshot-schema, pds-browser) — commit; brakujące: docs/img/krok-1..7.png
-- [~] re-TEST (pds-tester, pełny przebieg po I1/I2) ∥ docs-mini (snapshot-schema outerHTML, design D2/D4) → re-QA (F-1..F-4 Chrome+Firefox)
+- [x] re-TEST ✓ 618/618, e2e 40/40 ×3, repeat-each 120/120, 0 flaky/160; dist 158 KB; test-coverage.md zaktualizowany. Uwaga: teardown git-status daje fałszywy alarm przy równoległym docs — zawęzić do ścieżek poza docs (backlog).
+- [x] docs-mini ✓ (snapshot-schema, design D2/D4/D8/D9, README, INSTRUKCJA, CHANGELOG, skill mv3)
+- [~] re-QA F-1..F-4 (Chrome + Firefox) — start
 - Release E1: wersja **0.3.0** (F11). Docs: README cofanie dostępu (F12). E5: F6 źródła dla AMO, F7 notatka, F9, F10.
     Tester: NFR „save→Zapisano mediana z 5 ≤ 5 s” brak w T19e — dopisać w fazie Testy; `hooks-overhead.json` kasowany przez równoległe przebiegi — QA bierze z przebiegu na wyłączność.
 - [ ] E1-TEST1..3, R1, Q1, DOC1

@@ -28,6 +28,13 @@ Chromium z rozszerzeniem).
    `grep` po paczce dla wartości wrażliwych. Znaleziona → FAIL critical.
 7. **Rozmiar i czas** — rozmiar paczki, czas od *Zapisz* do pliku na dysku.
 
+## Czas — twarde reguły (E1 retro: pełne QA trwało 3 h)
+- Każda komenda Bash ma `timeout` ≤ 300000 ms; przeglądarki/serwery w tle, zamykane po PID.
+- Scenariusz, który nie da się odtworzyć w 10 min, oznacz BLOCKED z powodem i idź dalej — nie walcz z nim.
+- Firefox: jeśli orkiestrator nie prosi wprost o pełną listę, robisz **smoke** (≤ 5 scenariuszy: start → reload →
+  zapis, odmowa zgody, inna karta, strona specjalna, limit). Pełna lista tylko na wyraźne polecenie.
+- Budżet całego QA: ~60 min. Po 60 min raportujesz to, co masz, z listą niewykonanych scenariuszy.
+
 ## Zasady
 - Nie naprawiasz. Nie zmieniasz kodu ani testów. Znalezione → raport.
 - Dowód to plik, nie zdanie „sprawdziłem”. Zrzuty ekranu popupu w każdym stanie.

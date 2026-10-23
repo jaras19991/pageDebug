@@ -1,0 +1,14 @@
+path: C:/Users/jaros/AppData/Local/Temp/pds-requa/a/very/long/nested/path/for/checkout/of/the/repository/clone (104 chars), commit 17aa3cf; npm ci exit 0, npm test exit 0
+
+> page-debug-snapshot@0.2.0 test
+> vitest run
+
+
+ RUN  v5.0.5 C:/Users/jaros/AppData/Local/Temp/pds-requa/a/very/long/nested/path/for/checkout/of/the/repository/clone
+
+
+ Test Files  37 passed (37)
+      Tests  618 passed (618)
+   Start at  10:31:02
+   Duration  4.02s (tests 31%, import 29%, environment 22%, transform 17%, worker 1%)
+
