@@ -1,6 +1,7 @@
 // MAIN-world entry point (E1 D1, D3, D4), bundled into src/content/main-world.js by `npm run gen`.
 // Installs the recorder at document_start, binds the private channel to the ISOLATED bridge and
-// answers its messages: `config` (per-document gate), `collect` (current document as a JSON string),
+// answers its messages: `config` (per-document gate), `collect` (current document as a JSON string; `fullHtml`
+// only when the payload asks for it, E3 D12),
 // `stop` (time limit from the background; hooks go, buffers stay), `destroy`. At `beforeunload` and `pagehide`
 // it hands the buffers over (`flush`, vitals final) so a reload or a jump
 // to another site keeps them. F-2: Firefox drops the pagehide copy of a document left for another site,
@@ -104,12 +105,13 @@ export function bootMain({ win, doc }) {
     }
   }
 
-  function onCollect(id) {
+  function onCollect(id, payload) {
+    const fullHtml = mainTry(() => payload.options.fullHtml === true, false);
     let raw;
     try {
       // A hidden page cannot grow its metrics until it is shown again, so they count as final (AC-5.6).
       const hidden = getVisibility ? mainTry(() => apply(getVisibility, doc, []) === 'hidden', false) : false;
-      const result = { ...collectPageState({ win, doc, safeSlice }), ...rec.snapshot({ final: hidden }) };
+      const result = { ...collectPageState({ win, doc, safeSlice, fullHtml }), ...rec.snapshot({ final: hidden }) };
       if (result.docId === null || result.docId === undefined) result.docId = docId;
       raw = apply(stringify, win.JSON, [result]);
     } catch {
@@ -125,7 +127,7 @@ export function bootMain({ win, doc }) {
     onMessage: ({ type, payload, id }) => {
       if (closed) return;
       if (type === 'config') onConfig(payload);
-      else if (type === 'collect') onCollect(id);
+      else if (type === 'collect') onCollect(id, payload);
       else if (type === 'stop') rec.stop(payload && payload.reason === 'time-limit' ? 'time-limit' : 'user');
       else if (type === 'destroy') teardown();
     },

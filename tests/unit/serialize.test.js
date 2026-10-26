@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
-import { deepMerge, safeSlice, safeJson, serializeCapped } from '../../src/page/serialize.js';
+import { deepMerge, safeSlice, safeJson, serializeCapped, toPlain } from '../../src/page/serialize.js';
 
 // Moved from the E0 characterization tests (page-debug-snapshot.test.js, D13):
 // same assertions, except "same object twice", which E1 changes on purpose.
@@ -106,28 +106,42 @@ describe('safeJson (AC-6.4)', () => {
     expect(out.err.stack).toContain('boom');
   });
 
-  it('Element to summary with outerHTML ≤ 2000 + suffix', () => {
+  it('Element to summary with structure from the injected function, never outerHTML (E3-T0a)', () => {
     const el = document.createElement('div');
     el.id = 'big';
     el.className = 'a b';
-    el.textContent = 'x'.repeat(3000);
-    const fullLength = el.outerHTML.length;
+    el.textContent = 'secret text '.repeat(300);
+    const calls = [];
+    const elementStructure = (node, max) => {
+      calls.push([node, max]);
+      return { tag: 'div', children: 0 };
+    };
 
-    const out = safeJson({ el });
-    expect(Object.keys(out.el).sort()).toEqual(['className', 'id', 'outerHTML', 'tagName']);
-    expect(out.el.tagName).toBe('DIV');
-    expect(out.el.id).toBe('big');
-    expect(out.el.className).toBe('a b');
-    expect(out.el.outerHTML).toBe(
-      el.outerHTML.slice(0, 2000) + `... [truncated ${fullLength - 2000} chars]`,
-    );
+    const out = safeJson({ el }, { elementStructure });
+    expect(Object.keys(out.el).sort()).toEqual(['className', 'id', 'structure', 'tagName']);
+    expect(out.el).toEqual({ tagName: 'DIV', id: 'big', className: 'a b', structure: { tag: 'div', children: 0 } });
+    expect(calls).toEqual([[el, 2000]]);
+    expect(JSON.stringify(out)).not.toContain('secret text');
   });
 
-  it('Element outerHTML limit is a parameter', () => {
+  it('Element structure defaults to null without an injected function', () => {
     const el = document.createElement('p');
     el.textContent = 'y'.repeat(50);
-    const out = safeJson(el, { outerHtmlMax: 10 });
-    expect(out.outerHTML).toBe(el.outerHTML.slice(0, 10) + `... [truncated ${el.outerHTML.length - 10} chars]`);
+    expect(safeJson(el)).toEqual({ tagName: 'P', id: '', className: '', structure: null });
+  });
+
+  it('Element structure function that throws gives null', () => {
+    const el = document.createElement('p');
+    const out = safeJson(el, {
+      elementStructure: () => {
+        throw new Error('boom');
+      },
+    });
+    expect(out.structure).toBeNull();
+  });
+
+  it('Node that is not an Element is summarised', () => {
+    expect(safeJson({ t: document.createTextNode('secret') })).toEqual({ t: '[Node: #text]' });
   });
 
   it('cycle to [Circular]', () => {
@@ -186,6 +200,130 @@ describe('serializeCapped', () => {
     a.self = a;
     const out = serializeCapped(a, 1000);
     expect(out.value).toEqual({ f: '[Function: f]', self: '[Circular]' });
+  });
+
+  it('JSON semantics kept: toJSON, undefined, symbols, non-finite numbers, BigInt', () => {
+    const date = new Date(0);
+    const value = { date, u: undefined, s: Symbol('x'), list: [undefined, Symbol('y'), NaN, Infinity, -1.5, true, null], n: 7 };
+    const out = serializeCapped(value, 1000);
+    expect(out.value).toEqual(JSON.parse(JSON.stringify(value)));
+    expect(out.chars).toBe(JSON.stringify(value).length);
+    const big = serializeCapped({ n: 10n }, 1000);
+    expect(big.value.serializationError).toBeTypeOf('string');
+    expect(serializeCapped(undefined, 100)).toEqual({ value: null, chars: 4, truncated: false });
+  });
+
+  it('own __proto__ key stays a plain key', () => {
+    const value = JSON.parse('{"__proto__": {"polluted": 1}, "a": 1}');
+    const out = serializeCapped(value, 1000);
+    expect(JSON.stringify(out.value)).toBe(JSON.stringify(value));
+    expect(({}).polluted).toBeUndefined();
+  });
+
+  it('value at exactly maxChars is not truncated', () => {
+    const value = ['x'.repeat(10)];
+    const len = JSON.stringify(value).length;
+    expect(serializeCapped(value, len)).toEqual({ value, chars: len, truncated: false });
+    expect(serializeCapped(value, len - 1).truncated).toBe(true);
+  });
+});
+
+describe('budgeted serialization (E3-T0a, AC-6.5, AC-3.6)', () => {
+  it('array of 1e6 numbers stops after budget; chars ≤ maxChars + 64', () => {
+    const maxChars = 1000;
+    const data = Array.from({ length: 1e6 }, (_, i) => i);
+    let reads = 0;
+    const tracked = new Proxy(data, {
+      get(target, prop, receiver) {
+        if (typeof prop === 'string' && /^\d+$/.test(prop)) reads++;
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const out = serializeCapped(tracked, maxChars);
+    expect(out.truncated).toBe(true);
+    expect(out.chars).toBeLessThanOrEqual(maxChars + 64);
+    expect(out.value.preview).toBe(JSON.stringify(data).slice(0, maxChars));
+    expect(reads).toBeLessThanOrEqual(maxChars);
+  });
+
+  it('single 5 MB string is sliced before copy', () => {
+    const maxChars = 40000;
+    const huge = 'x'.repeat(5 * 1024 * 1024);
+    const out = serializeCapped([huge], maxChars);
+    expect(out.truncated).toBe(true);
+    expect(out.value.preview).toBe('["' + 'x'.repeat(maxChars - 2));
+    expect(out.chars).toBeLessThanOrEqual(maxChars + 64);
+  });
+
+  it('nested objects past the budget are not walked', () => {
+    let touched = 0;
+    const items = Array.from({ length: 10000 }, (_, i) => ({
+      get v() {
+        touched++;
+        return 'v'.repeat(20) + i;
+      },
+    }));
+    const out = serializeCapped({ items }, 2000);
+    expect(out.truncated).toBe(true);
+    expect(touched).toBeLessThan(200);
+  });
+
+  it('page overriding JSON.stringify/JSON.parse after module load does not change result', () => {
+    const value = ['hello', { n: 1, list: [1, 2] }];
+    const expected = serializeCapped(value, 1000);
+    const expectedCut = serializeCapped(['z'.repeat(500)], 100);
+    const saved = {
+      stringify: JSON.stringify,
+      parse: JSON.parse,
+      keys: Object.keys,
+      isArray: Array.isArray,
+      apply: Reflect.apply,
+      toString: Object.prototype.toString,
+      slice: String.prototype.slice,
+    };
+    let got;
+    let gotCut;
+    try {
+      JSON.stringify = () => '"polyfilled"';
+      JSON.parse = () => ({ polyfilled: true });
+      Object.keys = () => [];
+      Array.isArray = () => false;
+      Reflect.apply = () => 'hijacked';
+      Object.prototype.toString = () => '[object Error]';
+      String.prototype.slice = () => 'sliced';
+      got = serializeCapped(value, 1000);
+      gotCut = serializeCapped(['z'.repeat(500)], 100);
+    } finally {
+      JSON.stringify = saved.stringify;
+      JSON.parse = saved.parse;
+      Object.keys = saved.keys;
+      Array.isArray = saved.isArray;
+      Reflect.apply = saved.apply;
+      Object.prototype.toString = saved.toString;
+      String.prototype.slice = saved.slice;
+    }
+    expect(got).toEqual(expected);
+    expect(got.value).toEqual(['hello', { n: 1, list: [1, 2] }]);
+    expect(gotCut).toEqual(expectedCut);
+  });
+
+  it('Element in args has structure from injected function and no outerHTML', () => {
+    const el = document.createElement('input');
+    el.id = 'pwd';
+    el.setAttribute('value', 'hunter2');
+    const out = serializeCapped(['clicked', el], 40000, { elementStructure: () => ({ tag: 'input' }) });
+    expect(out.value).toEqual(['clicked', { tagName: 'INPUT', id: 'pwd', className: '', structure: { tag: 'input' } }]);
+    expect(JSON.stringify(out.value)).not.toContain('outerHTML');
+    expect(JSON.stringify(out.value)).not.toContain('hunter2');
+  });
+
+  it('toPlain returns a plain copy and reports exhaustion', () => {
+    const src = { a: [1, { b: 'c' }] };
+    const res = toPlain(src);
+    expect(res).toEqual({ value: src, exhausted: false });
+    expect(res.value).not.toBe(src);
+    expect(res.value.a).not.toBe(src.a);
+    expect(toPlain({ s: 'x'.repeat(100) }, { maxChars: 10 }).exhausted).toBe(true);
   });
 });
 

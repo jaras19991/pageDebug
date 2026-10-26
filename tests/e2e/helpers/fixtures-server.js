@@ -8,6 +8,7 @@
 //   /seq/<name>        200 → 500 → 404 → 200 … per name; /seq/<name>?reset → 204, starts over
 //   /stream/500        500 text/plain that never ends (a chunk every 100 ms until the client goes away)
 //   /echo/headers?id=  stores the request headers under id; GET /echo/last?id= returns them (AC-4.9)
+//   /api/login         401 JSON without any part of the request (E3-TEST3: the secrets are only in the request)
 //   /vendor/web-vitals*.js   web-vitals from node_modules, the metrics oracle for e2e only (D7)
 //   any static file    ?delay=<ms> holds the response (e.g. /img/hero.png?delay=1500 for LCP)
 // The same server answers on http://localhost:<port> as a second origin (`otherOrigin`).
@@ -215,6 +216,10 @@ function createHandler(root) {
       return send(res, 500, JSON.stringify({ error: 'forced failure' }), {
         'Content-Type': MIME['.json'],
       });
+    }
+    if (pathname === '/api/login') {
+      req.resume(); // drain the body: it carries the reporter's e-mail and password (AC-3.5)
+      return json(res, 401, { error: 'invalid credentials' });
     }
     if (pathname === '/api/ok') {
       return send(res, 200, JSON.stringify({ ok: true }), { 'Content-Type': MIME['.json'] });

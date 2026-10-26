@@ -227,6 +227,28 @@ describe('session store: documents', () => {
     expect(await store.getRec()).toEqual(REC);
   });
 
+  it('removeDocs removes only the given documents (E3-T0b, AC-6.5)', async () => {
+    const { chrome, fake } = createFakeChrome();
+    const store = createStore(chrome.storage.session);
+    await store.updateRec(() => REC);
+    for (const id of [1, 2, 3]) await store.putDoc(id, docData(1));
+    await store.removeDocs([1, 3]);
+    expect((await store.listDocs()).map((d) => d.id)).toEqual([2]);
+    expect(fake.sessionData.has('pds:doc:1')).toBe(false);
+    expect(await store.getRec()).toEqual(REC);
+  });
+
+  it('removeDocs tolerates missing keys and empty input', async () => {
+    const { chrome, calls } = createFakeChrome();
+    const store = createStore(chrome.storage.session);
+    await store.putDoc(5, docData(1));
+    await expect(store.removeDocs([7, 8])).resolves.toBeUndefined();
+    await expect(store.removeDocs([])).resolves.toBeUndefined();
+    await expect(store.removeDocs(undefined)).resolves.toBeUndefined();
+    expect((await store.listDocs()).map((d) => d.id)).toEqual([5]);
+    expect(calls.filter((c) => c.name === 'storage.session.remove')).toHaveLength(1);
+  });
+
   it('putDoc with the same id overwrites (bfcache re-flush)', async () => {
     const { chrome } = createFakeChrome();
     const store = createStore(chrome.storage.session);

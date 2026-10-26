@@ -1,12 +1,14 @@
 // E2-TEST5 (part 1): screenshot at save, popup disclosure and layout, save time and the real package against the schema
 // (AC-6.1, 6.2, 6.3, 6.6, 1.1, 1.3, 1.5, 7.1, 7.2). The live otherOrigin of the popup is in popup-live.spec.js.
+// E3-TEST0: the package is a v4 zip; the image is the screenshot.jpg entry named by screenshots[].file.
 // Dimensions are compared with innerWidth × innerHeight × devicePixelRatio of the real window, never with an emulated
 // deviceScaleFactor: captureVisibleTab reads the real surface (spike E2-T0).
 import { test, expect } from '@playwright/test';
 import { MESSAGES } from '../../src/popup/messages.js';
-import { assertValidSnapshot, REQUIRED_KEYS } from '../helpers/snapshot-validator.js';
+import { assertValidSnapshot, REQUIRED_KEYS, SCREENSHOT_FILE, ZIP_ENTRIES } from '../helpers/snapshot-validator.js';
 import { startFixtureServer } from './helpers/fixtures-server.js';
 import { decodeImage } from './helpers/image.js';
+import { countDownloads } from './helpers/download.js';
 import { launchWithExtension, openPopupFor } from './helpers/launch.js';
 import { saveRecording, startRecording } from './helpers/recording.js';
 
@@ -48,22 +50,21 @@ async function saveScreenshotPage(page) {
 
 test('save → exactly one screenshot, reason save, jpeg; decoded size = innerWidth × innerHeight × dpr ±1 (AC-6.1, 6.6)', async () => {
   await withTab(async (page) => {
-    const { json, window } = await saveScreenshotPage(page);
+    const { json, files, entries, window } = await saveScreenshotPage(page);
     expect(window.dpr).toBe(1); // no emulated deviceScaleFactor in this harness
 
     expect(json.screenshots).toHaveLength(1);
     const [shot] = json.screenshots;
-    expect(shot).toMatchObject({ reason: 'save', mime: 'image/jpeg', doc: 0 });
-    expect(Object.keys(json.attachments)).toEqual([shot.attachment]);
-    const dataUrl = json.attachments[shot.attachment];
-    expect(dataUrl.startsWith('data:image/jpeg;base64,')).toBe(true);
-    const bytes = Buffer.from(dataUrl.slice('data:image/jpeg;base64,'.length), 'base64');
+    expect(shot).toMatchObject({ reason: 'save', mime: 'image/jpeg', doc: 0, file: SCREENSHOT_FILE });
+    expect('attachments' in json).toBe(false);
+    expect(entries).toEqual([...ZIP_ENTRIES]);
+    const bytes = files[shot.file];
     expect([...bytes.subarray(0, 3)]).toEqual([0xff, 0xd8, 0xff]); // JPEG magic
     expect(shot.bytes).toBe(bytes.length);
     expect(shot.bytes).toBeLessThanOrEqual(json.limits.screenshotBytes);
     expect(json.overview.screenshot).toBe(true);
 
-    const decoded = await decodeImage(ext.context, dataUrl);
+    const decoded = await decodeImage(ext.context, bytes);
     expect(decoded.width).toBe(shot.width);
     expect(decoded.height).toBe(shot.height);
     expect(Math.abs(decoded.width - Math.round(window.width * window.dpr))).toBeLessThanOrEqual(1);
@@ -73,8 +74,8 @@ test('save → exactly one screenshot, reason save, jpeg; decoded size = innerWi
 
 test('the 4 corners have the fixture background colour: the popup is not in the image (AC-6.2)', async () => {
   await withTab(async (page) => {
-    const { json } = await saveScreenshotPage(page);
-    const decoded = await decodeImage(ext.context, json.attachments[json.screenshots[0].attachment]);
+    const { json, files } = await saveScreenshotPage(page);
+    const decoded = await decodeImage(ext.context, files[json.screenshots[0].file]);
     for (const [corner, rgb] of Object.entries(decoded.corners)) {
       for (let c = 0; c < 3; c++) {
         expect(Math.abs(rgb[c] - BACKGROUND[c]), `${corner} ${JSON.stringify(rgb)} vs ${JSON.stringify(BACKGROUND)}`).toBeLessThanOrEqual(JPEG_TOLERANCE);
@@ -88,11 +89,13 @@ test('tab on localhost at save → no screenshot, a note says why, the rest is s
     await page.goto(`${server.url}/basic.html`);
     await startRecording(page);
     await page.goto(`${server.otherOrigin}/screenshot.html`);
-    const { json } = await saveRecording(page);
+    // Fail-closed (review N6): the tab left the recorded origin, frameCheck fails and the switch is off with a note; the
+    // reporter turns it on so that the "outside the recorded origin" path of the save is what is tested.
+    const { json, entries } = await saveRecording(page, { forceScreenshot: true });
     assertValidSnapshot(json);
 
     expect(json.screenshots).toEqual([]);
-    expect(json.attachments).toEqual({});
+    expect(entries).toEqual(ZIP_ENTRIES.slice(0, 2));
     expect(json.overview.screenshot).toBe(false);
     expect(json.notes.some((n) => /screenshot/i.test(n) && /outside/i.test(n)), JSON.stringify(json.notes)).toBe(true);
     expect(JSON.stringify(json)).not.toContain('data:image');
@@ -162,7 +165,7 @@ test('"Zapisano…" and "Nagrywaj" are fully visible without scrolling in a 360�
   try {
     await page.setViewportSize({ width: 360, height: 600 });
     await page.goto(`chrome-extension://${ext.extensionId}/popup/popup.html`);
-    const saved = MESSAGES.saved('page-debug-snapshot-example.com-2026-10-23T12-34-56.json');
+    const saved = MESSAGES.saved('snapshot-example.com-20261023-123456.zip');
     const layout = await page.evaluate((text) => {
       const w = globalThis;
       const doc = w.document;
@@ -210,11 +213,40 @@ test('a real package passes the validator and its keys come in the documented or
   await withTab(async (page) => {
     const { json } = await saveScreenshotPage(page);
     assertValidSnapshot(json);
-    expect(json.schemaVersion).toBe(3);
+    expect(json.schemaVersion).toBe(4);
     expect(json.source).toBe('extension');
     expect(Object.keys(json)).toEqual([...REQUIRED_KEYS]);
-    // attachments last: nothing binary between the text sections
-    expect(Object.keys(json).at(-1)).toBe('attachments');
+    // no binary in snapshot.json from v4: the image is a zip entry
+    expect(JSON.stringify(json)).not.toContain('data:image');
     expect(Object.keys(json.overview)).toEqual(['runtimeErrors', 'consoleErrors', 'failedRequests', 'steps', 'poorVitals', 'screenshot']);
+  });
+});
+
+// E3-TEST0 (AC-1.1): one save = one file, named after the recorded host and the local time of the save.
+test('saved file name matches snapshot-<host>-<YYYYMMDD-HHMMSS>.zip; exactly one download (downloads.search)', async () => {
+  await withTab(async (page) => {
+    await page.goto(`${server.url}/basic.html`);
+    await startRecording(page);
+    const counter = await countDownloads(page);
+    const sw = await ext.serviceWorker();
+    const startedAt = new Date().toISOString();
+    const { fileName, statusText } = await saveRecording(page);
+
+    const host = new URL(server.url).hostname;
+    const match = /^snapshot-(.+)-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?: \(\d+\))?\.zip$/.exec(fileName);
+    expect(match, fileName).not.toBeNull(); // ` (1)`: Chrome's suffix when an earlier save got the same second
+    expect(match[1]).toBe(host);
+    const [, , y, mo, d, h, mi, sec] = match.map(Number);
+    const stamp = new Date(y, mo - 1, d, h, mi, sec).getTime();
+    expect(Math.abs(stamp - Date.now()), fileName).toBeLessThan(60_000);
+    expect(statusText).toBe(MESSAGES.saved(fileName));
+
+    expect(await counter.names()).toEqual([fileName]);
+    const items = await sw.evaluate(
+      async (since) => (await globalThis.chrome.downloads.search({ startedAfter: since })).map((i) => ({ name: i.filename, state: i.state })),
+      startedAt,
+    );
+    expect(items, JSON.stringify(items)).toHaveLength(1);
+    expect(items[0].name.endsWith(fileName)).toBe(true);
   });
 });

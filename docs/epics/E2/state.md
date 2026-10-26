@@ -88,4 +88,6 @@ zip: dist/page-debug-snapshot-chrome-0.4.0.zip, dist/page-debug-snapshot-firefox
 - 2026-10-23 release → done (v0.4.0; unit 994, lint 0, gen --check 0, e2e 73/73; dist/page-debug-snapshot-{chrome,firefox}-0.4.0.zip; notatka docs/releases/0.4.0.md)
 
 ## Retro
-- …
+- **Środowisko zjadło najwięcej czasu, nie kod:** `node_modules` z Windows + sandbox WSL → agenci wychodzili poza sandbox (prompty). Naprawione ręcznym dołożeniem linuksowych binarek (unit/lint w sandboxie); e2e nadal wymaga Windows node (brak libnss3/libnspr4/libasound2). Na start epiku: sprawdzić środowisko zanim ruszą implementerzy.
+- **Spike T0 na początku grupy A się opłacił:** usunął PB-1 (FF 158 ma responseStatus), potwierdził zrzut w obu przeglądarkach i wyłapał cofanie activeTab w FF — bez niego T6b/T3b robiłyby zgadywanie.
+- **Walidator schematu (T10b) jako wspólny kontrakt unit+e2e znalazł 3 realne defekty** (gołe 0 dla no-cors, brak notatek) zanim dotarło do QA; podobnie warto robić od początku każdego epiku zmieniającego paczkę. Review i QA złapały problemy prywatności (URL w krokach, dane na zrzucie), których testy nie miały — utrzymać równoległe review+QA.

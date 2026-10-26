@@ -2,20 +2,24 @@
 // never reach this dictionary — they go to the popup's console.error for developers only.
 // Static texts (disclosure, notices) are duplicated in popup.html; a unit test keeps them equal.
 export const MESSAGES = Object.freeze({
-  // Ready state: what lands in the file, shown above the "Nagrywaj" button (E1 AC-1.1, E2 AC-1.1:
-  // steps, server responses on errors and the screenshot). QA F-3: the screenshot item says plainly that typed data
-  // is on the image (field masking on the image comes in E3).
+  // Ready state: what lands in the file, shown above the "Nagrywaj" button (E1 AC-1.1, E2 AC-1.1, E3 AC-1.3):
+  // after E3 passwords and tokens are removed, cookie values hashed, and this page's form fields covered on the screenshot;
+  // fields inside embedded frames of other sites are not covered (gate PB-1 = B, review F4 / store S1).
   disclosureTitle: 'Do pliku trafią:',
   disclosureItems: Object.freeze([
     'adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu',
     'kroki: co klikasz i na jakich stronach — bez treści, które wpisujesz',
     'logi konsoli i błędy',
-    'zapytania sieciowe strony: adresy, nagłówki i wysyłana treść (mogą zawierać dane logowania) oraz adresy wczytanych plików',
+    'zapytania sieciowe strony: adresy, nagłówki i wysyłana treść oraz adresy wczytanych plików',
     'fragmenty odpowiedzi serwera, gdy coś się nie uda',
-    'treść i struktura strony, w tym wartości wpisane w formularze (bez haseł i pól ukrytych)',
-    'zrzut ekranu w chwili zapisu — widać na nim wszystko, co jest na ekranie, także dane wpisane w pola (np. e-mail, numer karty); hasła są ukryte',
-    'ciasteczka i dane zapisane przez stronę (mogą zawierać dane logowania)',
+    'struktura strony bez tekstów i bez wartości wpisanych w formularze',
+    'zrzut ekranu w chwili zapisu (możesz go wyłączyć) — pola formularzy tej strony są na nim zakryte, ale formularze osadzone z innych serwisów (np. płatność, logowanie) mogą być widoczne',
+    'nazwy i rozmiary ciasteczek oraz dane zapisane przez stronę',
   ]),
+  // The only text allowed to say "tokeny" (AC-1.3): what is removed and what the file may still hold.
+  // Cookie values leave a short digest, not nothing (store review S4).
+  privacyNote:
+    'Hasła i tokeny są usuwane z pliku automatycznie, a wartości ciasteczek zastępowane krótkim skrótem. Plik nadal może zawierać adresy odwiedzanych stron i treść logów.',
   noUpload: 'Plik zostaje na Twoim dysku, rozszerzenie niczego nie wysyła.',
   // Store review F2: clicking "Nagrywaj" is the consent; the file may hold personal data.
   consentNotice:
@@ -33,9 +37,18 @@ export const MESSAGES = Object.freeze({
     'Ta karta pokazuje teraz inną stronę. Nagranie obejmuje tylko stronę, na której je rozpoczęto — możesz zapisać to, co zebrano.',
   stoppedByLimit: 'Nagrywanie zatrzymane po 10 minutach — zapisz paczkę.',
 
-  // Saving.
+  // Saving. The screenshot checkbox above "Zapisz paczkę" (E3 D6): default set on every popup open
+  // (off until the frame check says 0 frames, review N6), never remembered.
+  includeScreenshot: 'Dołącz zrzut ekranu',
+  // Under the checkbox when the page embeds frames of other sites: they are never masked, so the default is off (store S1).
+  screenshotFramesNote: 'Na stronie są okienka innych serwisów (np. płatność) — zrzut wyłączony. Możesz go włączyć.',
+  // Review N6 (fail-closed): the frame check got no usable answer, so the screenshot starts off.
+  screenshotCheckFailedNote: 'Nie udało się sprawdzić strony — zrzut wyłączony. Możesz go włączyć.',
   saving: 'Zapisuję paczkę…',
   saved: (fileName) => `Zapisano plik ${fileName} — znajdziesz go w pobranych plikach.`,
+  // Appended to "saved" when the file has no screenshot (QA F-5): turned off, or not taken / not masked.
+  screenshotOffSaved: 'Plik nie zawiera zrzutu ekranu.',
+  screenshotFailedSaved: 'Plik nie zawiera zrzutu ekranu — nie udało się go bezpiecznie wykonać.',
   saveCancelled:
     'Zapis został przerwany lub anulowany. Nagrywanie trwa — kliknij „Zapisz paczkę” ponownie.',
   downloadFailed:
@@ -88,12 +101,16 @@ const OUTCOME_KINDS = [
   'failed',
 ];
 
-// Maps an outcome { kind, fileName? } to a reporter-facing text. Anything unexpected
+// The background's `screenshot` of a collect answer → the sentence after "Zapisano…"; 'included' or unknown → none.
+const SCREENSHOT_SUFFIX = { off: 'screenshotOffSaved', failed: 'screenshotFailedSaved' };
+
+// Maps an outcome { kind, fileName?, screenshot? } to a reporter-facing text. Anything unexpected
 // (unknown kind, saved without a file name) is reported as a plain failure.
 export function messageFor(outcome) {
   const kind = outcome && outcome.kind;
   if (kind === 'saved' && typeof outcome.fileName === 'string' && outcome.fileName) {
-    return MESSAGES.saved(outcome.fileName);
+    const suffix = Object.hasOwn(SCREENSHOT_SUFFIX, outcome.screenshot) ? MESSAGES[SCREENSHOT_SUFFIX[outcome.screenshot]] : '';
+    return suffix ? `${MESSAGES.saved(outcome.fileName)} ${suffix}` : MESSAGES.saved(outcome.fileName);
   }
   return OUTCOME_KINDS.includes(kind) ? MESSAGES[kind] : MESSAGES.failed;
 }

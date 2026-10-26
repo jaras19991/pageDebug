@@ -1,0 +1,841 @@
+{
+ "comment": "E3-T1 corpus (AC-3.1). All values are fake. Neither a secret nor any 8-character fragment of it may appear in the masked text; `rule` is the expected marker rule; `via: \"url\"` items go through maskUrl, the rest through maskText with email and phone enabled.",
+ "items": [
+  {
+   "id": "in2-jsessionid",
+   "rule": "key-session",
+   "text": "JSESSIONID=8F3A2B1C9D7E6F5A4B3C2D1E0F9A8B7C; theme=dark",
+   "secrets": [
+    "8F3A2B1C9D7E6F5A4B3C2D1E0F9A8B7C"
+   ]
+  },
+  {
+   "id": "in2-jsessionid-cookie-header",
+   "rule": "key-cookie",
+   "text": "Cookie: theme=dark; JSESSIONID=8F3A2B1C9D7E6F5A; lang=pl",
+   "secrets": [
+    "8F3A2B1C9D7E6F5A"
+   ]
+  },
+  {
+   "id": "in2-phpsessid",
+   "rule": "key-session",
+   "text": "request PHPSESSID=q2v9k1m3n5b7c8x0z4l6j8h0g2 sent",
+   "secrets": [
+    "q2v9k1m3n5b7c8x0z4l6j8h0g2"
+   ]
+  },
+  {
+   "id": "in2-aspnet-sessionid",
+   "rule": "key-session",
+   "text": "ASP.NET_SessionId=xk4mz2qv0wlf3n1rbc5yhd0e",
+   "secrets": [
+    "xk4mz2qv0wlf3n1rbc5yhd0e"
+   ]
+  },
+  {
+   "id": "in2-basic-text",
+   "rule": "basic",
+   "text": "login failed for Basic dXNlcjpTM2NyZXRQYXNz",
+   "secrets": [
+    "dXNlcjpTM2NyZXRQYXNz"
+   ]
+  },
+  {
+   "id": "in2-basic-proxy-header",
+   "rule": "key-authorization",
+   "text": "Proxy-Authorization: Basic YWxhZGRpbjpvcGVuc2VzYW1l",
+   "secrets": [
+    "YWxhZGRpbjpvcGVuc2VzYW1l"
+   ]
+  },
+  {
+   "id": "in2-xml-token",
+   "rule": "key-token",
+   "text": "<auth><token>a8f5f167f44f4964e6c998dee827110c</token></auth>",
+   "secrets": [
+    "a8f5f167f44f4964e6c998dee827110c"
+   ]
+  },
+  {
+   "id": "in2-xml-ns-password",
+   "rule": "key-password",
+   "text": "<soap:Body><ns:password>Zx9!qwerty77</ns:password></soap:Body>",
+   "secrets": [
+    "Zx9!qwerty77"
+   ]
+  },
+  {
+   "id": "in2-colon-password",
+   "rule": "key-password",
+   "text": "password: Hunter2Secret!\nnext line stays",
+   "secrets": [
+    "Hunter2Secret!"
+   ]
+  },
+  {
+   "id": "in2-colon-js-object",
+   "rule": "key-token",
+   "text": "{user: 'jan', token: 'tk-91827364', ok: true}",
+   "secrets": [
+    "tk-91827364"
+   ]
+  },
+  {
+   "id": "in2-json-pin-number",
+   "rule": "key-pin",
+   "text": "{\"pin\":1234,\"user\":\"jan\"}",
+   "secrets": [
+    "1234"
+   ]
+  },
+  {
+   "id": "in2-json-otp-spaced",
+   "rule": "key-otp",
+   "text": "{\"otp\" : 482913, \"remember\": true}",
+   "secrets": [
+    "482913"
+   ]
+  },
+  {
+   "id": "in2-json-nested-number",
+   "rule": "key-pin",
+   "text": "{\"card\":{\"cvv_pin\":9876}}",
+   "secrets": [
+    "9876"
+   ]
+  },
+  {
+   "id": "key-nested-password",
+   "rule": "key-password",
+   "text": "{\"user\":{\"profile\":{\"password\":\"p@ss w0rd!\"}}}",
+   "secrets": [
+    "p@ss w0rd!"
+   ]
+  },
+  {
+   "id": "key-escaped-secret",
+   "rule": "key-secret",
+   "text": "{\"client_secret\":\"a\\\"bc\\\"def-ghi\"}",
+   "secrets": [
+    "def-ghi"
+   ]
+  },
+  {
+   "id": "key-form-body",
+   "rule": "key-password",
+   "text": "username=jan&password=Tajne%21Haslo99&remember=1",
+   "secrets": [
+    "Tajne%21Haslo99"
+   ]
+  },
+  {
+   "id": "key-refresh-token-text",
+   "rule": "key-token",
+   "text": "retry with refresh_token=rt_77aa88bb99cc in body",
+   "secrets": [
+    "rt_77aa88bb99cc"
+   ]
+  },
+  {
+   "id": "key-signature-json",
+   "rule": "key-signature",
+   "text": "{\"signature\":\"c2lnbmF0dXJlLXZhbHVl\",\"alg\":\"HS256\"}",
+   "secrets": [
+    "c2lnbmF0dXJlLXZhbHVl"
+   ]
+  },
+  {
+   "id": "key-data-token-attr",
+   "rule": "key-token",
+   "text": "<div data-token=\"tk_8f2k1m9x\" class=\"box\"></div>",
+   "secrets": [
+    "tk_8f2k1m9x"
+   ]
+  },
+  {
+   "id": "key-data-csrf-attr-escaped",
+   "rule": "key-csrf",
+   "text": "{\"html\":\"<form data-csrf=\\\"Kq9zXw7vUt5s\\\">\"}",
+   "secrets": [
+    "Kq9zXw7vUt5s"
+   ]
+  },
+  {
+   "id": "key-x-api-key-header",
+   "rule": "key-key",
+   "text": "x-api-key: 9f8e7d6c5b4a3210",
+   "secrets": [
+    "9f8e7d6c5b4a3210"
+   ]
+  },
+  {
+   "id": "key-x-auth-token-header",
+   "rule": "key-token",
+   "text": "X-Auth-Token: f00dbabe-1234-feed",
+   "secrets": [
+    "f00dbabe-1234-feed"
+   ]
+  },
+  {
+   "id": "key-set-cookie-header",
+   "rule": "key-cookie",
+   "text": "Set-Cookie: sid=abc123xyz789; Path=/; HttpOnly",
+   "secrets": [
+    "abc123xyz789"
+   ]
+  },
+  {
+   "id": "key-aws-access-key-id",
+   "rule": "key-key",
+   "text": "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE",
+   "secrets": [
+    "AKIAIOSFODNN7EXAMPLE"
+   ]
+  },
+  {
+   "id": "key-apikey-camel",
+   "rule": "key-api_key",
+   "text": "{\"apiKey\":\"sk_test_51HxYzAbCdEfGhIjKlMnOpQrStUvWx\"}",
+   "secrets": [
+    "sk_test_51HxYzAbCdEfGhIjKlMnOpQrStUvWx"
+   ]
+  },
+  {
+   "id": "jwt-bare",
+   "rule": "jwt",
+   "text": "token rejected eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJGQUtFLXVzZXItNDIifQ.U2lnbmF0dXJlRmFrZTAxMjM0NTY3ODk at gateway",
+   "secrets": [
+    "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJGQUtFLXVzZXItNDIifQ.U2lnbmF0dXJlRmFrZTAxMjM0NTY3ODk"
+   ]
+  },
+  {
+   "id": "jwt-json-other-key",
+   "rule": "jwt",
+   "text": "{\"note\":\"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJGQUtFLXVzZXItNDIifQ.U2lnbmF0dXJlRmFrZTAxMjM0NTY3ODk\"}",
+   "secrets": [
+    "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJGQUtFLXVzZXItNDIifQ.U2lnbmF0dXJlRmFrZTAxMjM0NTY3ODk"
+   ]
+  },
+  {
+   "id": "jwt-in-stack-url",
+   "rule": "key-token",
+   "text": "Error: 401\n    at load (https://app.example.com/main.js?token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJGQUtFLXVzZXItNDIifQ.U2lnbmF0dXJlRmFrZTAxMjM0NTY3ODk:10:5)",
+   "secrets": [
+    "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJGQUtFLXVzZXItNDIifQ.U2lnbmF0dXJlRmFrZTAxMjM0NTY3ODk"
+   ]
+  },
+  {
+   "id": "bearer-text",
+   "rule": "bearer",
+   "text": "fetch failed with Bearer ya29.a0AfH6SMBx3kQmZ7pLwT9vR2nY5cE8uJ1o",
+   "secrets": [
+    "ya29.a0AfH6SMBx3kQmZ7pLwT9vR2nY5cE8uJ1o"
+   ]
+  },
+  {
+   "id": "bearer-header-colon",
+   "rule": "key-authorization",
+   "text": "Authorization: Bearer FAKEtoken0123456789abcdefXYZ",
+   "secrets": [
+    "FAKEtoken0123456789abcdefXYZ"
+   ]
+  },
+  {
+   "id": "bearer-in-json-headers",
+   "rule": "key-authorization",
+   "text": "{\"headers\":{\"Authorization\":\"Bearer abcDEF0123456789ghiJKL\"}}",
+   "secrets": [
+    "abcDEF0123456789ghiJKL"
+   ]
+  },
+  {
+   "id": "long-secret-aws-secret",
+   "rule": "long-secret",
+   "text": "aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+   "secrets": [
+    "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+   ]
+  },
+  {
+   "id": "long-secret-stripe-live",
+   "rule": "long-secret",
+   "text": "stripe ready with sk_live_4eC39HqLyjWDarjtT1zdp7dc loaded",
+   "secrets": [
+    "sk_live_4eC39HqLyjWDarjtT1zdp7dc"
+   ]
+  },
+  {
+   "id": "long-secret-github",
+   "rule": "long-secret",
+   "text": "using ghp_16C7e42F292c6912E7710c838347Ae178B4a for clone",
+   "secrets": [
+    "ghp_16C7e42F292c6912E7710c838347Ae178B4a"
+   ]
+  },
+  {
+   "id": "long-secret-google",
+   "rule": "long-secret",
+   "text": "maps loaded AIzaSyD-9tSrke72PouQMnMX-a7eZSW0jkFMBWY",
+   "secrets": [
+    "AIzaSyD-9tSrke72PouQMnMX-a7eZSW0jkFMBWY"
+   ]
+  },
+  {
+   "id": "long-secret-slack",
+   "rule": "long-secret",
+   "text": "webhook xoxb-1234567890-1234567890123-AbCdEfGhIjKlMnOpQrStUvWx",
+   "secrets": [
+    "AbCdEfGhIjKlMnOpQrStUvWx"
+   ]
+  },
+  {
+   "id": "long-secret-private-key",
+   "rule": "long-secret",
+   "text": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7\n-----END PRIVATE KEY-----",
+   "secrets": [
+    "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7"
+   ]
+  },
+  {
+   "id": "card-visa-spaces",
+   "rule": "card",
+   "text": "Karta: 4111 1111 1111 1111 ważna do 12/27",
+   "secrets": [
+    "4111 1111 1111 1111",
+    "4111111111111111"
+   ]
+  },
+  {
+   "id": "card-mc-dashes",
+   "rule": "card",
+   "text": "nr 5555-5555-5555-4444",
+   "secrets": [
+    "5555-5555-5555-4444"
+   ]
+  },
+  {
+   "id": "card-amex",
+   "rule": "card",
+   "text": "Amex 3782 822463 10005 declined",
+   "secrets": [
+    "3782 822463 10005"
+   ]
+  },
+  {
+   "id": "card-discover-json",
+   "rule": "card",
+   "text": "{\"number\":\"6011111111111117\"}",
+   "secrets": [
+    "6011111111111117"
+   ]
+  },
+  {
+   "id": "card-mc-2series",
+   "rule": "card",
+   "text": "charged 2223000000000007 for 19,99 zł",
+   "secrets": [
+    "2223000000000007"
+   ]
+  },
+  {
+   "id": "card-followed-by-digits",
+   "rule": "card",
+   "text": "pan 4111 1111 1111 1111 22",
+   "secrets": [
+    "4111 1111 1111 1111"
+   ]
+  },
+  {
+   "id": "iban-pl",
+   "rule": "iban",
+   "text": "przelew na PL61109010140000071219812874",
+   "secrets": [
+    "PL61109010140000071219812874",
+    "109010140000071219812874"
+   ]
+  },
+  {
+   "id": "iban-pl-spaced",
+   "rule": "iban",
+   "text": "konto PL61 1090 1014 0000 0712 1981 2874 OK",
+   "secrets": [
+    "1090 1014 0000 0712 1981 2874"
+   ]
+  },
+  {
+   "id": "iban-de",
+   "rule": "iban",
+   "text": "{\"account\":\"DE89370400440532013000\"}",
+   "secrets": [
+    "DE89370400440532013000"
+   ]
+  },
+  {
+   "id": "iban-gb",
+   "rule": "iban",
+   "text": "GB29NWBK60161331926819 sent",
+   "secrets": [
+    "GB29NWBK60161331926819"
+   ]
+  },
+  {
+   "id": "pesel-text",
+   "rule": "pesel",
+   "text": "PESEL 85011501232 klienta",
+   "secrets": [
+    "85011501232"
+   ]
+  },
+  {
+   "id": "pesel-2000s-json",
+   "rule": "pesel",
+   "text": "{\"nr\":\"02213012348\"}",
+   "secrets": [
+    "02213012348"
+   ]
+  },
+  {
+   "id": "url-access-token-query",
+   "rule": "key-token",
+   "via": "url",
+   "text": "https://api.example.com/v1/me?access_token=ya29A0ARrdaM9kQ2zz&format=json",
+   "secrets": [
+    "ya29A0ARrdaM9kQ2zz"
+   ]
+  },
+  {
+   "id": "url-oauth-fragment",
+   "rule": "url-fragment",
+   "via": "url",
+   "text": "https://app.example.com/callback#access_token=SlAV32hkKG81aa&token_type=bearer&state=xyz123abc",
+   "secrets": [
+    "SlAV32hkKG81aa",
+    "xyz123abc"
+   ]
+  },
+  {
+   "id": "url-fragment-jwt",
+   "rule": "url-fragment",
+   "via": "url",
+   "text": "https://app.example.com/#/login/eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJGQUtFLXVzZXItNDIifQ.U2lnbmF0dXJlRmFrZTAxMjM0NTY3ODk",
+   "secrets": [
+    "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJGQUtFLXVzZXItNDIifQ.U2lnbmF0dXJlRmFrZTAxMjM0NTY3ODk"
+   ]
+  },
+  {
+   "id": "url-credentials",
+   "rule": "url-credentials",
+   "via": "url",
+   "text": "https://admin:S3cr3tP4ss@db.example.com/admin",
+   "secrets": [
+    "admin:S3cr3tP4ss",
+    "S3cr3tP4ss"
+   ]
+  },
+  {
+   "id": "url-jsessionid-path",
+   "rule": "key-session",
+   "via": "url",
+   "text": "https://shop.example.com/cart;jsessionid=0A1B2C3D4E5F6A7B?x=1",
+   "secrets": [
+    "0A1B2C3D4E5F6A7B"
+   ]
+  },
+  {
+   "id": "url-bracket-key",
+   "rule": "key-password",
+   "via": "url",
+   "text": "https://x.example.com/login?user[password]=Tajne123&user[name]=jan",
+   "secrets": [
+    "Tajne123"
+   ]
+  },
+  {
+   "id": "url-email-query",
+   "rule": "email",
+   "via": "url",
+   "text": "https://sklep.test.pl/newsletter?email=jan.kowalski@example.com&src=footer",
+   "secrets": [
+    "jan.kowalski@example.com"
+   ]
+  },
+  {
+   "id": "url-email-encoded",
+   "rule": "email",
+   "via": "url",
+   "text": "https://sklep.test.pl/u?mail=jan.kowalski%40example.com",
+   "secrets": [
+    "jan.kowalski%40example.com"
+   ]
+  },
+  {
+   "id": "text-connection-string",
+   "rule": "url-credentials",
+   "text": "connect postgres://app:Pg5ecretPw@10.0.0.5:5432/db failed",
+   "secrets": [
+    "Pg5ecretPw"
+   ]
+  },
+  {
+   "id": "email-text",
+   "rule": "email",
+   "text": "Użytkownik anna.nowak+test@poczta.example.pl nie istnieje",
+   "secrets": [
+    "anna.nowak+test@poczta.example.pl"
+   ]
+  },
+  {
+   "id": "email-json",
+   "rule": "email",
+   "text": "{\"contact\":\"jan_k@firma.com.pl\"}",
+   "secrets": [
+    "jan_k@firma.com.pl"
+   ]
+  },
+  {
+   "id": "phone-plus48",
+   "rule": "phone",
+   "text": "tel. +48 600 700 800 (biuro)",
+   "secrets": [
+    "600 700 800"
+   ]
+  },
+  {
+   "id": "phone-0048",
+   "rule": "phone",
+   "text": "call 0048601234567 now",
+   "secrets": [
+    "0048601234567",
+    "601234567"
+   ]
+  },
+  {
+   "id": "phone-grouped",
+   "rule": "phone",
+   "text": "Kontakt 512-345-678 w godz. 8-16",
+   "secrets": [
+    "512-345-678"
+   ]
+  },
+  {
+   "id": "phone-bare-mobile",
+   "rule": "phone",
+   "text": "{\"kontakt\":\"601234567\"}",
+   "secrets": [
+    "601234567"
+   ]
+  },
+  {
+   "id": "f1-redux-persist",
+   "rule": "key-token",
+   "text": "{\"account\":\"{\\\"currentUser\\\":{\\\"accessToken\\\":\\\"9f86d081884c7d659a2feaa0c55ad015\\\",\\\"refreshToken\\\":\\\"rf8Kq2Lm7Np\\\",\\\"password\\\":\\\"Pers1stPwd!x\\\"}}\"}",
+   "secrets": [
+    "9f86d081884c7d659a2feaa0c55ad015",
+    "rf8Kq2Lm7Np",
+    "Pers1stPwd!x"
+   ]
+  },
+  {
+   "id": "f1-json-in-json-in-json",
+   "rule": "key-api_key",
+   "text": "{\"a\":\"{\\\"b\\\":\\\"{\\\\\\\"apiKey\\\\\\\":\\\\\\\"dblEsc4pi77Q\\\\\\\"}\\\"}\"}",
+   "secrets": [
+    "dblEsc4pi77Q"
+   ]
+  },
+  {
+   "id": "f1-nested-escaped-number",
+   "rule": "key-pin",
+   "text": "{\"s\":\"{\\\"pin\\\":43219}\"}",
+   "secrets": [
+    "43219"
+   ]
+  },
+  {
+   "id": "f1-escaped-json-in-text",
+   "rule": "key-session",
+   "text": "payload \"{\\\"session_id\\\":\\\"sEss10nV4lue\\\"}\" sent",
+   "secrets": [
+    "sEss10nV4lue"
+   ]
+  },
+  {
+   "id": "f1-entity-quot-data-props",
+   "rule": "key-api_key",
+   "text": "<div id=\"app\" data-props=\"{&quot;user&quot;:{&quot;name&quot;:&quot;Jan&quot;,&quot;apiKey&quot;:&quot;dataApiK3y77&quot;}}\"></div>",
+   "secrets": [
+    "dataApiK3y77"
+   ]
+  },
+  {
+   "id": "f1-entity-34",
+   "rule": "key-password",
+   "text": "<div data-x=\"{&#34;password&#34;:&#34;Ent34Pwd99&#34;}\"></div>",
+   "secrets": [
+    "Ent34Pwd99"
+   ]
+  },
+  {
+   "id": "f1-entity-escaped-inner",
+   "rule": "key-token",
+   "text": "<div data-x=\"{&quot;cfg&quot;:&quot;{\\&quot;token\\&quot;:\\&quot;EntEscTok55\\&quot;}&quot;}\"></div>",
+   "secrets": [
+    "EntEscTok55"
+   ]
+  },
+  {
+   "id": "f2-json-unclosed-end",
+   "rule": "key-password",
+   "text": "{\"x\":\"aaaa\",\"password\":\"CutBoundaryPwd123",
+   "secrets": [
+    "CutBoundaryPwd123"
+   ]
+  },
+  {
+   "id": "f2-escaped-unclosed-end",
+   "rule": "key-password",
+   "text": "[\"big\",\"{\\\"x\\\":\\\"aaaa\\\",\\\"password\\\":\\\"CutBoundaryPwd123",
+   "secrets": [
+    "CutBoundaryPwd123"
+   ]
+  },
+  {
+   "id": "f2-json-unclosed-truncated",
+   "rule": "key-token",
+   "text": "{\"user\":\"jan\",\"token\":\"TruncT0kenValue... [truncated 120 chars]",
+   "secrets": [
+    "TruncT0kenValue"
+   ]
+  },
+  {
+   "id": "f2-xml-unclosed-truncated",
+   "rule": "key-password",
+   "text": "<login><password>XmlCutPwd55... [truncated 30 chars]",
+   "secrets": [
+    "XmlCutPwd55"
+   ]
+  },
+  {
+   "id": "f2-xml-cut-in-closing-tag",
+   "rule": "key-password",
+   "text": "<login><password>XmlCutPwd56</passw",
+   "secrets": [
+    "XmlCutPwd56"
+   ]
+  },
+  {
+   "id": "f2-attribute-unclosed-end",
+   "rule": "key-token",
+   "text": "<input name=\"q\" data-token=\"AttrCutTok88",
+   "secrets": [
+    "AttrCutTok88"
+   ]
+  },
+  {
+   "id": "f2-entity-unclosed-attribute",
+   "rule": "key-password",
+   "text": "<div data-props=\"{&quot;x&quot;:&quot;a&quot;,&quot;password&quot;:&quot;DomCutPwd42\"></div>",
+   "secrets": [
+    "DomCutPwd42"
+   ]
+  },
+  {
+   "id": "f3-colon-double-quoted",
+   "rule": "key-password",
+   "text": "config: {password: \"QuotedPwd77\"}",
+   "secrets": [
+    "QuotedPwd77"
+   ]
+  },
+  {
+   "id": "f3-yaml-double-quoted",
+   "rule": "key-password",
+   "text": "db:\n  password: \"Yaml\\\"Pwd88x\"\n  host: db.local",
+   "secrets": [
+    "Yaml\\\"Pwd88x",
+    "Pwd88x"
+   ]
+  },
+  {
+   "id": "f3-colon-escaped-quotes",
+   "rule": "key-token",
+   "text": "[\"config: {token: \\\"EscQuotTok5\\\"}\"]",
+   "secrets": [
+    "EscQuotTok5"
+   ]
+  },
+  {
+   "id": "f5-url-code",
+   "rule": "key-code",
+   "via": "url",
+   "text": "https://shop.example.test/account/reset?code=oAuthC0deQ9w8&state=1",
+   "secrets": [
+    "oAuthC0deQ9w8"
+   ]
+  },
+  {
+   "id": "f5-url-ticket",
+   "rule": "key-ticket",
+   "via": "url",
+   "text": "https://app.example.test/cas/login?service=x&ticket=ST-1234-casTkt9",
+   "secrets": [
+    "ST-1234-casTkt9"
+   ]
+  },
+  {
+   "id": "f6-cvv-form",
+   "rule": "key-cvv",
+   "text": "number=4111111111111111&cvv=737&exp=12",
+   "secrets": [
+    "737",
+    "4111111111111111"
+   ]
+  },
+  {
+   "id": "f6-cvc-json",
+   "rule": "key-cvc",
+   "text": "{\"cvc\":\"918\",\"exp\":\"12/29\"}",
+   "secrets": [
+    "918"
+   ]
+  },
+  {
+   "id": "f6-pass-json",
+   "rule": "key-pass",
+   "text": "{\"login\":\"jan\",\"pass\":\"hunter22\"}",
+   "secrets": [
+    "hunter22"
+   ]
+  },
+  {
+   "id": "f6-pw-json",
+   "rule": "key-pw",
+   "text": "{\"pw\":\"Pw0rdXy7\"}",
+   "secrets": [
+    "Pw0rdXy7"
+   ]
+  },
+  {
+   "id": "f8-path-param-and-query",
+   "rule": "key-session",
+   "text": "at https://a.example.pl/app;jsessionid=ABC123DEF?token=QueryTok77&y=2",
+   "secrets": [
+    "ABC123DEF",
+    "QueryTok77"
+   ]
+  },
+  {
+   "id": "f5-stack-code",
+   "rule": "key-code",
+   "text": "Error: boom\n    at http://127.0.0.1:5173/traps-e3.html?code=acf7b294aea5fb:44:15",
+   "secrets": [
+    "acf7b294aea5fb"
+   ]
+  },
+  {
+   "id": "f5-stack-ticket",
+   "rule": "key-ticket",
+   "text": "TypeError: x is undefined\n    at run (https://app.example.test/cas.js?service=a&ticket=ST-1234-casTkt9:12:7)",
+   "secrets": [
+    "ST-1234-casTkt9"
+   ]
+  },
+  {
+   "id": "f5-stack-code-fragment",
+   "rule": "key-code",
+   "text": "at https://app.example.test/cb?code=C0deBeforeHash#top:3:9",
+   "secrets": [
+    "C0deBeforeHash"
+   ]
+  },
+  {
+   "id": "f5-text-code-url",
+   "rule": "key-code",
+   "text": "redirect to https://shop.example.test/cb?code=LogC0deZq&state=9",
+   "secrets": [
+    "LogC0deZq"
+   ]
+  },
+  {
+   "id": "f5-text-code-ws",
+   "rule": "key-code",
+   "text": "socket wss://rt.example.test/live?code=WsC0de12345 closed",
+   "secrets": [
+    "WsC0de12345"
+   ]
+  },
+  {
+   "id": "n1-order-id-card",
+   "rule": "card",
+   "text": "order-id-5555555555554444",
+   "secrets": [
+    "5555555555554444"
+   ]
+  },
+  {
+   "id": "n1-card-dash-suffix",
+   "rule": "card",
+   "text": "ref 4111111111111111-a",
+   "secrets": [
+    "4111111111111111"
+   ]
+  },
+  {
+   "id": "n1-card-hex-prefix",
+   "rule": "card",
+   "text": "card-4111111111111111 ok",
+   "secrets": [
+    "4111111111111111"
+   ]
+  },
+  {
+   "id": "n2-form-encoded-json",
+   "rule": "key-password",
+   "text": "payload=%7B%22password%22%3A%22UrlEncPwd5%22%7D&remember=1",
+   "secrets": [
+    "UrlEncPwd5"
+   ]
+  },
+  {
+   "id": "n2-form-encoded-plus",
+   "rule": "key-token",
+   "text": "data=token%3DPlusEnc0dedTok+x&a=1",
+   "secrets": [
+    "PlusEnc0dedTok"
+   ]
+  },
+  {
+   "id": "n4-xml-entity-attr",
+   "rule": "key-password",
+   "text": "<div data-xml=\"&lt;password>XmlEnt1ty9&lt;/password>\"></div>",
+   "secrets": [
+    "XmlEnt1ty9"
+   ]
+  },
+  {
+   "id": "n4-xml-entity-text",
+   "rule": "key-token",
+   "text": "<pre>&lt;auth&gt;&lt;token&gt;TxtEnt1tyTok&lt;/token&gt;&lt;/auth&gt;</pre>",
+   "secrets": [
+    "TxtEnt1tyTok"
+   ]
+  },
+  {
+   "id": "n4-xml-entity-numeric",
+   "rule": "key-secret",
+   "text": "&#60;secret&#62;NumEnt1tyS3c&#60;/secret&#62;",
+   "secrets": [
+    "NumEnt1tyS3c"
+   ]
+  },
+  {
+   "id": "n4-xml-entity-cut",
+   "rule": "key-secret",
+   "text": "<pre>&lt;secret>CutEnt1tyS3c",
+   "secrets": [
+    "CutEnt1tyS3c"
+   ]
+  }
+ ]
+}

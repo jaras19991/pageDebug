@@ -11,17 +11,21 @@ import { unregisterAll, setBadge } from './lib/content-scripts.js';
 import { createCanvasCodec } from './lib/screenshot.js';
 
 // Popup commands (extension page, no tab) and bridge messages (top frame of a tab).
-const POPUP_TYPES = new Set(['getStatus', 'armStart', 'start', 'disarm', 'collect', 'saveStarted', 'saveFailed']);
+const POPUP_TYPES = new Set(['getStatus', 'armStart', 'start', 'disarm', 'collect', 'saveStarted', 'saveFailed', 'frameCheck']);
 const BRIDGE_TYPES = new Set(['hello', 'flush', 'stopped', 'bridgeError']);
 
 const FAILED = Object.freeze({ ok: false, reason: 'failed' });
 
+// Developer options of the package (E3 D12): no source yet, so the defaults; E4-D4 brings the settings.
+const DEV_OPTIONS = Object.freeze({});
+
 /** Both handler sets of one background instance on one shared store (writes share a queue). */
 export function createHandlers({ chrome, store, now }) {
   const clock = now ? { now } : {};
-  // Shrinks a screenshot over the limit (E2 D5); null where createImageBitmap/OffscreenCanvas are missing.
+  // Masks form fields on the screenshot and shrinks it (E2 D5, E3 D6); null where createImageBitmap/OffscreenCanvas
+  // are missing — then a screenshot with fields in view is dropped with a note (fail-closed).
   const codec = createCanvasCodec(globalThis);
-  const save = createSaveHandlers({ store, ...chrome, unregisterAll, setBadge, codec, ...clock });
+  const save = createSaveHandlers({ store, ...chrome, unregisterAll, setBadge, codec, devOptions: DEV_OPTIONS, ...clock });
   const recording = createRecordingHandlers({ chrome, store, expireSave: save.expireSave, ...clock });
   return { recording, save };
 }

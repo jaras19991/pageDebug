@@ -53,6 +53,12 @@ describe('MESSAGES', () => {
         'saving',
         'saved',
         'fileUnsupportedFirefox',
+        'privacyNote',
+        'includeScreenshot',
+        'screenshotFramesNote',
+        'screenshotCheckFailedNote',
+        'screenshotOffSaved',
+        'screenshotFailedSaved',
         ...OUTCOMES,
       ].sort(),
     );
@@ -86,19 +92,61 @@ describe('MESSAGES', () => {
     }
   });
 
-  it('disclosure lists the eight categories from E1 AC-1.1 and E2 AC-1.1 and the no-upload sentence verbatim', () => {
+  it('disclosure lists the eight categories after E3 (AC-1.3) and the no-upload sentence verbatim', () => {
     expect(MESSAGES.disclosureTitle).toBe('Do pliku trafią:');
     expect(MESSAGES.disclosureItems).toEqual([
       'adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu',
       'kroki: co klikasz i na jakich stronach — bez treści, które wpisujesz',
       'logi konsoli i błędy',
-      'zapytania sieciowe strony: adresy, nagłówki i wysyłana treść (mogą zawierać dane logowania) oraz adresy wczytanych plików',
+      'zapytania sieciowe strony: adresy, nagłówki i wysyłana treść oraz adresy wczytanych plików',
       'fragmenty odpowiedzi serwera, gdy coś się nie uda',
-      'treść i struktura strony, w tym wartości wpisane w formularze (bez haseł i pól ukrytych)',
-      'zrzut ekranu w chwili zapisu — widać na nim wszystko, co jest na ekranie, także dane wpisane w pola (np. e-mail, numer karty); hasła są ukryte',
-      'ciasteczka i dane zapisane przez stronę (mogą zawierać dane logowania)',
+      'struktura strony bez tekstów i bez wartości wpisanych w formularze',
+      'zrzut ekranu w chwili zapisu (możesz go wyłączyć) — pola formularzy tej strony są na nim zakryte, ale formularze osadzone z innych serwisów (np. płatność, logowanie) mogą być widoczne',
+      'nazwy i rozmiary ciasteczek oraz dane zapisane przez stronę',
     ]);
     expect(MESSAGES.noUpload).toBe('Plik zostaje na Twoim dysku, rozszerzenie niczego nie wysyła.');
+  });
+
+  it('disclosure has no "mogą zawierać dane logowania" for network and cookies; privacyNote present (AC-1.3)', () => {
+    for (const item of MESSAGES.disclosureItems) {
+      expect(item).not.toContain('mogą zawierać dane logowania');
+    }
+    const network = MESSAGES.disclosureItems.find((item) => item.startsWith('zapytania sieciowe'));
+    const cookies = MESSAGES.disclosureItems.find((item) => item.includes('ciasteczek'));
+    expect(network).toBeDefined();
+    expect(cookies).toBeDefined();
+    expect(MESSAGES.privacyNote).toBe(
+      'Hasła i tokeny są usuwane z pliku automatycznie, a wartości ciasteczek zastępowane krótkim skrótem. Plik nadal może zawierać adresy odwiedzanych stron i treść logów.',
+    );
+    // Store review S4: cookie values leave a short digest, so the note must not say they are removed.
+    expect(MESSAGES.privacyNote).not.toMatch(/ciasteczek są usuwane/);
+    expect(MESSAGES.includeScreenshot).toBe('Dołącz zrzut ekranu');
+    // QA F-5: appended to "Zapisano…" when the file has no screenshot.
+    expect(MESSAGES.screenshotOffSaved).toBe('Plik nie zawiera zrzutu ekranu.');
+    expect(MESSAGES.screenshotFailedSaved).toBe('Plik nie zawiera zrzutu ekranu — nie udało się go bezpiecznie wykonać.');
+    expect(messageFor({ kind: 'saved', fileName: SAMPLE_FILE, screenshot: 'failed' })).toBe(
+      `${MESSAGES.saved(SAMPLE_FILE)} ${MESSAGES.screenshotFailedSaved}`,
+    );
+    expect(messageFor({ kind: 'saved', fileName: SAMPLE_FILE, screenshot: 'off' })).toBe(
+      `${MESSAGES.saved(SAMPLE_FILE)} ${MESSAGES.screenshotOffSaved}`,
+    );
+    expect(messageFor({ kind: 'saved', fileName: SAMPLE_FILE, screenshot: 'included' })).toBe(MESSAGES.saved(SAMPLE_FILE));
+    // Review N6 (fail-closed): the frame check failed, so the screenshot starts off.
+    expect(MESSAGES.screenshotCheckFailedNote).toBe('Nie udało się sprawdzić strony — zrzut wyłączony. Możesz go włączyć.');
+    expect(MESSAGES.screenshotFramesNote).toBe(
+      'Na stronie są okienka innych serwisów (np. płatność) — zrzut wyłączony. Możesz go włączyć.',
+    );
+  });
+
+  it('forbidden words JSON, zip, hash, redakcja anywhere; "token" only inside privacyNote (AC-1.3)', () => {
+    for (const [key, text] of allTexts()) {
+      // The file name passed into `saved` is the background's, not our wording.
+      const own = text.replace(SAMPLE_FILE, '').toLowerCase();
+      for (const word of ['json', 'zip', 'hash', 'redakcja', 'redakcji']) {
+        expect(own, `${key} contains ${word}`).not.toContain(word);
+      }
+      if (key !== 'privacyNote') expect(own, `${key} contains token`).not.toContain('token');
+    }
   });
 
   it('disclosure lists steps without typed text, screenshot and server responses on errors', () => {
@@ -111,14 +159,12 @@ describe('MESSAGES', () => {
     expect(items.some((item) => item.includes('odpowiedzi serwera') && item.includes('gdy coś się nie uda'))).toBe(true);
   });
 
-  it('screenshot item says plainly that typed data is on the image and passwords are hidden (QA F-3)', () => {
+  it('screenshot item says the fields of this page are covered, embedded forms of other services may show, and it can be turned off (E3 D6, review F4 / store S1)', () => {
     const shot = MESSAGES.disclosureItems.find((item) => item.startsWith('zrzut'));
-    expect(shot).toContain('wszystko, co jest na ekranie');
-    expect(shot).toContain('dane wpisane w pola');
-    expect(shot).toMatch(/e-mail/);
-    expect(shot).toMatch(/numer karty/);
-    expect(shot).toMatch(/hasła są ukryte$/);
-    expect(shot.length).toBeLessThanOrEqual(160);
+    expect(shot).toContain('możesz go wyłączyć');
+    expect(shot).toContain('pola formularzy tej strony są na nim zakryte');
+    expect(shot).toContain('formularze osadzone z innych serwisów (np. płatność, logowanie) mogą być widoczne');
+    expect(shot.length).toBeLessThanOrEqual(200);
     for (const word of ['screenshot', 'viewport', 'input', 'canvas', 'JPEG', 'pikseli']) {
       expect(shot.toLowerCase(), word).not.toContain(word.toLowerCase());
     }

@@ -119,7 +119,7 @@ Testy / Review / QA / Docs / Release
 
 ---
 
-## E2 — Kompletność danych
+## E2 — Kompletność danych ✅ (release 0.4.0, 2026-10-23)
 
 **Problem:** brak CWV, kodów HTTP, treści odpowiedzi, zrzutu ekranu i kroków użytkownika.
 Developer wie, że „coś było wolno”, ale nie wie co, i nie wie, co zgłaszający kliknął.
@@ -178,40 +178,47 @@ Testy / Review / QA / Docs / Release
 większość to `outerHTML`.
 **Efekt:** paczka jest bezpieczna do wysłania przez e-mail/Slack i mieści się w załączniku.
 
+Wejście z E2 (release 0.4.0)
+- [x] E3-IN1 (MEDIUM, QA F-3 / store F3) Zrzut ekranu pokazuje dane wpisane w pola (e-mail, nr karty): przełącznik „Dołącz zrzut” przy *Zapisz* + maskowanie pól formularzy na obrazie (decyzja użytkownika 2026-10-23); uzasadnienie „strictly necessary” do polityki (E5).
+- [x] E3-IN2 (LOW, review L3) `maskSecrets`: sufiksy `sessid`/`sessionid` (`JSESSIONID`, `PHPSESSID`), `Authorization: Basic <b64>`, pary XML `<token>…</token>`, forma `klucz: wartość`, liczbowe wartości JSON przy kluczach wrażliwych (`"pin":1234`).
+- [x] E3-IN3 (LOW, review) Pełna redakcja URL-i w paczce (network, documents, LCP, longTasks; `steps[].url` już przez maskSecrets).
+- [x] E3-IN4 (LOW, implementer) `input type=file` zapisuje w kroku długość „C:\fakepath\…” — pomijać (`change` ma liczbę plików).
+- [ ] E3-IN5 (INFO, tester) `npm audit`: 3 high w devDeps (web-ext → adbkit → node-forge); `--omit=dev` = 0; poprawka wymaga downgrade web-ext — obserwować nowe wersje web-ext.
+
 Spec
-- [ ] E3-S1 Polityka redakcji: co zawsze maskujemy, co maskujemy domyślnie z możliwością wyłączenia
+- [x] E3-S1 Polityka redakcji: co zawsze maskujemy, co maskujemy domyślnie z możliwością wyłączenia
       przez developera (nie przez zgłaszającego), co zostaje. Patrz skill `privacy-redaction`.
-- [ ] E3-S2 Limit rozmiaru paczki: cel ≤ 2 MB skompresowane; wyjątki jawnie opisane.
+- [x] E3-S2 Limit rozmiaru paczki: cel ≤ 2 MB skompresowane; wyjątki jawnie opisane.
 
 Design
-- [ ] E3-D1 Warstwa `redact.js` uruchamiana na gotowym obiekcie snapshotu przed serializacją,
+- [x] E3-D1 Warstwa `redact.js` uruchamiana na gotowym obiekcie snapshotu przed serializacją,
       z raportem: ile wartości zamaskowano i w jakich sekcjach (bez samych wartości).
-- [ ] E3-D2 Format paczki: `.zip` (`CompressionStream`) z `snapshot.json`, `summary.md`, `screenshot.jpg`;
+- [x] E3-D2 Format paczki: `.zip` (`CompressionStream`) z `snapshot.json`, `summary.md`, `screenshot.jpg`;
       zgłaszający widzi jeden plik.
-- [ ] E3-D3 HTML: zamiast pełnego `outerHTML` — struktura bez tekstów (tagi, atrybuty id/class/data-*,
+- [x] E3-D3 HTML: zamiast pełnego `outerHTML` — struktura bez tekstów (tagi, atrybuty id/class/data-*,
       bez `value`, bez treści `<script>`), limit 300 KB; pełny HTML jako opcja developerska.
-- [ ] E3-D4 Cookies: nazwa, rozmiar, domena/flagi jeśli dostępne; wartość zastąpiona hashem (SHA-256, 8 znaków)
+- [x] E3-D4 Cookies: nazwa, rozmiar, domena/flagi jeśli dostępne; wartość zastąpiona hashem (SHA-256, 8 znaków)
       — pozwala porównać dwa zrzuty bez ujawniania wartości.
 
 Implementacja
-- [ ] E3-T0 (review E1) Serializacja z budżetem: `serializeCapped` przerywa po `maxChars` (replacer z licznikiem + sentinel), `outerHTML` cięty przed odczytem; przechwycić `JSON.stringify/parse` na `document_start` (strony z polyfillem JSON psują zapis args); test perf `console.log(obiekt 5 MB)` ≤ 5 ms. Przy okazji: przycinanie `rec.docs` do 100 ma usuwać odpowiadające `pds:doc:*` (kolejność `documents[]`).
-- [ ] E3-T1 `redact.js` z regułami: wzorce (JWT, `Bearer`, e-mail, karta, IBAN, PESEL), klucze
+- [x] E3-T0 (review E1) Serializacja z budżetem: `serializeCapped` przerywa po `maxChars` (replacer z licznikiem + sentinel), `outerHTML` cięty przed odczytem; przechwycić `JSON.stringify/parse` na `document_start` (strony z polyfillem JSON psują zapis args); test perf `console.log(obiekt 5 MB)` ≤ 5 ms. Przy okazji: przycinanie `rec.docs` do 100 ma usuwać odpowiadające `pds:doc:*` (kolejność `documents[]`).
+- [x] E3-T1 `redact.js` z regułami: wzorce (JWT, `Bearer`, e-mail, karta, IBAN, PESEL), klucze
       (`token|secret|session|auth|password|key|csrf`), nagłówki (`Authorization`, `Cookie`, `Set-Cookie`).
-- [ ] E3-T2 Zastosowanie redakcji do: storage, cookies, nagłówków request/response, body odpowiedzi,
+- [x] E3-T2 Zastosowanie redakcji do: storage, cookies, nagłówków request/response, body odpowiedzi,
       argumentów console, URL-i (query string z kluczami wrażliwymi), kroków użytkownika.
-- [ ] E3-T3 Strukturalny zrzut DOM zamiast `outerHTML`.
-- [ ] E3-T4 Pakowanie do `.zip` + nazwa pliku `snapshot-<host>-<YYYYMMDD-HHMMSS>.zip`.
-- [ ] E3-T5 Raport redakcji w `summary.md` („zamaskowano 14 wartości w 3 sekcjach”).
+- [x] E3-T3 Strukturalny zrzut DOM zamiast `outerHTML`.
+- [x] E3-T4 Pakowanie do `.zip` + nazwa pliku `snapshot-<host>-<YYYYMMDD-HHMMSS>.zip`.
+- [x] E3-T5 Raport redakcji w `summary.md` („zamaskowano 14 wartości w 3 sekcjach”).
 - [-] E3-T6 (z review E0) **przeniesione do E1 (AC-5.4 w spec E1)** — usunąć global `window.__PAGE_DEBUG_SNAPSHOT__` — pełna paczka (cookies, storage, DOM) nie może
       być dostępna skryptom firm trzecich na stronie ani zalegać w pamięci.
 
 Testy / Review / QA / Docs / Release
-- [ ] E3-TEST1 Unit: korpus 50 przykładów wrażliwych/niewrażliwych → 0 wycieków, ≤ 2 fałszywie dodatnie.
-- [ ] E3-TEST2 Unit: redakcja jest idempotentna i nie zmienia struktury (klucze/typy) obiektu.
-- [ ] E3-TEST3 E2E: strona z tokenem w localStorage i formularzem z e-mailem → paczka bez wartości.
-- [ ] E3-R1 Review bezpieczeństwa: ręczny przegląd paczki z realnej strony przez reviewera z listą kontrolną.
-- [ ] E3-Q1 QA: paczka z portalu ≤ 2 MB, otwiera się, `summary.md` ma raport redakcji.
-- [ ] E3-DOC1 Sekcja „Co jest w paczce, a czego nie ma” w instrukcji dla zgłaszającego.
+- [x] E3-TEST1 Unit: korpus 50 przykładów wrażliwych/niewrażliwych → 0 wycieków, ≤ 2 fałszywie dodatnie.
+- [x] E3-TEST2 Unit: redakcja jest idempotentna i nie zmienia struktury (klucze/typy) obiektu.
+- [x] E3-TEST3 E2E: strona z tokenem w localStorage i formularzem z e-mailem → paczka bez wartości.
+- [x] E3-R1 Review bezpieczeństwa: ręczny przegląd paczki z realnej strony przez reviewera z listą kontrolną.
+- [x] E3-Q1 QA: paczka z portalu ≤ 2 MB, otwiera się, `summary.md` ma raport redakcji.
+- [x] E3-DOC1 Sekcja „Co jest w paczce, a czego nie ma” w instrukcji dla zgłaszającego.
 
 ---
 
@@ -220,6 +227,19 @@ Testy / Review / QA / Docs / Release
 **Problem:** surowy JSON bez podsumowania. Developer scrolluje 1 MB. Zgłaszający nie wie, co zrobić z plikiem.
 **Efekt:** zgłaszający widzi „Zapisano. Wyślij ten plik do …”. Developer otwiera `summary.md`
 albo lokalny viewer i widzi: błędy, nieudane zapytania, CWV, kroki. Agent AI odpytuje paczkę przez MCP.
+
+Wejście z E3 (release 0.5.0; z review, QA i store review — szczegóły w `docs/epics/E3/`)
+- [ ] E4-IN1 (LOW, review N7) Redakcja: fałszywe trafienia w prozie (`auth: "Invalid credentials"`) i przeciek, gdy klucz stoi na początku stringu JSON (`{"log":"password: x"}`). Poprawka: dopuścić `"` przed kluczem, jeśli nie jest to `"k":`.
+- [ ] E4-IN2 (LOW, review N8) `for…of` na iteratorze tablic strony w MAIN (`redact-rules.js`) — pętle indeksowe, żeby podmiana `Array.prototype[Symbol.iterator]` nie wyłączała redakcji u źródła.
+- [ ] E4-IN3 (LOW, review N12) `code`/`ticket` w adresach względnych (`/cb?code=`), w `&code=` i fragmencie `#code=` w tekście oraz w JSON-escaped `https:\/\/…`.
+- [ ] E4-IN4 (LOW, review N15) Podgląd konsoli po `maskPreviewPairs` (`["token=","x","more"]`): zniekształcony JSON i zawyżone `masked`.
+- [ ] E4-IN5 (LOW, review) `console.log('Your password is', pw)` (klucz w zdaniu bez `:`/`=`) oraz kontener w parze (`('password:', {v: pw})`, `[pw]`) — decyzja: wymuszać maskowanie kontenera / rozpoznawać zdania?
+- [ ] E4-IN6 (LOW, QA/wynik retestu) Notatka „Screenshot not included (turned off by the reporter).” jest nieprecyzyjna, gdy zrzut wyłączył popup (ramki cross-origin, fail-closed `frameCheck`) — osobna notatka z powodem.
+- [ ] E4-IN7 (LOW, QA F-4) Margines maski 8 px zakrywa dolną połowę etykiet nad polami — zmniejszyć margines albo go skorygować.
+- [ ] E4-IN8 (LOW, QA F-6) Zdanie zgody („Plik może zawierać Twoje dane osobowe i dane logowania…”) stoi pod zdaniem „hasła i tokeny są usuwane” — ujednolicić tekst (zmiana tekstu = decyzja użytkownika).
+- [ ] E4-IN9 (MEDIUM, store F6/E0#10) AMO: zip źródeł + notatka dla reviewera (`npm ci && npm run gen && npm run build`), `strict_min_version` 140 (dziś 128; ostrzeżenie `web-ext lint`). Decyzja przy E5.
+- [ ] E4-IN10 (INFO, = E3-IN5) `npm audit`: 3 high w devDeps (web-ext → adbkit → node-forge); `--omit=dev` = 0 — obserwować nowe wersje `web-ext`.
+- [ ] E4-IN11 (INFO, QA F-5/F-1) `summary.md` nie wymienia nieudanych zapytań (tylko liczbę) — E4-S1; liczba ramek cross-origin nie trafia do paczki (rozważyć pole albo notatkę).
 
 Spec
 - [ ] E4-S1 Zawartość `summary.md` (kolejność: środowisko → kroki → błędy → nieudane zapytania → CWV →

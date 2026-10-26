@@ -13,7 +13,10 @@ const html = readFileSync(HTML_PATH, 'utf8');
 const URL_WEB = 'https://shop.example.com:8443/cart?x=1';
 const ORIGIN = 'https://shop.example.com:8443';
 const PATTERN = 'https://shop.example.com/*';
-const FILE_NAME = 'page-debug-snapshot-1700000000000.json';
+const FILE_NAME = 'snapshot-shop.example.com-20260122-140321.zip';
+// What the background answers to collect after E3 (D7): the zip as base64. Bytes start like a real zip.
+const ZIP_BYTES = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x00, 0x08, 0xff, 0x00, 0x80]);
+const ZIP_BASE64 = Buffer.from(ZIP_BYTES).toString('base64');
 const STARTED_AT = new Date(2026, 9, 22, 14, 3, 21).getTime();
 const NEVER = () => new Promise(() => {});
 
@@ -53,7 +56,7 @@ function setup({ url = URL_WEB, tab, fileAccess, firefox = false, permissionAnsw
       bg.status = recording();
       return { ok: true };
     },
-    collect: () => ({ ok: true, json: '{"schemaVersion":2}', fileName: FILE_NAME }),
+    collect: () => ({ ok: true, zipBase64: ZIP_BASE64, fileName: FILE_NAME, packageBytes: ZIP_BYTES.length }),
     ...handlers,
   };
   chrome.runtime.sendMessage = (message) => {
@@ -450,11 +453,10 @@ describe('popup controller: Zapisz paczkę', () => {
   it('save → collect, Blob URL, downloads.download with filename and saveAs:false, then saveStarted', async () => {
     const t = await recordingPopup();
     await t.controller.onSave();
-    expect(t.sent('collect')).toEqual([{ type: 'collect', tabId: 7 }]);
+    expect(t.sent('collect')).toEqual([{ type: 'collect', tabId: 7, includeScreenshot: true }]);
     expect(t.urlApi.createObjectURL).toHaveBeenCalledTimes(1);
     const blob = t.urlApi.createObjectURL.mock.calls[0][0];
     expect(blob).toBeInstanceOf(Blob);
-    expect(await blob.text()).toBe('{"schemaVersion":2}');
     expect(t.named('downloads.download')[0].args[0]).toEqual({
       url: 'blob:chrome-extension://pds/1',
       filename: FILE_NAME,
@@ -473,7 +475,7 @@ describe('popup controller: Zapisz paczkę', () => {
     expect(t.urlApi.revokeObjectURL).not.toHaveBeenCalled();
 
     // Background saw downloads.onChanged complete; the real name may differ (uniquify).
-    const realName = 'page-debug-snapshot-1700000000000 (1).json';
+    const realName = 'snapshot-shop.example.com-20260122-140321 (1).zip';
     t.bg.status = idle({ lastSaved: { fileName: realName, downloadId: 1 } });
     t.changed();
     await flush();
@@ -540,7 +542,7 @@ describe('popup controller: Zapisz paczkę', () => {
     await vi.advanceTimersByTimeAsync(RESPONSE_TIMEOUT_MS);
     await done;
     expect(t.last()).toMatchObject({ statusText: MESSAGES.pageBusy, isError: true, buttons: { save: true } });
-    answer({ ok: true, json: '{}', fileName: FILE_NAME });
+    answer({ ok: true, zipBase64: ZIP_BASE64, fileName: FILE_NAME });
     await vi.advanceTimersByTimeAsync(0);
     expect(t.named('downloads.download')).toHaveLength(0);
     expect(t.models.some((m) => m.statusText.startsWith('Zapisano'))).toBe(false);
@@ -592,6 +594,10 @@ describe('popup controller: Zapisz paczkę', () => {
     [{ ok: false, reason: 'pageBusy' }, 'pageBusy'],
     [{ ok: false, reason: 'failed' }, 'failed'],
     [{ ok: true, fileName: FILE_NAME }, 'failed'],
+    [{ ok: true, zipBase64: '', fileName: FILE_NAME }, 'failed'],
+    [{ ok: true, zipBase64: ZIP_BASE64 }, 'failed'],
+    [{ ok: true, json: '{"schemaVersion":3}', fileName: FILE_NAME }, 'failed'],
+    [{ ok: true, zipBase64: '%%% not base64 %%%', fileName: FILE_NAME }, 'failed'],
     [undefined, 'failed'],
   ])('collect answer %j → %s without download', async (res, kind) => {
     const t = await recordingPopup({ handlers: { collect: () => res } });
@@ -624,6 +630,48 @@ describe('popup controller: Zapisz paczkę', () => {
     expect(t.models.some((m) => m.statusText.startsWith('Zapisano'))).toBe(false);
   });
 
+  it('save sends includeScreenshot from checkbox (true default, false when unchecked) (AC-2.1)', async () => {
+    const t = await recordingPopup();
+    await t.controller.onSave({ includeScreenshot: false });
+    expect(t.sent('collect').at(-1)).toEqual({ type: 'collect', tabId: 7, includeScreenshot: false });
+
+    // Same wiring as popup.js, on the real popup.html: checked once the page has no frames of other sites
+    // (N6 fail-closed), the reporter's choice is sent.
+    const u = await recordingPopup({ handlers: { frameCheck: () => ({ ok: true, crossOriginFrames: 0 }) } });
+    await flush();
+    const { document } = new JSDOM(html).window;
+    applyModel(document, u.last());
+    const box = document.getElementById('includeScreenshot');
+    const click = () => u.controller.onSave({ includeScreenshot: box.checked });
+    await click();
+    expect(u.sent('collect').at(-1)).toEqual({ type: 'collect', tabId: 7, includeScreenshot: true });
+    box.click();
+    expect(box.checked).toBe(false);
+    u.bg.status = recording({ lastError: 'saveCancelled' });
+    u.changed();
+    await flush();
+    applyModel(document, u.last());
+    await click();
+    expect(u.sent('collect').at(-1)).toEqual({ type: 'collect', tabId: 7, includeScreenshot: false });
+  });
+
+  it('zipBase64 becomes application/zip Blob with the background file name (AC-1.1)', async () => {
+    const t = await recordingPopup();
+    await t.controller.onSave();
+    const blob = t.urlApi.createObjectURL.mock.calls[0][0];
+    expect(blob.type).toBe('application/zip');
+    expect(new Uint8Array(await blob.arrayBuffer())).toEqual(ZIP_BYTES);
+    expect(t.named('downloads.download')[0].args[0].filename).toBe(FILE_NAME);
+  });
+
+  it('missing zipBase64 → failed, no download', async () => {
+    const t = await recordingPopup({ handlers: { collect: () => ({ ok: true, fileName: FILE_NAME, packageBytes: 10 }) } });
+    await t.controller.onSave();
+    expect(t.last()).toMatchObject({ statusText: MESSAGES.failed, isError: true, buttons: { save: true } });
+    expect(t.named('downloads.download')).toHaveLength(0);
+    expect(t.urlApi.createObjectURL).not.toHaveBeenCalled();
+  });
+
   it('a second click while saving is ignored', async () => {
     const t = await recordingPopup();
     const first = t.controller.onSave();
@@ -638,5 +686,157 @@ describe('popup controller: Zapisz paczkę', () => {
     await t.controller.onSave();
     t.controller.destroy();
     expect(t.urlApi.revokeObjectURL).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('popup controller: screenshot default with cross-origin frames (store review S1)', () => {
+  it('own recording at open → asks frameCheck once; frames > 0 → checkbox default off with the note', async () => {
+    const t = setup({ handlers: { frameCheck: () => ({ ok: true, crossOriginFrames: 2 }) } });
+    t.bg.status = recording();
+    await t.controller.init();
+    await flush();
+    expect(t.sent().map((m) => m.type)).toEqual(['getStatus', 'frameCheck']);
+    expect(t.sent('frameCheck')).toEqual([{ type: 'frameCheck', tabId: 7 }]);
+    expect(t.last()).toMatchObject({ section: 'recording', screenshotDefault: false, screenshotNote: MESSAGES.screenshotFramesNote });
+    // Further status changes neither ask again nor lose the default.
+    t.changed();
+    await flush();
+    expect(t.sent('frameCheck')).toHaveLength(1);
+    expect(t.last()).toMatchObject({ screenshotDefault: false, screenshotNote: MESSAGES.screenshotFramesNote });
+    // The reporter's choice is still what goes to collect.
+    await t.controller.onSave({ includeScreenshot: true });
+    expect(t.sent('collect').at(-1)).toEqual({ type: 'collect', tabId: 7, includeScreenshot: true });
+  });
+
+  it('stopped by the time limit asks too', async () => {
+    const t = setup({ handlers: { frameCheck: () => ({ ok: true, crossOriginFrames: 1 }) } });
+    t.bg.status = recording({ state: 'stopped', stopReason: 'time-limit' });
+    await t.controller.init();
+    await flush();
+    expect(t.last()).toMatchObject({ screenshotDefault: false });
+  });
+
+  it('no frames (ok: true, 0) → default on, no note', async () => {
+    const t = setup({ handlers: { frameCheck: () => ({ ok: true, crossOriginFrames: 0 }) } });
+    t.bg.status = recording();
+    await t.controller.init();
+    await flush();
+    expect(t.last()).toMatchObject({ section: 'recording', screenshotDefault: true, screenshotNote: '' });
+  });
+
+  // Review N6, user decision 2026-10-26: fail-closed — an unknown page never gets the screenshot by default.
+  it.each([
+    ['ok: false', () => ({ ok: false })],
+    ['no answer', () => undefined],
+    ['bad count', () => ({ ok: true, crossOriginFrames: '2' })],
+    ['negative count', () => ({ ok: true, crossOriginFrames: -1 })],
+    ['throws', () => { throw new Error('no background'); }],
+  ])('%s → default off with the check-failed note (N6 fail-closed)', async (_name, frameCheck) => {
+    const t = setup({ handlers: { frameCheck } });
+    t.bg.status = recording();
+    await t.controller.init();
+    await flush();
+    expect(t.last()).toMatchObject({ section: 'recording', screenshotDefault: false, screenshotNote: MESSAGES.screenshotCheckFailedNote });
+  });
+
+  it('before the answer the default is off without a note; the answer 0 turns it on (N6)', async () => {
+    let answer;
+    const t = setup({ handlers: { frameCheck: () => new Promise((resolve) => { answer = resolve; }) } });
+    t.bg.status = recording();
+    await t.controller.init();
+    await flush();
+    expect(t.sent('frameCheck')).toHaveLength(1);
+    expect(t.last()).toMatchObject({ section: 'recording', screenshotDefault: false, screenshotNote: '' });
+    // "Zapisz" before the answer: the box's current (unchecked) state goes to collect, as popup.js sends it.
+    const { document } = new JSDOM(html).window;
+    applyModel(document, t.last());
+    await t.controller.onSave({ includeScreenshot: document.getElementById('includeScreenshot').checked });
+    expect(t.sent('collect').at(-1)).toEqual({ type: 'collect', tabId: 7, includeScreenshot: false });
+    answer({ ok: true, crossOriginFrames: 0 });
+    await flush();
+    expect(t.last()).toMatchObject({ screenshotDefault: true, screenshotNote: '' });
+  });
+
+  it('frameCheck hangs → default off with the check-failed note after the timeout (N6)', async () => {
+    vi.useFakeTimers();
+    const t = setup({ handlers: { frameCheck: NEVER } });
+    t.bg.status = recording();
+    await t.controller.init();
+    expect(t.last()).toMatchObject({ screenshotDefault: false, screenshotNote: '' });
+    await vi.advanceTimersByTimeAsync(RESPONSE_TIMEOUT_MS);
+    expect(t.last()).toMatchObject({ screenshotDefault: false, screenshotNote: MESSAGES.screenshotCheckFailedNote });
+  });
+
+  it('not asked when idle, while another tab records, or while starting', async () => {
+    const t = setup({ handlers: { frameCheck: () => ({ ok: true, crossOriginFrames: 3 }) } });
+    await t.controller.init();
+    t.bg.status = recording({ isRecordingTab: false, otherTabRecording: true });
+    t.changed();
+    await flush();
+    t.bg.status = idle({ state: 'starting' });
+    t.changed();
+    await flush();
+    expect(t.sent('frameCheck')).toEqual([]);
+    expect(t.last().screenshotDefault).toBe(true);
+  });
+
+  it('a failed check right after "Nagrywaj" (page still reloading) is retried on the next status, at most 3 times', async () => {
+    let answers = [() => { throw new Error('no receiver'); }, () => ({ ok: true, crossOriginFrames: 1 })];
+    const t = setup({ handlers: { frameCheck: () => answers.shift()() } });
+    await t.controller.init();
+    await t.controller.onRecord();
+    await flush();
+    expect(t.sent('frameCheck')).toHaveLength(1);
+    expect(t.last()).toMatchObject({ screenshotDefault: false, screenshotNote: MESSAGES.screenshotCheckFailedNote });
+    t.changed();
+    await flush();
+    expect(t.sent('frameCheck')).toHaveLength(2);
+    expect(t.last()).toMatchObject({ screenshotDefault: false, screenshotNote: MESSAGES.screenshotFramesNote });
+
+    const u = setup({ handlers: { frameCheck: () => ({ ok: false }) } });
+    u.bg.status = recording();
+    await u.controller.init();
+    for (let i = 0; i < 5; i++) {
+      u.changed();
+      await flush();
+    }
+    expect(u.sent('frameCheck')).toHaveLength(3);
+    expect(u.last()).toMatchObject({ screenshotDefault: false, screenshotNote: MESSAGES.screenshotCheckFailedNote });
+    answers = [];
+
+    // A later answer 0 after a failed attempt turns the default back on and drops the note.
+    answers = [() => ({ ok: false }), () => ({ ok: true, crossOriginFrames: 0 })];
+    const w = setup({ handlers: { frameCheck: () => answers.shift()() } });
+    w.bg.status = recording();
+    await w.controller.init();
+    await flush();
+    expect(w.last()).toMatchObject({ screenshotDefault: false, screenshotNote: MESSAGES.screenshotCheckFailedNote });
+    w.changed();
+    await flush();
+    expect(w.last()).toMatchObject({ screenshotDefault: true, screenshotNote: '' });
+  });
+});
+
+describe('popup controller: "Zapisano" says when the file has no screenshot (QA F-5)', () => {
+  async function savedWith(screenshot) {
+    const t = setup({ handlers: { collect: () => ({ ok: true, zipBase64: ZIP_BASE64, fileName: FILE_NAME, packageBytes: 11, screenshot }) } });
+    t.bg.status = recording();
+    await t.controller.init();
+    t.bg.status = recording({ state: 'saving' });
+    await t.controller.onSave();
+    t.bg.status = idle({ lastSaved: { fileName: FILE_NAME, downloadId: 1 } });
+    t.changed();
+    await flush();
+    return t.last();
+  }
+
+  it.each([
+    ['included', MESSAGES.saved(FILE_NAME)],
+    [undefined, MESSAGES.saved(FILE_NAME)],
+    ['unknown', MESSAGES.saved(FILE_NAME)],
+    ['off', `${MESSAGES.saved(FILE_NAME)} ${MESSAGES.screenshotOffSaved}`],
+    ['failed', `${MESSAGES.saved(FILE_NAME)} ${MESSAGES.screenshotFailedSaved}`],
+  ])('screenshot %s → %s', async (screenshot, text) => {
+    expect(await savedWith(screenshot)).toMatchObject({ section: 'ready', statusText: text, isError: false });
   });
 });

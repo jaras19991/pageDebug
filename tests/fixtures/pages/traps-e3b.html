@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: review traps, iteration 2</title>
+</head>
+<body>
+  <!-- E3 re-review traps N1-N4. Fresh random values on every load, exposed in window.__pdsTraps; the e2e grep of the
+       unzipped package must find none of them.
+         N1 a test card number right after the `order-id-` prefix (console, request URL, DOM attribute)
+         N2 `payload=` + %-encoded JSON with a password in a form-encoded requestBody
+         N3 console.log of [{name:'password', value}] and of [...new FormData(form)]
+         N4 XML escaped as `&lt;password&gt;...&lt;/password&gt;` in a data attribute -->
+  <h1>Pułapki review 2</h1>
+  <form id="f" onsubmit="return false"><input name="password" value="" id="pw"><input name="login" value="jan"></form>
+  <div id="xml"></div>
+  <p><button type="button" id="t-send">Wyślij</button> <span id="t-result"></span></p>
+  <script>
+    (() => {
+      const hex = (bytes) => Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (b) => b.toString(16).padStart(2, '0')).join('');
+      // N1: Luhn-valid 16-digit number starting with 4 (Visa-like).
+      const digits = [4, ...Array.from({ length: 14 }, () => Math.floor(Math.random() * 10))];
+      let sum = 0;
+      digits.slice().reverse().forEach((d, i) => { const v = i % 2 === 0 ? d * 2 : d; sum += v > 9 ? v - 9 : v; });
+      digits.push((10 - (sum % 10)) % 10);
+      const card = digits.join('');
+      const traps = {
+        card,
+        payloadPassword: `Pp${hex(6)}`,
+        pairPassword: `Pa${hex(6)}`,
+        formPassword: `Fp${hex(6)}`,
+        xmlPassword: `Xp${hex(6)}`,
+      };
+      window.__pdsTraps = traps;
+
+      // N1
+      console.log(`created order-id-${card} for the cart`);
+      document.getElementById('xml').setAttribute('data-order', `order-id-${card}`);
+
+      // N3
+      document.getElementById('pw').value = traps.formPassword;
+      console.log([{ name: 'password', value: traps.pairPassword }]);
+      console.log([...new FormData(document.getElementById('f'))]);
+
+      // N4
+      document.getElementById('xml').setAttribute('data-xml', `<password>${traps.xmlPassword}</password>`);
+
+      document.getElementById('t-send').addEventListener('click', async () => {
+        // N2 + N1 in the URL
+        const res = await fetch(`/api/login?ref=order-id-${card}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'payload=' + encodeURIComponent(JSON.stringify({ user: { login: 'jan', password: traps.payloadPassword } })) + '&x=1',
+        });
+        document.getElementById('t-result').textContent = `status ${res.status}`;
+      });
+    })();
+  </script>
+</body>
+</html>

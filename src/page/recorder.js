@@ -8,6 +8,7 @@
 // Top-level helpers carry the `recorder` prefix (D6: all page modules end up in one IIFE).
 
 import { serializeCapped } from './serialize.js';
+import { captureDomIntrinsics, elementStructure } from './dom-structure.js';
 import { createBuffer } from './buffer.js';
 import { installFetchHook, installXhrHook } from './hooks-network.js';
 import { installConsoleHook } from './hooks-console.js';
@@ -30,6 +31,13 @@ function recorderTry(fn, fallback) {
   } catch {
     return fallback;
   }
+}
+
+// Copies of entries with `doc`; a loop, not Array.prototype.map, which the page may replace (AC-3.6).
+function recorderWithDoc(items, docId) {
+  const out = [];
+  for (let i = 0; i < items.length; i++) out.push({ ...items[i], doc: docId });
+  return out;
 }
 
 function recorderFinite(value) {
@@ -84,6 +92,10 @@ export function createRecorder({ win, options = {} }) {
     MutationObserver: recorderTry(() => win.MutationObserver, undefined),
   };
   const selectorIntrinsics = recorderTry(() => captureSelectorIntrinsics(win), null);
+  // DOM getters for elements in console arguments (D5): `structure` instead of outerHTML, read through getters
+  // the page cannot patch later; without them (no DOM realm) elements get `structure: null`.
+  const domIntrinsics = recorderTry(() => captureDomIntrinsics(win), null);
+  const structureOf = domIntrinsics ? (el, maxChars) => elementStructure(el, maxChars, domIntrinsics) : null;
   const defineProperty = Object.defineProperty;
   const freeze = Object.freeze;
   const markerSymbol = Symbol.for(MARKER_KEY);
@@ -131,7 +143,7 @@ export function createRecorder({ win, options = {} }) {
 
   // `json` for the hooks: capped serialization; the size goes into the next recorded entry.
   const json = (value) => {
-    const res = serializeCapped(value, limits.entryChars);
+    const res = serializeCapped(value, limits.entryChars, { elementStructure: structureOf });
     pendingChars += res.chars;
     return res.value;
   };
@@ -328,7 +340,7 @@ export function createRecorder({ win, options = {} }) {
   function exportBuffers() {
     const out = { truncated: {}, counts: {} };
     for (const section of RECORDER_SECTIONS) {
-      out[section] = buffers[section].items().map((entry) => ({ ...entry, doc: docId }));
+      out[section] = recorderWithDoc(buffers[section].items(), docId);
       out.truncated[section] = buffers[section].truncated;
       out.counts[section] = counts[section];
     }
@@ -338,11 +350,11 @@ export function createRecorder({ win, options = {} }) {
 
   // Network items with `sizeBytes` from Resource Timing and element load errors merged (copies, D2).
   function adjustedNetwork() {
-    if (frozenNetwork) return frozenNetwork.map((entry) => ({ ...entry, doc: docId }));
+    if (frozenNetwork) return recorderWithDoc(frozenNetwork, docId);
     const items = buffers.network.items();
     const current = resources;
     const adjusted = state === 'recording' && current ? recorderTry(() => current.adjust(items), null) : null;
-    return (Array.isArray(adjusted) ? adjusted : items).map((entry) => ({ ...entry, doc: docId }));
+    return recorderWithDoc(Array.isArray(adjusted) ? adjusted : items, docId);
   }
 
   // Current-document part of the `collect`/`flush` result (flat, as assemblePackage reads it); the entry point

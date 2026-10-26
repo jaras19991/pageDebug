@@ -457,6 +457,39 @@ describe('createRecorder', () => {
     rec.destroy();
   });
 
+  it('element in console args → structure from DOM getters captured at install, no outerHTML or text (E3-T8, D5)', () => {
+    const win = makeWin();
+    for (const name of ['Element', 'Node', 'CharacterData', 'Document', 'NamedNodeMap', 'Attr']) win[name] = window[name];
+    const rec = createRecorder({ win });
+    rec.install();
+    rec.setConfig({ record: true, docId: 1 });
+    const el = window.document.createElement('div');
+    el.innerHTML = '<input id="q" value="jan@example.com" placeholder="tajne"><span class="c">tekst strony</span>';
+    // A page patch after document_start does not change what the recorder reads.
+    const saved = Object.getOwnPropertyDescriptor(window.Element.prototype, 'attributes');
+    Object.defineProperty(window.Element.prototype, 'attributes', { configurable: true, get: () => { throw new Error('patched'); } });
+    try {
+      win.console.log('el', el);
+    } finally {
+      Object.defineProperty(window.Element.prototype, 'attributes', saved);
+    }
+    const [entry] = rec.snapshot().consoleLogs;
+    expect(entry.args[1]).toEqual({ tagName: 'DIV', id: '', className: '', structure: '<div><input id="q"><span class="c"></span></div>' });
+    const json = JSON.stringify(entry);
+    for (const leak of ['outerHTML', 'jan@example.com', 'tajne', 'tekst strony']) expect(json).not.toContain(leak);
+    rec.destroy();
+  });
+
+  it('no DOM realm → element structure null, console still recorded', () => {
+    const win = makeWin();
+    const rec = createRecorder({ win });
+    rec.install();
+    rec.setConfig({ record: true, docId: 1 });
+    win.console.log(window.document.createElement('p'));
+    expect(rec.snapshot().consoleLogs[0].args[0]).toMatchObject({ tagName: 'P', structure: null });
+    rec.destroy();
+  });
+
   it('RECORDER_VERSION equals manifest.base.json version', () => {
     const manifest = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/manifest.base.json'), 'utf8'));
     expect(RECORDER_VERSION).toBe(manifest.version);
@@ -550,8 +583,8 @@ function startRich(opts = {}, setup = {}) {
 }
 
 describe('createRecorder — E2 hooks (E2-T9a)', () => {
-  it('constants: protocol 2 and the v3 limits', () => {
-    expect(PROTOCOL).toBe(2);
+  it('constants: protocol 3 (E3: dom.structure, forms valueLength) and the v3 limits', () => {
+    expect(PROTOCOL).toBe(3);
     expect(LIMITS).toMatchObject({
       steps: 2000, responseBodyChars: 4096, responseBodyTotalChars: 262144, longTasks: 20, stackChars: 16000,
     });
@@ -681,7 +714,7 @@ describe('createRecorder — E2 hooks (E2-T9a)', () => {
     rec.destroy();
   });
 
-  it('snapshot contains steps, vitals, documentStatus, resource records with doc and fetch sizes; protocol 2', async () => {
+  it('snapshot contains steps, vitals, documentStatus, resource records with doc and fetch sizes; protocol 3', async () => {
     const { win, fake, rec } = startRich();
     rec.setConfig({ record: true, docId: 4 });
     vi.advanceTimersByTime(10);
@@ -692,7 +725,7 @@ describe('createRecorder — E2 hooks (E2-T9a)', () => {
     ]);
     fake.queue('largest-contentful-paint', [{ startTime: 300, element: null, url: '' }]);
     const snap = rec.snapshot();
-    expect(snap.protocol).toBe(2);
+    expect(snap.protocol).toBe(PROTOCOL);
     expect(snap.steps.map((s) => s.type)).toEqual(['navigate']);
     expect(snap.documentStatus).toEqual({ status: 200 });
     expect(snap.vitals.LCP).toMatchObject({ available: true, value: 300, finalized: false });

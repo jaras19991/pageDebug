@@ -4,6 +4,7 @@
 import { test, expect } from '@playwright/test';
 import { readdir } from 'node:fs/promises';
 import { MESSAGES } from '../../src/popup/messages.js';
+import { TRUNCATED_KEYS } from '../helpers/snapshot-validator.js';
 import { countDownloads } from './helpers/download.js';
 import { startFixtureServer } from './helpers/fixtures-server.js';
 import { launchWithExtension, openPopupFor } from './helpers/launch.js';
@@ -166,7 +167,7 @@ test('badge is set on recording tab only', async () => {
   });
 });
 
-test('save: Zapisano names the file that exists in download dir; file is JSON schemaVersion 3 with header fields', async () => {
+test('save: Zapisano names the file that exists in download dir; file is a zip, snapshot.json schemaVersion 4 with header fields', async () => {
   await withPage(async (page) => {
     const downloads = await countDownloads(ext);
     const { fileName, json, statusText } = await recordEarlyError(page);
@@ -175,7 +176,7 @@ test('save: Zapisano names the file that exists in download dir; file is JSON sc
     expect(await downloads.names()).toEqual([fileName]);
     expect(await readdir(ext.downloadDir)).toContain(fileName);
 
-    expect(json.schemaVersion).toBe(3);
+    expect(json.schemaVersion).toBe(4);
     expect(json.source).toBe('extension');
     expect(json.documents).toHaveLength(1);
     expect(json.recordingStoppedReason).toBeNull();
@@ -184,7 +185,8 @@ test('save: Zapisano names the file that exists in download dir; file is JSON sc
     expect(Date.parse(json.recordingStartedAt)).toBeLessThanOrEqual(Date.parse(json.collectedAt));
     expect(typeof json.timeOrigin).toBe('number');
     expect(json.documents[0].timeOrigin).toBe(json.timeOrigin);
-    expect(json.truncated).toEqual({ consoleLogs: false, runtimeErrors: false, network: false, steps: false, responseBodies: false }); // v3 adds steps and responseBodies
+    // v3 adds steps and responseBodies, v4 the size budget's sections (html, resources, dom, storage, stacks)
+    expect(json.truncated).toEqual(Object.fromEntries(TRUNCATED_KEYS.map((k) => [k, false])));
 
     for (const key of ['consoleLogs', 'runtimeErrors', 'network']) {
       const ts = json[key].map((r) => r.t);

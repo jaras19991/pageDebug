@@ -49,7 +49,10 @@ function resourcePlain(entry) {
 }
 
 function resourceCopies(items) {
-  return (Array.isArray(items) ? items : []).map((e) => (e && typeof e === 'object' ? { ...e } : e));
+  const out = [];
+  // A loop, not Array.prototype.map, which the page may replace (AC-3.6).
+  for (const e of Array.isArray(items) ? items : []) out.push(e && typeof e === 'object' ? { ...e } : e);
+  return out;
 }
 
 function resourceString(value) {

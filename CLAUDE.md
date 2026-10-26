@@ -59,7 +59,9 @@ Komendy: `npm ci`, `npm run lint`, `npm test`, `npm run test:e2e` (`PDS_E2E_NO_B
 - **Składnia modułów `src/page`** (generator jej pilnuje): importy jednolinijkowe od kolumny 0; eksporty tylko
   `export function|class|const|let|var <jedna nazwa>`, `export default`, `export {a, b as c};`, `export * from`, `export * as ns from`;
   ścieżki względne z `.js` w `src/page/`; bez cykli; bez `import(`, `import.meta`, `require(` nawet w komentarzach
-  (fraza `getURL(`/`url(` w komentarzu też wyzwala fail-safe walkera osiągalności plików); eksporty to snapshot (brak live bindings).
+  (walker osiągalności plików `scripts/lib/reachability.mjs` pomija komentarze i wywołania metod `x.url(`/`x.getURL(`;
+  w kodzie fail-safe wyzwalają `runtime.getURL(`/`files:`/`js:` bez literału, `importScripts(` i `url(` poza wywołaniem metody);
+  eksporty to snapshot (brak live bindings).
 - Terminy (limit nagrywania) liczymy z `Date.now()`, nie z `performance.now()` (uśpienie komputera).
 - Nie uruchamiaj dwóch przebiegów e2e naraz bez `PDS_E2E_NO_BUILD=1` (przebudowa `dist/` psuje działającą przeglądarkę).
 

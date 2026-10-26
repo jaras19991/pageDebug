@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: heavy page (E3)</title>
+  <style>
+    body { font: 14px sans-serif; margin: 16px; }
+    #bg { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: -1; }
+    .cell { display: inline-block; width: 6px; height: 6px; }
+  </style>
+  <script>
+    // E3-TEST5 (AC-6.1, AC-6.2): the synthetic "heavy" page of the spec. At load: 50 000 DOM elements and a noisy
+    // full-window background, so the screenshot JPEG is large (~300 KB). Called by e2e via page.evaluate after Nagrywaj:
+    // heavyLogs (5 000 × 40 000 characters), heavyFetch (5 000 × /status/200), heavyFailures (status 500) and
+    // heavyErrors (uncaught errors). Failures, errors and clicks are the never-cut sections the test counts.
+
+    // Short random lowercase words: nothing that looks like a secret (no long runs, no digits), and a 40 000-character
+    // log repeats beyond deflate's 32 KB window, so the logs do not compress away and the size budget has to cut.
+    const text = (chars) => {
+      const letters = 'abcdefghijklmnopqrstuvwxyz';
+      let out = '';
+      while (out.length < chars) {
+        const n = 2 + ((Math.random() * 7) | 0);
+        for (let i = 0; i < n; i++) out += letters[(Math.random() * 26) | 0];
+        out += ' ';
+      }
+      return out.slice(0, chars);
+    };
+
+    window.heavyLogs = (n = 5000, chars = 40000) => {
+      const base = text(chars);
+      for (let i = 0; i < n; i++) console.log(`heavy ${i} ${base}`);
+      return n;
+    };
+
+    // n requests to /status/200, `parallel` at a time; resolves with the number finished.
+    window.heavyFetch = async (n = 5000, parallel = 50) => {
+      let next = 0;
+      let done = 0;
+      const worker = async () => {
+        while (next < n) {
+          const i = next++;
+          await fetch(`/status/200?i=${i}`).then((r) => r.text()).catch(() => {});
+          done++;
+        }
+      };
+      await Promise.all(Array.from({ length: parallel }, worker));
+      return done;
+    };
+
+    window.heavyFailures = async (n = 20) => {
+      for (let i = 0; i < n; i++) await fetch(`/status/500?fail=${i}`).then((r) => r.text()).catch(() => {});
+      return n;
+    };
+
+    // n uncaught errors, one per task; resolves after the last one was thrown.
+    window.heavyErrors = (n = 5) => new Promise((resolve) => {
+      for (let i = 0; i < n; i++) setTimeout(() => { throw new Error(`heavy error ${i}`); }, i);
+      setTimeout(() => resolve(n), n + 50);
+    });
+  </script>
+</head>
+<body>
+  <canvas id="bg"></canvas>
+  <h1>Strona testowa: ciężka</h1>
+  <button type="button" id="act">Działaj</button>
+  <div id="grid"></div>
+  <script>
+    (() => {
+      // 2 elements per cell (div + span) → 50 000 elements in #grid.
+      const parts = [];
+      for (let i = 0; i < 25000; i++) parts.push(`<div class="cell c${i % 50}" data-i="${i}"><span></span></div>`);
+      document.getElementById('grid').innerHTML = parts.join('');
+
+      // Blocky colour noise over the whole window: JPEG cannot compress it much.
+      const canvas = document.getElementById('bg');
+      canvas.width = innerWidth;
+      canvas.height = innerHeight;
+      const ctx = canvas.getContext('2d');
+      const block = 2;
+      for (let y = 0; y < canvas.height; y += block) {
+        for (let x = 0; x < canvas.width; x += block) {
+          ctx.fillStyle = `rgb(${(Math.random() * 256) | 0},${(Math.random() * 256) | 0},${(Math.random() * 256) | 0})`;
+          ctx.fillRect(x, y, block, block);
+        }
+      }
+      window.__elements = document.getElementsByTagName('*').length;
+    })();
+  </script>
+</body>
+</html>

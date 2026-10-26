@@ -77,9 +77,10 @@ async function useChromeDownloads(cdp) {
 /**
  * Starts Chromium with only the given unpacked extension, in a throwaway profile. Downloads go
  * to `downloadDir` (a temp dir by default), never to the user's Downloads folder (AC-3.4).
- * @param {{ distDir?: string, headless?: boolean, downloadDir?: string }} [options]
+ * @param {{ distDir?: string, headless?: boolean, downloadDir?: string, args?: string[], viewport?: null }} [options]
  *   downloadDir: an existing directory owned by the caller; by default one is created and
- *   removed by close().
+ *   removed by close(). args: extra Chromium switches; viewport: null turns off Playwright's emulated viewport
+ *   (E3-TEST4: a real DPR 2 needs `args: ['--force-device-scale-factor=2']` and `viewport: null`).
  * @returns {Promise<{ context: import('@playwright/test').BrowserContext, extensionId: string,
  *   extensionInfo: { id: string, name: string, version: string, path: string },
  *   browserCdp: import('@playwright/test').CDPSession, downloadDir: string,
@@ -93,6 +94,8 @@ export async function launchWithExtension({
   distDir = DIST_CHROME,
   headless = process.env.PDS_E2E_HEADED !== '1',
   downloadDir,
+  args = [],
+  viewport,
 } = {}) {
   distDir = resolve(distDir);
   const tempRoot = await mkdtemp(join(tmpdir(), 'pds-e2e-'));
@@ -112,11 +115,13 @@ export async function launchWithExtension({
       channel: 'chromium',
       headless,
       acceptDownloads: true,
+      ...(viewport === null ? { viewport: null } : {}),
       args: [
         `--disable-extensions-except=${distDir}`,
         `--load-extension=${distDir}`,
         // Exposes the CDP Extensions domain (Extensions.triggerAction).
         '--enable-unsafe-extension-debugging',
+        ...args,
       ],
     });
     const extensionInfo = await readExtensionInfo(context, distDir);

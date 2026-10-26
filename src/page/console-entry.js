@@ -1,8 +1,10 @@
-// Entry of the console fallback (E1-T7, US-7): bundled by scripts/gen-content.mjs into
+// Entry of the console fallback (E1-T7, US-7; E3-T9): bundled by scripts/gen-content.mjs into
 // src/standalone/console-snapshot.js, which a developer pastes into DevTools when the extension is not installed.
 // Same recorder and collector as the extension; there is no background, so it records from the paste on,
-// without a time limit, and saves the v3 package itself through <a download>. What needs the extension
-// (screenshots) is empty with a note; INP counts only interactions after the paste (AC-7.5, AC-5.8).
+// without a time limit, and saves the package itself through <a download>: the same v4 zip and the same redaction
+// as the extension (export.js, AC-3.7, question 5). What needs the extension (screenshots) is empty with a note;
+// INP counts only interactions after the paste (AC-7.5, AC-5.8). The redaction runs in the page realm, after the
+// page's scripts, so a hostile page can defeat it (not covered by AC-3.6; docs/snapshot-schema.md).
 // window.PageDebugSnapshot is the only page global, a deliberate exception to AC-5.4 for this mode:
 // the user needs a name to call download() on. No extension APIs here (runs as a page script).
 // Top-level helpers carry the `console` prefix (D6: all modules end up in one IIFE).
@@ -11,7 +13,8 @@ import { createRecorder, isInstalled } from './recorder.js';
 import { collectPageState } from './collector.js';
 import { safeSlice } from './serialize.js';
 import { RECORDER_VERSION } from './constants.js';
-import { assemblePackage, packageFileName } from '../lib/package.js';
+import { assembleParts } from '../lib/package.js';
+import { exportAssembled } from '../lib/export.js';
 
 const CONSOLE_GLOBAL = 'PageDebugSnapshot';
 const CONSOLE_REVOKE_MS = 60000;
@@ -56,9 +59,11 @@ function consoleBoot(win) {
   if (!rec.install()) return;
   rec.setConfig({ record: true });
 
-  function snapshot() {
+  // The export pipeline of the extension (assemble → redact → budget → summary → zip) without a screenshot or
+  // developer options. assembleParts + exportAssembled = exportPackage, with the INP note added before redaction.
+  async function exportZip() {
     const current = { ...collectPageState({ win, doc: win.document, safeSlice }), ...rec.snapshot() };
-    const pkg = assemblePackage({
+    const { pkg } = assembleParts({
       meta: {
         extensionVersion: RECORDER_VERSION,
         source: 'console',
@@ -71,12 +76,19 @@ function consoleBoot(win) {
       current,
     });
     if (pkg.vitals.some((v) => v.INP)) pkg.notes.push(CONSOLE_INP_NOTE);
-    return pkg;
+    const origin = consoleTry(() => win.location.origin, undefined);
+    return exportAssembled(pkg, { devOptions: {}, date: new Date(), origin });
   }
 
-  function download() {
-    const fileName = packageFileName(Date.now());
-    const blob = new win.Blob([JSON.stringify(snapshot(), null, 2)], { type: 'application/json' });
+  /** The redacted package object, the same one download() writes as snapshot.json. @returns {Promise<object>} */
+  async function snapshot() {
+    return (await exportZip()).snapshot;
+  }
+
+  /** Saves snapshot-<host>-<YYYYMMDD-HHMMSS>.zip. @returns {Promise<string>} the file name */
+  async function download() {
+    const { bytes, fileName } = await exportZip();
+    const blob = new win.Blob([bytes], { type: 'application/zip' });
     const url = win.URL.createObjectURL(blob);
     const link = win.document.createElement('a');
     link.href = url;

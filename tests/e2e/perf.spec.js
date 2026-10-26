@@ -4,6 +4,7 @@
 // vs the recorded tab, same origin and server. Spec limits are p95 ≤ 2 ms per fetch and ≤ 0.5 ms per
 // console call; the asserted thresholds keep a margin so a busy CI machine does not make the test flaky.
 // Measured values go to test-results/hooks-overhead.json for the QA report.
+// E3-TEST5 (end of file): save time ≤ 5 s on basic.html and flood (AC-1.5).
 import { test, expect } from '@playwright/test';
 import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -171,4 +172,46 @@ test('perf: hook overhead, unrecorded vs recorded tab — fetch (median, p95) an
     await plain.close();
     await recorded.close();
   }
+});
+
+// E3-TEST5 (AC-1.5): "Zapisz paczkę" → "Zapisano plik …" ≤ 5 s, median of 5, with redaction, budget and zip in the
+// background. savedAfterMs is measured by saveRecording (click → status text, popup polled every 50 ms).
+// Times go to test-results/e3-save-times.json for the QA report.
+const SAVE_BUDGET_MS = 5000;
+const SAVE_TIMES_FILE = resolve(ROOT, 'test-results/e3-save-times.json');
+const saveTimes = {};
+
+async function medianSaveTime(name, fixture, act) {
+  const times = [];
+  const sizes = [];
+  for (let i = 0; i < 5; i++) {
+    const page = await ext.context.newPage();
+    try {
+      await page.goto(`${server.url}/${fixture}`);
+      await startRecording(page);
+      await act?.(page);
+      const { savedAfterMs, path } = await saveRecording(page);
+      times.push(savedAfterMs);
+      sizes.push((await stat(path)).size);
+    } finally {
+      await page.close();
+    }
+  }
+  const median = [...times].sort((a, b) => a - b)[2];
+  saveTimes[name] = { times, median, zipBytes: sizes };
+  await mkdir(dirname(SAVE_TIMES_FILE), { recursive: true });
+  await writeFile(SAVE_TIMES_FILE, JSON.stringify({ measuredAt: new Date().toISOString(), budgetMs: SAVE_BUDGET_MS, saveTimes }, null, 2));
+  console.log(`[E3-TEST5] save ${name}: ms ${JSON.stringify(times)} median ${median}, zip B ${JSON.stringify(sizes)}`);
+  return median;
+}
+
+test('save → Zapisano ≤ 5 s median of 5 on basic.html (AC-1.5)', async () => {
+  test.setTimeout(120_000);
+  expect(await medianSaveTime('basic', 'basic.html')).toBeLessThanOrEqual(SAVE_BUDGET_MS);
+});
+
+test('save → Zapisano ≤ 5 s median of 5 on flood (5000 logs) (AC-1.5)', async () => {
+  test.setTimeout(180_000);
+  const act = async (page) => expect(await page.evaluate(() => globalThis.floodConsole(5000))).toBe(5000);
+  expect(await medianSaveTime('flood 5000 logs', 'flood.html', act)).toBeLessThanOrEqual(SAVE_BUDGET_MS);
 });

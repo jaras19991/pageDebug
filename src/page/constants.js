@@ -1,11 +1,12 @@
 // Shared constants of the page recorder (E1 D5/D6). RECORDER_VERSION must equal `version` in
 // src/manifest.base.json (guarded by tests/unit/recorder.test.js), so a release has to run `npm run gen`.
 
-export const RECORDER_VERSION = '0.4.0';
+export const RECORDER_VERSION = '0.5.0';
 
 // Version of the MAIN <-> ISOLATED message protocol; 2 = `collect` result with steps, vitals, documentStatus
-// (E2 D8). Mirrored by RESULT_PROTOCOL in src/lib/save.js.
-export const PROTOCOL = 2;
+// (E2 D8); 3 = dom.structure instead of outerHTML, forms `valueLength`/`fileCount`, console elements with
+// `structure` (E3). Mirrored by RESULT_PROTOCOL in src/lib/save.js.
+export const PROTOCOL = 3;
 
 // Per-document buffer limits (D5): entries per section, chars per serialized value, chars of all entries.
 // `responseBodyChars`/`stackChars`/`longTasks` mirror the limits enforced in hooks-network, serialize and

@@ -3,11 +3,13 @@
 // never change propagation or defaultPrevented); a Proxy `apply` on History.prototype.pushState/replaceState.
 // Privacy at the source: no field value is ever read into a record — only `inputType`, `valueLength`, `checked`,
 // a whitelisted `key` and a short label of clicked buttons/links. Only trusted events are recorded.
+// File inputs (E3-IN4, AC-3.4): their `value` (`C:\fakepath\…`) is never read; `input` adds no step and `change`
+// records only `fileCount`.
 // Navigate URLs are masked (maskSecrets) before they reach a record; consecutive replaceState calls with no
 // other step in between are one step (search-as-you-type, AC-3.3).
 // Top-level helpers carry the `steps` prefix (D6: all page modules end up in one IIFE).
 
-import { maskSecrets } from '../lib/mask-secrets.js';
+import { maskSecrets, redactRegExp, redactReplace } from '../lib/mask-secrets.js';
 
 export const STEP_TEXT_MAX_CHARS = 80;
 export const STEP_URL_MAX_CHARS = 4000;
@@ -16,6 +18,8 @@ export const STEP_URL_MAX_CHARS = 4000;
 const STEPS_NAVIGATE_DEDUP_MS = 50;
 // textContent read before whitespace normalization (labels of huge elements).
 const STEPS_TEXT_SCAN_CHARS = 2000;
+// Whitespace runs of a label; replaced through the captured RegExp functions (page patches, AC-3.6).
+const STEPS_WHITESPACE = redactRegExp(/\s+/g);
 
 const STEPS_CLICKABLE = 'a, button, [role=button], input, select, textarea, label, summary, [onclick]';
 const STEPS_LABELLED_INPUTS = ['submit', 'button', 'reset'];
@@ -113,7 +117,7 @@ export function installStepsHook({ win, doc: _doc, now, record, selectorOf, intr
 
   function normalizedText(value) {
     if (typeof value !== 'string') return '';
-    const text = value.slice(0, STEPS_TEXT_SCAN_CHARS).replace(/\s+/g, ' ').trim();
+    const text = redactReplace(value.slice(0, STEPS_TEXT_SCAN_CHARS), STEPS_WHITESPACE, ' ').trim();
     return text.length > STEP_TEXT_MAX_CHARS ? text.slice(0, STEP_TEXT_MAX_CHARS) : text;
   }
 
@@ -142,6 +146,8 @@ export function installStepsHook({ win, doc: _doc, now, record, selectorOf, intr
     if (is(target, I.HTMLInputElement)) {
       const inputType = String(read(I.getInputType, target, 'type'));
       if (inputType === 'password') return { el: target, inputType };
+      // File: the change step carries `fileCount`; the value (a path) is never read (E3-IN4).
+      if (inputType === 'file') return null;
       // Checkbox/radio: `value` is a fixed token ("on"), its length means nothing; the change step carries `checked` (QA F-5).
       if (inputType === 'checkbox' || inputType === 'radio') return null;
       return { el: target, inputType, valueLength: String(read(I.getInputValue, target, 'value')).length };
@@ -194,7 +200,8 @@ export function installStepsHook({ win, doc: _doc, now, record, selectorOf, intr
       entry.inputType = inputType;
       if (inputType === 'file') {
         const files = read(I.getFiles, target, 'files');
-        entry.valueLength = files && typeof files.length === 'number' ? files.length : 0;
+        const count = files ? files.length : 0;
+        entry.fileCount = typeof count === 'number' && count >= 0 ? count : 0;
       } else {
         entry.checked = read(I.getChecked, target, 'checked') === true;
       }

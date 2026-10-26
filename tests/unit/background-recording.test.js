@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { createRecordingHandlers, resolveLimitMs, RECORDING_LIMIT_MS, PENDING_TTL_MS } from '../../src/lib/recording.js';
 import { SCRIPT_IDS } from '../../src/lib/content-scripts.js';
 import { createStore, KEYS } from '../../src/lib/session-store.js';
+import { assemblePackage } from '../../src/lib/package.js';
 import { createFakeChrome } from './helpers/fake-chrome.js';
 
 const TAB = 5;
@@ -292,6 +293,77 @@ describe('flush (D4)', () => {
     await startRecording(env, { requestId: 'r2' });
     await env.h.hello({ type: 'hello' }, bridge(TAB, URL_A));
     expect((await env.h.flush({ type: 'flush', docId: old.docId, token: old.token, data: {} }, bridge(TAB, URL_A))).ok).toBe(false);
+  });
+
+  // AC-6.5 (E3-T0b): `rec.docs` keeps the last 100 documents; the stored copy of a dropped one goes too.
+  async function openDocs(e, n) {
+    for (let i = 0; i < n; i++) {
+      const { docId, token } = await e.h.hello({ type: 'hello' }, bridge(TAB, `${ORIGIN}/p${i + 1}`));
+      await e.h.flush({ type: 'flush', docId, token, data: { consoleLogs: [{ t: i, level: 'log', args: [`doc ${docId}`] }] } }, bridge(TAB, URL_A));
+    }
+  }
+
+  it('101st document trims rec.docs and removes pds:doc of the dropped one', async () => {
+    await startRecording(env);
+    await openDocs(env, 100);
+    expect(env.fake.sessionData.has(`${KEYS.docPrefix}1`)).toBe(true);
+    await openDocs(env, 1);
+    expect(rec(env).docs.map((d) => d.id)).toEqual(Array.from({ length: 100 }, (_, i) => i + 2));
+    expect(env.fake.sessionData.has(`${KEYS.docPrefix}1`)).toBe(false);
+    expect((await env.store.listDocs()).map((d) => d.id)).toEqual(rec(env).docs.map((d) => d.id));
+  });
+
+  it('bridgeError of a new document past 100 removes pds:doc of the dropped one', async () => {
+    await startRecording(env);
+    await openDocs(env, 100);
+    await env.h.bridgeError({ type: 'bridgeError', reason: 'unbound' }, bridge(TAB, URL_A));
+    expect(rec(env).docs).toHaveLength(100);
+    expect(rec(env).docs.at(-1)).toMatchObject({ id: 101, bridgeError: 'unbound', recorded: false });
+    expect(env.fake.sessionData.has(`${KEYS.docPrefix}1`)).toBe(false);
+    expect(env.fake.sessionData.has(`${KEYS.docPrefix}2`)).toBe(true);
+  });
+
+  it('flush whose putDoc lands after its document was trimmed removes the orphaned pds:doc (race with T0b)', async () => {
+    await startRecording(env);
+    await openDocs(env, 100);
+    // Store whose next putDoc waits for the gate: the trim (hello of the 101st document) runs in between.
+    const store = createStore(env.chrome.storage.session);
+    let release;
+    const gate = new Promise((resolve) => (release = resolve));
+    const slowStore = { ...store, putDoc: async (id, data) => (await gate, store.putDoc(id, data)) };
+    const h = createRecordingHandlers({ chrome: env.chrome, store: slowStore, now: () => clock.t });
+    const token = tokenOf(env, 1);
+    const flushing = h.flush({ type: 'flush', docId: 1, token, data: { consoleLogs: [] } }, bridge(TAB, URL_A));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await env.h.hello({ type: 'hello' }, bridge(TAB, `${ORIGIN}/p101`));
+    expect(rec(env).docs.some((d) => d.id === 1)).toBe(false);
+    release();
+    expect((await flushing).ok).toBe(true);
+    expect(env.fake.sessionData.has(`${KEYS.docPrefix}1`)).toBe(false);
+    expect(env.fake.sessionData.has(`${KEYS.docPrefix}2`)).toBe(true);
+  });
+
+  it('flush of a document still in rec.docs keeps its pds:doc', async () => {
+    await startRecording(env);
+    await openDocs(env, 2);
+    expect(env.fake.sessionData.has(`${KEYS.docPrefix}1`)).toBe(true);
+    expect(env.fake.sessionData.has(`${KEYS.docPrefix}2`)).toBe(true);
+  });
+
+  it('documents[] keeps background order after trimming', async () => {
+    await startRecording(env);
+    await openDocs(env, 103);
+    const priorDocs = (await env.store.listDocs()).map(({ id, data }) => ({ ...data, docId: data?.docId ?? id }));
+    const pkg = assemblePackage({
+      meta: { extensionVersion: '0.4.0', source: 'extension', startedAt: 1, collectedAt: 2, stopReason: null },
+      current: null,
+      priorDocs,
+      docs: rec(env).docs,
+    });
+    const ids = Array.from({ length: 100 }, (_, i) => i + 4);
+    expect(pkg.documents.map((d) => d.url)).toEqual(ids.map((id) => `${ORIGIN}/p${id}`));
+    expect(pkg.consoleLogs.map((r) => r.args[0])).toEqual(ids.map((id) => `doc ${id}`));
+    expect(pkg.consoleLogs.map((r) => r.doc)).toEqual(ids.map((_, index) => index));
   });
 
   it('bridgeError marks the document as not recorded', async () => {

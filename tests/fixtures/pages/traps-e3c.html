@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: review traps, iteration 3 (N9, N13, N14)</title>
+</head>
+<body>
+  <!-- E3 re-review iteration 2, N9: console.log argument pairs. Random values in window.__pdsTraps; the e2e grep must find none.
+         a console.log('password:', pw)   b console.log('token=', t)   c console.log('login','jan','password', pw)
+         d long entry (> 40000 chars, becomes {truncated, preview}) with the pair 'password', pw
+         control: console.log('Pressed key', 'Enter') must survive
+       E3 re-review iteration 3, N13 (keys in a chain) and N14 (pairs in a nested array):
+         e console.log('[Auth]', 'Token:', t)   f console.log('auth:', 'token', t)   g console.log('session', 'token=', t)
+         h console.log('Session', 'Token', t)   i console.log(['login', 'jan', 'password', pw])   j console.log({ creds: ['user', 'jan', 'pin', pin] })
+         k long entry with the chain '[Auth]', 'Token:', t and the nested array of i (preview)
+         controls: ('token count', 5), ('auth ok', true), ('login', 'jan', 'theme', 'dark') must survive -->
+  <h1>Pułapki review 3</h1>
+  <script>
+    (() => {
+      const hex = (bytes) => Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (b) => b.toString(16).padStart(2, '0')).join('');
+      const traps = { colon: `Pc${hex(6)}`, token: `Tk${hex(6)}`, triple: `Pt${hex(6)}`, long: `Pl${hex(6)}`, longTail: `Pz${hex(6)}`,
+        chainAuth: `Ca${hex(6)}`, chainColon: `Cb${hex(6)}`, chainEq: `Cc${hex(6)}`, chainWords: `Cd${hex(6)}`,
+        nested: `Na${hex(6)}`, nestedPin: `9${String(crypto.getRandomValues(new Uint32Array(1))[0]).padStart(10, '0')}`,
+        longChain: `Ce${hex(6)}`, longNested: `Nb${hex(6)}` };
+      window.__pdsTraps = traps;
+      console.log('password:', traps.colon);
+      console.log('token=', traps.token);
+      console.log('login', 'jan', 'password', traps.triple);
+      console.log('x'.repeat(30000), 'password', traps.long, 'y'.repeat(30000), 'password', traps.longTail);
+      console.log('Pressed key', 'Enter');
+      console.log('[Auth]', 'Token:', traps.chainAuth);
+      console.log('auth:', 'token', traps.chainColon);
+      console.log('session', 'token=', traps.chainEq);
+      console.log('Session', 'Token', traps.chainWords);
+      console.log(['login', 'jan', 'password', traps.nested]);
+      console.log({ creds: ['user', 'jan', 'pin', Number(traps.nestedPin)] });
+      console.log('x'.repeat(20000), '[Auth]', 'Token:', traps.longChain, ['login', 'jan', 'password', traps.longNested], 'y'.repeat(30000));
+      console.log('token count', 5);
+      console.log('auth ok', true);
+      console.log('login', 'jan', 'theme', 'dark');
+    })();
+  </script>
+</body>
+</html>

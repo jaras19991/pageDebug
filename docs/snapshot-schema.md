@@ -1,11 +1,14 @@
 # Schemat paczki snapshotu
 
-Źródło prawdy o strukturze pliku `page-debug-snapshot-<timestamp>.json`. Reguły wersjonowania: skill `snapshot-schema`.
-Aktualna wersja: **3** (od E2). Paczkę v3 składa `assemblePackage` z `src/lib/package.js` (tło rozszerzenia i fallback
-konsolowy). Rozpoznawanie przy odczycie: jest `schemaVersion` → ta wersja; brak `schemaVersion` i `version: "1.0.0"` →
-wersja 1 (tabele migracji na końcu). Przykłady (dane syntetyczne): `tests/fixtures/snapshots/v3.json` (aktualny),
-`tests/fixtures/snapshots/v2.json` (do testów migracji). Zgodność paczki z v3 sprawdza walidator
-`tests/helpers/snapshot-validator.js` (`validateSnapshot(pkg) → { ok, errors }`), wspólny dla testów unit i e2e.
+Źródło prawdy o strukturze paczki: od v4 zip `snapshot-<host>-<YYYYMMDD-HHMMSS>.zip` z `snapshot.json`, `summary.md`
+i opcjonalnym `screenshot.jpg`; do v3 jeden plik `page-debug-snapshot-<timestamp>.json`. Reguły wersjonowania: skill `snapshot-schema`.
+Aktualna wersja: **4** (od E3). Paczkę v4 składa `assemblePackage` z `src/lib/package.js`, a redaguje, przycina do budżetu
+i pakuje `exportPackage` z `src/lib/export.js` (tło rozszerzenia i fallback konsolowy). Rozpoznawanie przy odczycie: plik
+zaczyna się od `PK` (zip) → `snapshot.json` w środku; jest `schemaVersion` → ta wersja; brak `schemaVersion` i `version: "1.0.0"` →
+wersja 1 (tabele migracji na końcu). Przykłady (dane syntetyczne): `tests/fixtures/snapshots/v4.json` (aktualny),
+`v3.json` i `v2.json` (do testów migracji). Zgodność z v4 sprawdza walidator `tests/helpers/snapshot-validator.js`
+(`validateSnapshot(pkg) → { ok, errors }` dla `snapshot.json`, `validateZipEntries(names, pkg?)` dla wpisów zipa), wspólny
+dla testów unit i e2e.
 
 ## Wersja 1 (baseline, rozszerzenie 1.0.0, E0)
 
@@ -312,8 +315,7 @@ z `attachments` do paska adresu przeglądarki. W fallbacku konsolowym zrzutów n
 ### Przykład
 
 Pełny przykład (2 dokumenty, kroki, zasoby, metryki dostępne i niedostępne, zrzut 1×1 px): `tests/fixtures/snapshots/v3.json`.
-Plik jest wynikiem `assemblePackage` dla danych z `tests/unit/snapshot-validator.test.js`. Po zamierzonej zmianie kształtu paczki
-odświeżasz go komendą `PDS_UPDATE_FIXTURES=1 npx vitest run tests/unit/snapshot-validator.test.js`. Skrót:
+Plik powstał z `assemblePackage` w wersji 0.4.0 i od v4 jest zamrożony (testy migracji i redakcji paczki v3). Skrót:
 
 ```jsonc
 {
@@ -356,6 +358,298 @@ odświeżasz go komendą `PDS_UPDATE_FIXTURES=1 npx vitest run tests/unit/snapsh
                      "stack": "…", "cause": { "name": "Error", "message": "save failed", "stack": "…" } } ], "stack": "…" } ],
   "environment": { … }, "performance": { … }, "storage": { … }, "dom": { … },
   "attachments": { "screenshot-0": "data:image/jpeg;base64,/9j/…" }
+}
+```
+
+## Wersja 4 (E3, rozszerzenie 0.5.0)
+
+Zmiana łamiąca względem v3 (design E3 D10): inny kontener (zip zamiast jednego JSON-a), usunięte `attachments`, zmieniony typ
+`storage.cookies` i `dom.forms[].elements[].value`, usunięte `dom.html.outerHTML`. Dochodzi redakcja całej paczki (`redaction`),
+struktura DOM bez tekstów i budżet rozmiaru 2 MB. Paczkę v4 składa `assembleParts`/`assemblePackage` (`src/lib/package.js`),
+a redaguje, przycina i pakuje `exportPackage` (`src/lib/export.js`). Ten sam potok działa w tle rozszerzenia i w fallbacku konsolowym.
+
+### Kontener
+
+Plik `snapshot-<host>-<YYYYMMDD-HHMMSS>.zip`:
+
+- `<host>` to nazwa hosta originu nagrania: bez portu, małymi literami, znaki spoza `[a-z0-9.-]` zamienione na `-`, najwyżej 80
+  znaków; bez hosta `local`.
+- Czas to **lokalny** zegar zgłaszającego, żeby rozpoznał swój plik. Dokładny czas UTC jest w `collectedAt`.
+
+Wpisy zipa, zawsze w tej kolejności (walidator: `validateZipEntries`):
+
+| # | Wpis | Zawartość |
+|---|---|---|
+| 1 | `snapshot.json` | paczka (ten dokument), JSON z wcięciem 2 spacji, UTF-8, skompresowany (deflate) |
+| 2 | `summary.md` | krótki opis po polsku, budowany **z już zredagowanego** `snapshot.json` (`src/lib/summary.js`): host, data, wersje, środowisko, `overview`, linia o prywatności („Zamaskowano N wartości w M sekcjach (reguły v1). …”), pierwsze 10 `notes` |
+| 3 | `screenshot.jpg` | tylko gdy `screenshots[]` ma wpis: JPEG ≤ 300 KB z zamalowanymi polami formularzy, zapisany bez kompresji |
+
+Inne wpisy się nie pojawiają. Gdy przeglądarka nie ma `CompressionStream`, zip powstaje bez kompresji, a `notes` dostaje wpis
+„The package is not compressed (this browser cannot compress).”. W `snapshot.json` nie ma danych binarnych ani base64 obrazu.
+
+### Co developer czyta najpierw
+
+1. `summary.md` — minuta na kontekst.
+2. W `snapshot.json` od góry: `overview`, `redaction` (co zamaskowano, w których sekcjach), `limits`/`truncated` (czego brakuje),
+   `notes`, potem `steps` → `runtimeErrors` → `network` → `vitals` → `screenshots` → `consoleLogs`, na końcu sekcje strony,
+   a w nich jako ostatnie `dom.structure` i `dom.fullHtml`.
+
+### Klucze najwyższego poziomu (w kolejności w pliku)
+
+Wszystkie są **wymagane**, także w fallbacku konsolowym. `null` lub pusta tablica jest wyjaśniona w `notes` tak jak w v3.
+
+| # | Ścieżka | Typ | Opis | Od kiedy |
+|---|---|---|---|---|
+| 1 | `schemaVersion` | integer | `4` | v2 (wartość v4) |
+| 2–7 | `extensionVersion`, `source`, `collectedAt`, `recordingStartedAt`, `recordingStoppedReason`, `timeOrigin` | | jak v3 | v2 |
+| 8 | `overview` | object | jak v3; liczony **po** budżecie rozmiaru (z tego, co jest w paczce); `screenshot: false`, gdy zgłaszający wyłączył zrzut | v3 |
+| 9 | `redaction` | object | `{ rulesVersion, disabledRules, masked }` — raport redakcji bez żadnych wartości (niżej) | **v4** |
+| 10 | `limits` | object | jak v3 + `html` (300 000), `packageBytes` (2 097 152; 10 485 760, gdy developer włączył pełny HTML) | v2 (rozszerzone) |
+| 11 | `truncated` | object | jak v3 + `html`, `resources`, `dom`, `storage`, `stacks` (niżej, „Budżet rozmiaru”) | v2 (rozszerzone) |
+| 12 | `documents` | object[] | jak v3; `url` po redakcji | v2 |
+| 13 | `notes` | string[] | jak v3 + powody braku zrzutu z E3, cięcia budżetu z liczbami, po jednej notatce na sekcję rekordów z różnicą między nagranym a zapisanym (`<sekcja>: N recorded, M in the package; K were not included (recording limits, time limit or package size limit).`), cięcia po redakcji (`dom.structure was cut to N characters after redaction.`), przekroczenie 2 MB z pełnym HTML, zip bez kompresji | v1 |
+| 14 | `steps` | object[] | jak v3; krok `change` pola pliku ma `fileCount` (niżej) | v3 |
+| 15 | `runtimeErrors` | object[] | jak v3, po redakcji | v1 |
+| 16 | `network` | object[] | jak v3, po redakcji (URL-e, nagłówki, `requestBody`, podglądy) | v1 |
+| 17 | `vitals` | object[] | jak v3 | v3 |
+| 18 | `screenshots` | object[] | metadane zrzutu: `file` zamiast `attachment`, nowe `maskedFields`; najwyżej 1 wpis | v3 (kształt v4) |
+| 19 | `consoleLogs` | object[] | jak v3, po redakcji; element DOM w `args` ma `structure` zamiast `outerHTML` | v1 |
+| 20 | `environment` | object \| null | jak v3, po redakcji (`location.href`/`search`/`hash` zgodne ze sobą) | v1 |
+| 21 | `performance` | object \| null | jak v3, adresy po redakcji | v1 |
+| 22 | `storage` | object \| null | `cookies` jako lista skrótów, nowe `cookiesTotalBytes`, wartości `localStorage`/`sessionStorage` po redakcji | v1 (kształt v4) |
+| 23 | `dom` | object \| null | bez `html.outerHTML`; nowe `structure` i `fullHtml` jako ostatnie klucze; formularze bez wartości | v1 (kształt v4) |
+
+`attachments` **nie istnieje** w v4: obraz to wpis `screenshot.jpg` w zipie.
+
+### `redaction`
+
+```jsonc
+"redaction": {
+  "rulesVersion": 1,                 // wersja polityki redakcji (src/lib/redact-rules.js)
+  "disabledRules": [],               // reguły wyłączone opcją developerską; podzbiór ["email", "phone", "html-structure"]
+  "masked": { "network": 2, "consoleLogs": 3, "environment": 2, "storage": 2, "dom": 1 }
+}
+```
+
+- Klucze `masked` to sekcje najwyższego poziomu paczki: `documents`, `notes`, `steps`, `runtimeErrors`, `network`, `vitals`,
+  `consoleLogs`, `environment`, `performance`, `storage`, `dom`. Sekcja bez znaczników nie występuje (brak klucza, nie `0`).
+- `masked.<sekcja>` to liczba wystąpień `[redacted:` w tej sekcji **po** budżecie rozmiaru. Suma `masked` równa się liczbie
+  wystąpień `[redacted:` w całym `snapshot.json` (AC-4.3). Walidator sprawdza i sumę, i każdą sekcję.
+- `disabledRules` wymienia tylko reguły poziomu *Domyślnie*, w kolejności `email`, `phone`, `html-structure`, bez powtórzeń.
+  Próba wyłączenia reguły poziomu *Zawsze* jest ignorowana i nie trafia do listy (AC-4.5). Zgłaszający nie ma tej opcji. Źródło
+  opcji developerskich dostarczy E4-D4; w E3 lista jest zawsze pusta.
+- `redaction` nie zawiera żadnej zamaskowanej wartości ani jej fragmentu.
+
+### Reguły i znaczniki
+
+Zamaskowana wartość to string `"[redacted:<reguła>]"`, nigdy `null` (`null` znaczy „nie było”). Znacznik zastępuje całą wartość
+(klucz wrażliwy, wartość pola) albo tylko pasujący fragment tekstu (`"session [redacted:jwt]"`,
+`"?access_token=[redacted:key-token]"`). Reguły `rulesVersion: 1`:
+
+| Reguła | Poziom | Co maskuje |
+|---|---|---|
+| `key-<token>` | Zawsze | wartość przy kluczu, parametrze, nagłówku albo atrybucie, którego nazwa zawiera słowo z listy (`token`, `access_token`, `refresh_token`, `id_token`, `auth`, `authorization`, `session`, `sessionid`, `sid`, `jwt`, `secret`, `api_key`, `apikey`, `key`, `password`, `passwd`, `pwd`, `csrf`, `xsrf`, `cookie`, `set-cookie`, `bearer`, `credential`, `private`, `signature`, `sig`, `otp`, `pin`, `cvv`, `cvc`, `pass`), np. `key-token`, `key-password`, `key-cvv`; `key-session` także dla przyrostka `sessid`/`sessionid` (`JSESSIONID`, `PHPSESSID`). Dwa wyjątki: `pw` liczy się tylko jako cały klucz (`pw`, nie `new_pw`), a `code` i `ticket` (kod OAuth, bilet CAS: `key-code`, `key-ticket`) tylko jako parametr query albo fragmentu adresu URL — w JSON-ie i tekście to zwykłe słowa (`{"code":"PL"}` zostaje). `passenger`, `passport`, `compass`, `bypass`, `country_code`, `promo_code` nie są maskowane |
+| `jwt` | Zawsze | token JWT (`eyJ….….…`) |
+| `bearer`, `basic` | Zawsze | dane po `Bearer ` / `Basic ` |
+| `card` | Zawsze | numer karty: 13–19 cyfr z prefiksem wydawcy (Visa, Mastercard, Amex, Discover/Maestro) i poprawną sumą Luhna |
+| `iban` | Zawsze | IBAN z poprawną sumą kontrolną |
+| `pesel` | Zawsze | PESEL z poprawną sumą kontrolną |
+| `long-secret` | Zawsze | długi ciąg o wysokiej entropii (klucze API bez słowa-klucza); nie w selektorach |
+| `url-credentials` | Zawsze | `user:hasło@` w adresie |
+| `url-fragment` | Zawsze | cały fragment `#…` adresu, gdy niesie dane (np. `#id_token=…` z OAuth) |
+| `form-value` | Zawsze | wartość pola formularza (`value` w pełnym HTML, treść `textarea`) |
+| `email` | Domyślnie | adres e-mail — wszędzie, gdzie przechodzi przebieg tekstowy (także URL-e, tytuł, kroki, atrybuty `data-*`, `notes`) |
+| `phone` | Domyślnie | numer telefonu — tylko w konsoli, błędach, `requestBody`, podglądach odpowiedzi i storage (w URL-ach i selektorach za dużo fałszywych trafień) |
+| `html-structure` | Domyślnie | pseudo-reguła: pełny HTML strony nie trafia do paczki; jej wyłączenie oznacza `dom.fullHtml` |
+
+**Jedyna zmiana typu wartości:** liczba albo boolean przy kluczu wrażliwym w danych użytkownika (np. `{ "pin": 1234 }` w argumencie
+konsoli, w `requestBody` albo w storage) staje się stringiem znacznika (`"pin": "[redacted:key-pin]"`). Pozostałe pola zachowują
+typ: znacznik zawsze zastępuje string. Liczniki, statusy, czasy, rozmiary, `overview`, `vitals` i komunikaty błędów (poza
+zamaskowanymi fragmentami) redakcja zostawia bez zmian (AC-5.4). Nie skanuje też nagłówka paczki, `limits`, `truncated`
+i metadanych `screenshots`.
+
+Pary klucz–wartość są rozpoznawane także w miejscach, gdzie nie ma zwykłego obiektu: JSON zagnieżdżony w stringu (dowolny poziom
+escape'ów, np. `redux-persist`), JSON w atrybutach z encjami (`&quot;`, `&#34;`, `&lt;` w XML), wartości ucięte na granicy limitu
+(maskowane do końca), JSON zakodowany procentami w treści formularza, pary `{ name, value }` i `[nazwa, wartość]`, a w argumentach
+konsoli sąsiednie argumenty (`console.log('password:', x)`, `console.log('login', 'jan', 'password', x)`, łańcuch kluczy).
+Sama nazwa klucza w argumencie konsoli musi być jednym słowem albo kończyć się `:`/`=`; zdanie (`'Your password is', x`) nie jest kluczem.
+
+Redakcja ma dwa etapy. Rozstrzyga ta w tle (`src/lib/redact.js` + `redact-page.js`) na złożonej paczce. Ochrona u źródła w MAIN
+(podglądy odpowiedzi, nagłówki i adresy w hookach sieci, kroki) jest obroną w głąb. Fallback konsolowy używa tych samych modułów.
+
+### `storage`
+
+```jsonc
+"storage": {
+  "cookies": [ { "name": "sid", "sizeBytes": 20, "valueHash": "93d70a40" }, { "name": "consent", "sizeBytes": 11, "valueHash": "8a798890" } ],
+  "cookiesTotalBytes": 45,
+  "localStorage": { "theme": "dark", "authToken": "[redacted:key-token]", "profile": "{\"email\":\"[redacted:email]\",\"plan\":\"free\"}" },
+  "sessionStorage": { "cart": "3" }
+}
+```
+
+| Pole | Typ | Opis |
+|---|---|---|
+| `cookies` | object[] | jeden wpis na ciasteczko widoczne dla `document.cookie` (bez `HttpOnly`), w kolejności z `document.cookie`. Para bez `=` to ciasteczko z pustą nazwą |
+| `cookies[].name` | string | nazwa jawnie |
+| `cookies[].sizeBytes` | integer | bajty UTF-8 pary `nazwa=wartość` |
+| `cookies[].valueHash` | string | pierwsze 8 znaków hex (małe litery) SHA-256 wartości. Ta sama wartość daje ten sam skrót w każdej paczce, różna — różny. Sama wartość nigdy nie trafia do paczki |
+| `cookiesTotalBytes` | integer | bajty UTF-8 całego `document.cookie` (z separatorami `; `) |
+| `localStorage`, `sessionStorage` | object | klucze jawnie. Wartości po redakcji: przy kluczu wrażliwym cała wartość to znacznik, w pozostałych przebieg tekstowy (z `email` i `phone`). Wartość ≤ 5000 znaków od kolektora, w budżecie może być skrócona do 1000 (`truncated.storage`). Błąd odczytu obszaru: klucz `__error` z komunikatem |
+
+### `dom`
+
+Klucze w kolejności: `counts`, `html`, `meta`, `canonical`, `hreflangs`, `scripts`, `stylesheets`, `images`, `iframes`, `forms`,
+`rootMarkers` (jak v3, adresy i atrybuty po redakcji), a jako **ostatnie** `structure` i `fullHtml`.
+
+| Pole | Typ | Opis |
+|---|---|---|
+| `html` | object | `doctype` (`{ name, publicId, systemId }` \| `null`), `lang`, `charset`, `compatMode`. **Bez `outerHTML`** |
+| `images[]` | object[] | `src`, `naturalWidth`, `naturalHeight`, `width`, `height`, `loading`, `altLength` (integer, długość tekstu `alt`; 0, gdy go nie ma). **Bez `alt`** — tekst bywa imieniem i nazwiskiem („Avatar Jana Kowalskiego”) |
+| `iframes[]` | object[] | `src`, `id`, `name`, `titleLength` (integer, długość atrybutu `title`; 0, gdy go nie ma), `attributes` (bez `title`). **Bez `title`** z tego samego powodu |
+| `forms[].elements[]` | object[] | `tagName`, `type`, `name`, `id`, `checked?`, `valueLength?`, `fileCount?`. **Nigdy `value`.** `valueLength` (integer) to długość wartości; pola `password` go nie mają. Pole `file` nie ma `valueLength` (w v3 była to długość ścieżki `C:\fakepath\…`), tylko `fileCount` (integer, liczba wybranych plików; brak, gdy przeglądarka jej nie podaje). `fileCount` występuje wyłącznie przy `type: "file"` |
+| `structure` | string \| null | struktura bieżącego dokumentu jako HTML bez tekstów (niżej); ≤ `limits.html` znaków, chyba że `truncated.html` |
+| `fullHtml` | string \| null | `null`, chyba że developer wyłączył `html-structure` (`redaction.disabledRules`). Wtedy pełny HTML z tekstami i atrybutami (bez `value` pól), po przebiegu tekstowym redakcji, ≤ 8 000 000 znaków od kolektora, cięty dalej przez budżet 10 MB |
+
+`structure` — elementy w kolejności dokumentu:
+
+- Tylko tagi i atrybuty z białej listy: `id`, `class`, `role`, `data-*`, `aria-*` bez `aria-label`, `aria-valuetext`,
+  `aria-description`, `aria-placeholder`, oraz `type` na `input`/`button`. Wartości atrybutów są po redakcji (np.
+  `data-user="[redacted:email]"`).
+- Brak węzłów tekstowych, komentarzy, `value`, `placeholder`, `title`, `alt`, `href`, `src`.
+- Brak treści `<script>`, `<style>`, `<template>`, `<noscript>`. Sam tag zostaje, więc selektory `nth-of-type` z `steps`, `vitals`
+  i `CLS.sources` dalej trafiają w ten sam element (AC-5.3).
+- Elementy puste (void) nie mają tagu zamykającego. Wynik zawsze da się sparsować (`DOMParser`).
+- Gdy kolektor przekroczy 300 000 znaków, przestaje schodzić w głąb i domyka otwarte tagi. Paczka dostaje wtedy
+  `truncated.html: true` i notatkę „dom.structure was cut to 300000 characters; N elements were not included.”.
+  Znacznik redakcji bywa dłuższy od zastąpionej wartości (`a@b.pl` → `[redacted:email]`): gdy po redakcji `structure` przekroczy
+  `limits.html`, eksport przycina ją na granicy elementu z domknięciem tagów, ustawia `truncated.html: true` i dodaje notatkę
+  „dom.structure was cut to 300000 characters after redaction.” (jeśli `truncated.html` nie było już ustawione).
+  Budżet rozmiaru może dalej skrócić `structure` (najmniej do 100 000 znaków) z notatką „dom.structure was cut by N characters …”.
+
+### Elementy w `consoleLogs[].args`
+
+Element DOM przekazany do `console.*` to `{ tagName, id, className, structure }`. `structure` to ten sam serializator co
+`dom.structure`, ograniczony do 2000 znaków na element, bez tekstów i wartości. W v3 było tu `outerHTML`.
+
+### `steps[]` — pole pliku
+
+`input[type=file]`: zapisywany jest tylko krok `change` z `inputType: "file"` i `fileCount` (integer, liczba wybranych plików).
+Krok `input` na polu pliku nie powstaje. Nie ma `valueLength`: w v3 była to długość ścieżki `C:\fakepath\…`. Nazwa ani ścieżka
+pliku nigdy nie trafia do paczki. Pozostałe pola kroków jak v3.
+
+### `screenshots[]`
+
+`t`, `doc`, `reason: "save"`, `mime: "image/jpeg"`, `width`, `height`, `bytes` — jak v3, plus:
+
+| Pole | Typ | Opis |
+|---|---|---|
+| `file` | string | `"screenshot.jpg"` — nazwa wpisu w zipie z bajtami obrazu (zastępuje `attachment`) |
+| `maskedFields` | integer \| null | ile pól formularza zamalowano na obrazie; `null`, gdy nieznane |
+
+Najwyżej jeden wpis (jeden obraz w zipie). Pola edytowalne są zamalowane: `input` poza `button`, `submit`, `reset`, `checkbox`,
+`radio`, `range`, `color`, `image`, a także `textarea`, `select`, `[contenteditable]`, również w iframe'ach tego samego originu.
+Etykiet nie zamalowujemy. Gdy zrzutu nie ma, `screenshots: []`, a `notes` podaje powód:
+
+- „Screenshot not included (turned off by the reporter).” — przełącznik „Dołącz zrzut ekranu” był wyłączony. Notatka brzmi tak samo,
+  gdy to nie zgłaszający go wyłączył, tylko popup zostawił go wyłączonego (okienka innych serwisów na stronie albo nieudane sprawdzenie
+  strony — fail-closed); ze schematu nie da się tych przypadków odróżnić;
+- „No screenshot: form fields could not be hidden (<powód>).” — nie udało się ustalić pól, więc obrazu nie ma (fail-closed);
+- „No screenshot: the page moved while the screenshot was taken.” — przewinięcie między odczytami pól;
+- „More than 2000 form fields: the whole screenshot is covered.” — zbyt wiele pól, obraz jest w całości zakryty (zrzut jest, ale bez treści);
+- „No screenshot: the image could not be included.” — eksport nie dostał bajtów obrazu (metadane są usuwane, `overview.screenshot: false`);
+- oraz powody z v3 (inna strona, karta niewidoczna, obraz za duży, fallback konsolowy).
+
+### Budżet rozmiaru i kolejność cięcia
+
+Przy konfiguracji domyślnej zip ma najwyżej `limits.packageBytes` = 2 097 152 B, a `snapshot.json` po rozpakowaniu najwyżej
+10 MB znaków. Rozmiar jest mierzony prawdziwą kompresją (do 4 pomiarów). Najpierw, jeszcze przed redakcją, paczka jest przycinana
+do 10 MB JSON-u, ale tylko całymi wpisami. Stringów nie skraca się przed redakcją, bo ucięty sekret mógłby przestać pasować do reguły.
+Gdy paczka jest za duża, dane są usuwane w stałej kolejności, od najmniej potrzebnych. Każdy krok ustawia flagę w `truncated`
+i dopisuje notatkę z liczbą usuniętych pozycji:
+
+| Krok | Co | `truncated` |
+|---|---|---|
+| 0 | `dom.fullHtml` (tylko z opcją developera), cięty na granicy elementu do 10 MB | `html` |
+| 1 | `performance.resources` — najstarsze ponad 200 | `resources` |
+| 2 | `network[]` udane (status < 400, bez `error`): najpierw najstarsze zasoby, potem najstarsze `fetch`/`xhr` | `network` |
+| 3 | `consoleLogs` poziomu `debug` → `log` → `info` → `warn`, najstarsze | `consoleLogs` |
+| 4 | listy `dom.meta`/`scripts`/`stylesheets`/`images`/`iframes`/`hreflangs` do 100 pozycji | `dom` |
+| 5 | `dom.structure` do 100 000 znaków (domknięte tagi) | `html` |
+| 6 | wartości `localStorage`/`sessionStorage` dłuższe niż 1000 znaków | `storage` |
+| 7 | `consoleLogs` poziomu `error`, najstarsze | `consoleLogs` |
+| 8 | `stack` w `runtimeErrors` i `consoleLogs` do 4000 znaków (wpisy zostają) | `stacks` |
+
+**Nigdy nie są cięte:** `overview`, `redaction`, `documents`, `notes`, `steps`, wpisy `runtimeErrors`, wpisy `network` ze `status` ≥ 400
+lub `error`, `vitals`, `screenshots[]` i `screenshot.jpg`. `overview` i `documents[].kept` są liczone po cięciach. Rozmiar nigdy nie blokuje
+zapisu: gdy po wszystkich krokach paczka jest nadal za duża, powstaje z notatką „Package is larger than 2 MB (N bytes) after all cuts.”.
+Gdy developer włączył pełny HTML, `limits.packageBytes` wynosi 10 485 760, a zip większy niż 2 MB dostaje notatkę
+„Package exceeds 2 MB: full HTML enabled by developer.”.
+
+### Ograniczenia
+
+- **Shadow DOM i iframe w strukturze:** `dom.structure` nie wchodzi do shadow rootów ani do dokumentów ramek. Widać tylko element-host
+  i tag `<iframe>`. Selektor kroku wewnątrz shadow DOM nie znajdzie się w `structure`.
+- **Iframe'y z innego originu na zrzucie nie są zamalowywane** (decyzja PB-1 B). Formularz płatności lub logowania osadzony w takiej
+  ramce może być widoczny na `screenshot.jpg`. Zamalowujemy pola dokumentu głównego i ramek tego samego originu.
+- **Fallback konsolowy a AC-3.6:** redakcja w tle nie zależy od tego, co podmieniła strona. Fallback działa jednak w realmie strony,
+  po jej skryptach. Używa tych samych reguł (AC-3.7), ale wroga strona, która podmieni `RegExp`, `String.prototype` albo `JSON`
+  przed wklejeniem skryptu, może osłabić jego redakcję.
+- **Skrót ciasteczka bez soli:** `valueHash` to stałe 8 znaków hex SHA-256. Pozwala porównać wartości między paczkami. Wartość
+  o małej liczbie możliwości (`consent=yes`, `lang=pl`, krótki PIN) da się jednak odgadnąć, licząc skróty kandydatów. Wartości
+  sesji i tokenów są zbyt długie i losowe, żeby to było praktyczne.
+- **Ramki z innych originów a paczka:** liczba widocznych ramek cross-origin (`crossOriginVisible`) służy tylko popupowi do ustawienia
+  domyślnego stanu przełącznika zrzutu. **Nie trafia do paczki** i nie ma o niej notatki; `screenshots[].maskedFields` liczy wyłącznie zamalowane pola.
+- **Post-redakcyjne cięcia stringów:** po redakcji znacznik na granicy cięcia (`cutText`) może zostać usunięty (utrata informacji, bez przecieku);
+  podgląd konsoli `{ truncated, preview }` po maskowaniu par tablic bywa zniekształcony (`masked` zawyżone).
+- **Redakcja regułowa:** sekret bez słowa-klucza, krótszy niż próg `long-secret` i w nietypowym miejscu może przejść: base64 < 32 znaków,
+  `&amp;quot;` (podwójne kodowanie encji), podwójne kodowanie procentowe, `code`/`ticket` w adresach względnych (`/cb?code=…`) i w tekście
+  poza adresami bezwzględnymi, klucz na samym początku stringu JSON (`{"log":"password: x"}`). Klucz AWS `AKIA…` to sam identyfikator;
+  sekret (40 znaków) łapie `long-secret`. Fałszywie dodatnie trafienia (np. „123 456 789 zł” jako `phone`, `auth: "Invalid credentials"`)
+  zabierają developerowi pojedyncze wartości. Pełna lista: [README](../README.md#znane-ograniczenia).
+
+### Przykład
+
+Pełny przykład (2 dokumenty, kroki z polem pliku, zasoby, metryki, ciasteczka, storage z zamaskowanymi wartościami, struktura DOM,
+element w konsoli, zrzut 1×1 px z `maskedFields`): `tests/fixtures/snapshots/v4.json`. To `snapshot.json` z zipa, który `exportPackage`
+tworzy dla syntetycznych danych z `tests/unit/snapshot-validator.test.js`. Wartości-pułapki w tych danych są syntetyczne i w pliku
+występują tylko jako znaczniki. Po zamierzonej zmianie kształtu paczki odświeżasz plik komendą
+`PDS_UPDATE_FIXTURES=1 npx vitest run tests/unit/snapshot-validator.test.js`. Skrót:
+
+```jsonc
+{
+  "schemaVersion": 4, "extensionVersion": "0.5.0", "source": "extension",
+  "collectedAt": "2026-01-15T10:01:05.000Z", "recordingStartedAt": "2026-01-15T10:00:00.000Z",
+  "recordingStoppedReason": null, "timeOrigin": 1768471204200.25,
+  "overview": { "runtimeErrors": 2, "consoleErrors": 1, "failedRequests": 3, "steps": 10, "poorVitals": 1, "screenshot": true },
+  "redaction": { "rulesVersion": 1, "disabledRules": [],
+                 "masked": { "network": 2, "consoleLogs": 3, "environment": 2, "storage": 2, "dom": 1 } },
+  "limits": { "consoleLogs": 5000, "…": "…", "longTasks": 20, "html": 300000, "packageBytes": 2097152 },
+  "truncated": { "consoleLogs": false, "runtimeErrors": false, "network": false, "steps": false, "responseBodies": false,
+                 "html": false, "resources": false, "dom": false, "storage": false, "stacks": false },
+  "documents": [ … ], "notes": [ … ],
+  "steps": [ { "t": 1350, "doc": 0, "type": "change", "selector": "#avatar", "inputType": "file", "fileCount": 2 }, … ],
+  "runtimeErrors": [ … ],
+  "network": [ { "t": 12.5, "doc": 1, "type": "fetch", "method": "POST", "url": "http://127.0.0.1:8080/api/fail", "status": 500,
+                 "requestHeaders": { "content-type": "application/json", "authorization": "[redacted:key-authorization]" },
+                 "requestBody": "{\"name\":\"Example\",\"password\":\"[redacted:key-password]\"}", "…": "…" }, … ],
+  "vitals": [ … ],
+  "screenshots": [ { "t": 5230.1, "doc": 1, "reason": "save", "mime": "image/jpeg", "width": 1, "height": 1, "bytes": 136,
+                     "file": "screenshot.jpg", "maskedFields": 3 } ],
+  "consoleLogs": [ { "t": 16, "doc": 1, "level": "log", "args": [ "clicked",
+                     { "tagName": "BUTTON", "id": "slow", "className": "btn", "structure": "<button id=\"slow\" class=\"btn\" type=\"button\"></button>" } ] },
+                   { "t": 17, "doc": 1, "level": "warn", "args": [ "session [redacted:jwt]",
+                     { "password": "[redacted:key-password]", "user": "[redacted:email]" } ] }, … ],
+  "environment": { "location": { "href": "http://127.0.0.1:8080/result.html?access_token=[redacted:key-token]", "…": "…" }, … },
+  "performance": { … },
+  "storage": { "cookies": [ { "name": "sid", "sizeBytes": 20, "valueHash": "93d70a40" }, … ], "cookiesTotalBytes": 45,
+               "localStorage": { "theme": "dark", "authToken": "[redacted:key-token]", "…": "…" }, "sessionStorage": { "cart": "3" } },
+  "dom": { "counts": { … }, "html": { "doctype": { "name": "html", "publicId": "", "systemId": "" }, "lang": "pl", "charset": "UTF-8", "compatMode": "CSS1Compat" },
+           "forms": [ { "id": "profile", "elements": [ { "tagName": "INPUT", "type": "email", "name": "email", "id": "mail", "valueLength": 20 },
+                                                       { "tagName": "INPUT", "type": "password", "name": "password", "id": "pass" }, … ] } ],
+           "rootMarkers": { … },
+           "structure": "<html lang=\"pl\"><head><meta charset=\"utf-8\"><script></script></head><body class=\"page\">…<div data-user=\"[redacted:email]\"></div>…</html>",
+           "fullHtml": null }
 }
 ```
 
@@ -404,8 +698,38 @@ Konsument rozpoznaje v2 po `schemaVersion: 2`. Typy pól v2 w v3 się nie zmieni
 
 Nazwa pliku bez zmian: `page-debug-snapshot-<Date.now()>.json`.
 
+### v3 → v4 (E3)
+
+Konsument rozpoznaje v4 po kontenerze (zip, pierwsze bajty `PK`) i `schemaVersion: 4` w `snapshot.json`. Kolejność kluczy v3 zostaje,
+dochodzi `redaction` po `overview`, a `attachments` znika.
+
+| v3 | v4 | Migracja przy odczycie v3 |
+|---|---|---|
+| plik `page-debug-snapshot-<ms>.json` | zip `snapshot-<host>-<YYYYMMDD-HHMMSS>.zip`: `snapshot.json`, `summary.md`, `screenshot.jpg?` | rozpoznać po rozszerzeniu albo pierwszych bajtach `PK`; JSON v3 czytać wprost |
+| `schemaVersion: 3` | `4` | — |
+| — | `redaction: { rulesVersion: 1, disabledRules: string[], masked: { "<sekcja>": n } }` (po `overview`) | brak ⇒ „dane niezredagowane” |
+| `attachments` (ostatni klucz) | **usunięte**; obraz to wpis `screenshot.jpg` | obraz z `attachments[screenshots[i].attachment]` |
+| `screenshots[].attachment` | `screenshots[].file` (`"screenshot.jpg"`), nowe `maskedFields` (integer \| null) | `file` = `attachment`, `maskedFields: null` |
+| `storage.cookies`: string (`document.cookie`) | `[{ name, sizeBytes, valueHash }]` + nowe `storage.cookiesTotalBytes` | rozbić string po `; ` i pierwszym `=`; `valueHash: null` |
+| `storage.localStorage`/`sessionStorage`: wartości jawne | wartości po redakcji (znaczniki) | — |
+| `dom.html.outerHTML` | **usunięte**; nowe `dom.structure` (string ≤ 300 000, bez tekstów) i `dom.fullHtml` (`null` lub string) — ostatnie klucze `dom` | brak struktury (`outerHTML` v3 można pokazać jako pełny HTML) |
+| `dom.images[].alt`, `dom.iframes[].title` (+ `title` w `iframes[].attributes`) | `altLength`, `titleLength` (integer); `title` znika z `attributes` | długość tekstu; `null` → 0 |
+| `dom.forms[].elements[].value` | `valueLength` (integer; brak dla `password`); pole `file`: `fileCount` zamiast `valueLength` | `valueLength` = długość `value` (`"[redacted]"` z v3 — brak); dla `file` brak (`fileCount` nieznane) |
+| `consoleLogs[].args` — element `{ tagName, id, className, outerHTML }` | `{ tagName, id, className, structure }` (≤ 2000 znaków, bez tekstów) | — |
+| `steps[]` `change` pola pliku: `valueLength` (długość ścieżki) | `fileCount` (integer); krok `input` na polu pliku nie powstaje | `fileCount` nieznane |
+| wartości w polach tekstowych jawne | `"[redacted:<reguła>]"`; liczba/boolean przy kluczu wrażliwym w danych użytkownika → string znacznika (jedyna zmiana typu) | — |
+| `limits` | + `html` (300 000), `packageBytes` (2 097 152 albo 10 485 760 z pełnym HTML) | brak ⇒ nieznane |
+| `truncated` | + `html`, `resources`, `dom`, `storage`, `stacks` | `false` |
+| `notes` | + brak zrzutu: wyłączony przez zgłaszającego / nie udało się zamaskować pól / strona się przesunęła; cięcia budżetu z liczbami; > 2 MB z pełnym HTML; zip bez kompresji | — |
+| `overview` | bez zmian kształtu; liczony po budżecie; `screenshot: false` przy wyłączonym zrzucie | — |
+
 ### Wpis zmian
 
+- **v4 (E3, rozszerzenie 0.5.0):** paczka jako zip (`snapshot.json`, `summary.md`, `screenshot.jpg`) z nazwą `snapshot-<host>-<czas>.zip`;
+  redakcja całej paczki według reguł v1 ze znacznikami `[redacted:<reguła>]` i raportem `redaction`; ciasteczka jako nazwy, rozmiary
+  i skróty SHA-256; struktura DOM bez tekstów zamiast `outerHTML` (pełny HTML tylko z opcją developera); formularze i pola plików bez
+  wartości; `alt` obrazków i `title` ramek tylko jako długości; zrzut z zamalowanymi polami i przełącznikiem zgłaszającego; budżet 2 MB z ustaloną kolejnością cięcia (`limits.packageBytes`,
+  nowe flagi `truncated`); `attachments` usunięte.
 - **v3 (E2, rozszerzenie 0.4.0):** kroki zgłaszającego (`steps`), metryki CWV z atrybucją i długie zadania (`vitals`), zasoby strony
   i status dokumentu (`network`, `documents[].status`), fragment treści odpowiedzi błędów, zrzut ekranu (`screenshots` + `attachments`),
   pełniejsze stosy z `cause`, blok `overview`, kolejność kluczy pod czytanie od góry.

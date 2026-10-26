@@ -11,6 +11,8 @@ import {
   createCanvasCodec,
   screenshotErrorReason,
   SCREENSHOT_LIMITS,
+  planMask,
+  maskScreenshot,
 } from '../../src/lib/screenshot.js';
 
 const source = readFileSync(fileURLToPath(new URL('../../src/lib/screenshot.js', import.meta.url)), 'utf8');
@@ -245,5 +247,222 @@ describe('createCanvasCodec', () => {
 
   it('returns null when the scope lacks the APIs', () => {
     expect(createCanvasCodec({})).toBeNull();
+  });
+});
+
+// E3-IN1b (D6): field rectangles painted over on the decoded bitmap before JPEG encoding, fail-closed (AC-2.4).
+describe('planMask', () => {
+  const vp = (innerWidth, innerHeight) => ({ innerWidth, innerHeight, scrollX: 0, scrollY: 0, dpr: 1 });
+
+  it('rect scaled ×2 at dpr 2 and ×1.25 at zoom 125%, with margin', () => {
+    // dpr 2: margin = max(2 CSS px × 2, 8 image px) = 8.
+    expect(planMask({ rects: [{ x: 10, y: 20, w: 100, h: 30 }], viewport: vp(800, 600), imageWidth: 1600, imageHeight: 1200 })).toEqual([
+      { x: 12, y: 32, w: 216, h: 76 },
+    ]);
+    // zoom 125%: 1024 CSS px on a 1280 px image; margin = max(2.5, 8) = 8.
+    expect(planMask({ rects: [{ x: 100, y: 100, w: 80, h: 40 }], viewport: vp(1024, 640), imageWidth: 1280, imageHeight: 800 })).toEqual([
+      { x: 117, y: 117, w: 116, h: 66 },
+    ]);
+    // scale 5: the CSS margin wins (2 × 5 = 10 > 8).
+    expect(planMask({ rects: [{ x: 10, y: 10, w: 10, h: 10 }], viewport: vp(200, 100), imageWidth: 1000, imageHeight: 500 })).toEqual([
+      { x: 40, y: 40, w: 70, h: 70 },
+    ]);
+  });
+
+  it('rects clipped to image', () => {
+    const plan = planMask({
+      rects: [
+        { x: -50, y: 590, w: 100, h: 40 }, // crosses the left and bottom edges
+        { x: 900, y: 10, w: 50, h: 50 }, // fully right of the viewport
+        { x: 10, y: -100, w: 50, h: 20 }, // fully above
+      ],
+      viewport: vp(800, 600),
+      imageWidth: 800,
+      imageHeight: 600,
+    });
+    expect(plan).toEqual([{ x: 0, y: 582, w: 58, h: 18 }]);
+  });
+
+  it('aspect mismatch → null', () => {
+    const rects = [{ x: 0, y: 0, w: 10, h: 10 }];
+    expect(planMask({ rects, viewport: vp(800, 600), imageWidth: 1600, imageHeight: 1000 })).toBeNull();
+    // ≤ 2% difference is accepted (rounding of device pixels).
+    expect(planMask({ rects, viewport: vp(800, 600), imageWidth: 1600, imageHeight: 1190 })).not.toBeNull();
+  });
+
+  it('bad viewport or rect values → null (fail-closed)', () => {
+    const rects = [{ x: 0, y: 0, w: 10, h: 10 }];
+    expect(planMask({ rects, viewport: vp(0, 600), imageWidth: 800, imageHeight: 600 })).toBeNull();
+    expect(planMask({ rects, viewport: null, imageWidth: 800, imageHeight: 600 })).toBeNull();
+    expect(planMask({ rects: [{ x: NaN, y: 0, w: 10, h: 10 }], viewport: vp(800, 600), imageWidth: 800, imageHeight: 600 })).toBeNull();
+    expect(planMask({ rects: 'x', viewport: vp(800, 600), imageWidth: 800, imageHeight: 600 })).toBeNull();
+  });
+
+  it('pinch-zoom (viewport.vvScale ≠ 1) → null; missing vvScale counts as 1 (spike S0)', () => {
+    const rects = [{ x: 0, y: 0, w: 10, h: 10 }];
+    const plan = (vvScale) => planMask({ rects, viewport: { ...vp(800, 600), vvScale }, imageWidth: 800, imageHeight: 600 });
+    expect(plan(1.5)).toBeNull();
+    expect(plan(0.5)).toBeNull();
+    expect(plan(1.02)).toBeNull();
+    expect(plan(NaN)).toBeNull();
+    expect(plan('2')).toBeNull();
+    expect(plan(1)).not.toBeNull();
+    expect(plan(1.005)).not.toBeNull(); // ±1% rounding
+    expect(plan(undefined)).not.toBeNull();
+    expect(planMask({ rects, viewport: vp(800, 600), imageWidth: 800, imageHeight: 600 })).not.toBeNull();
+  });
+
+  it('more rects than the limit → the whole image is covered', () => {
+    const rects = Array.from({ length: 2001 }, (_, i) => ({ x: i % 800, y: 0, w: 1, h: 1 }));
+    expect(planMask({ rects, viewport: vp(800, 600), imageWidth: 800, imageHeight: 600 })).toEqual([{ x: 0, y: 0, w: 800, h: 600 }]);
+  });
+});
+
+describe('maskScreenshot (AC-2.2, AC-2.4)', () => {
+  const viewport = { innerWidth: 640, innerHeight: 480, scrollX: 0, scrollY: 0, dpr: 2 };
+  const original = toDataUrl(fakeJpegBytes(1280, 960, 1000));
+  const rects = [{ x: 10, y: 10, w: 100, h: 20 }];
+
+  // Fake codec with `mask`: the masked image has a different size, so it is recognisable after decoding.
+  function maskingCodec({ maskedSize = 2000, bpp } = {}) {
+    const codec = fakeCodec(bpp);
+    const decode = codec.decode;
+    codec.decoded = [];
+    codec.masks = [];
+    codec.encodedBitmaps = [];
+    codec.decode = async (dataUrl) => {
+      const res = await decode(dataUrl);
+      res.bitmap.source = bytesOfDataUrl(dataUrl) === maskedSize ? 'masked' : 'original';
+      codec.decoded.push(res.bitmap);
+      return res;
+    };
+    const encode = codec.encode;
+    codec.encode = async (bitmap, ...rest) => {
+      codec.encodedBitmaps.push(bitmap);
+      return encode(bitmap, ...rest);
+    };
+    codec.mask = async (bitmap, width, height, maskRects, quality) => {
+      codec.masks.push({ source: bitmap.source, width, height, rects: maskRects, quality });
+      return new Blob([fakeJpegBytes(width, height, maskedSize)], { type: 'image/jpeg' });
+    };
+    return codec;
+  }
+
+  it('non-empty mask without codec → error, never the original image', async () => {
+    for (const codec of [null, { decode: fakeCodec().decode, encode: fakeCodec().encode }]) {
+      const res = await maskScreenshot({ dataUrl: original, rects, viewport, codec, maxBytes: MAX });
+      expect(res).toEqual({ error: 'fields-not-hidden' });
+      expect(JSON.stringify(res)).not.toContain(original.slice(23, 60));
+    }
+    expect(screenshotErrorReason('mask-failed')).toBe('fields-not-hidden');
+  });
+
+  it('mask or decode throwing → error, never the original image', async () => {
+    const codec = maskingCodec();
+    codec.mask = async () => {
+      throw new Error('canvas lost');
+    };
+    expect(await maskScreenshot({ dataUrl: original, rects, viewport, codec, maxBytes: MAX })).toEqual({ error: 'fields-not-hidden' });
+    const broken = maskingCodec();
+    broken.decode = async () => {
+      throw new Error('bad image');
+    };
+    expect(await maskScreenshot({ dataUrl: original, rects, viewport, codec: broken, maxBytes: MAX })).toEqual({ error: 'fields-not-hidden' });
+  });
+
+  it('empty mask returns original via fitJpeg', async () => {
+    const codec = maskingCodec();
+    const res = await maskScreenshot({ dataUrl: original, rects: [], viewport, codec, maxBytes: MAX });
+    expect(res).toEqual({ shot: { dataUrl: original, width: 1280, height: 960, bytes: 1000, mime: 'image/jpeg', maskedFields: 0 } });
+    expect(codec.masks).toEqual([]);
+    // No codec is needed when there is nothing to hide.
+    expect(await maskScreenshot({ dataUrl: original, rects: [], viewport, codec: null, maxBytes: MAX })).toMatchObject({
+      shot: { dataUrl: original, maskedFields: 0 },
+    });
+  });
+
+  it('mask applied at quality 60 on the decoded image, rects in image pixels', async () => {
+    const codec = maskingCodec();
+    const res = await maskScreenshot({ dataUrl: original, rects, viewport, codec, maxBytes: MAX });
+    expect(codec.masks).toEqual([{ source: 'original', width: 1280, height: 960, rects: [{ x: 12, y: 12, w: 216, h: 56 }], quality: 60 }]);
+    expect(res.shot).toMatchObject({ width: 1280, height: 960, bytes: 2000, mime: 'image/jpeg', maskedFields: 1 });
+    expect(res.shot.dataUrl).not.toBe(original);
+    expect(codec.decoded.every((bitmap) => bitmap.close.mock.calls.length > 0)).toBe(true);
+  });
+
+  it('mask applied before fit: encode receives the masked bitmap', async () => {
+    const big = toDataUrl(fakeJpegBytes(1280, 960, 900000));
+    const codec = maskingCodec({ maskedSize: 800000, bpp: { 45: 0.2, 30: 0.1 } });
+    const res = await maskScreenshot({ dataUrl: big, rects, viewport, codec, maxBytes: MAX });
+    expect(res.shot.bytes).toBeLessThanOrEqual(MAX);
+    expect(res.shot.maskedFields).toBe(1);
+    expect(codec.encodedBitmaps.length).toBeGreaterThan(0);
+    expect(codec.encodedBitmaps.every((bitmap) => bitmap.source === 'masked')).toBe(true);
+  });
+
+  it('pinch-zoomed page → error, no mask drawn, never the original image', async () => {
+    const codec = maskingCodec();
+    const res = await maskScreenshot({ dataUrl: original, rects, viewport: { ...viewport, vvScale: 2 }, codec, maxBytes: MAX });
+    expect(res).toEqual({ error: 'fields-not-hidden' });
+    expect(codec.masks).toEqual([]);
+    // Even with no field rectangles: under pinch-zoom they cannot be trusted.
+    expect(await maskScreenshot({ dataUrl: original, rects: [], viewport: { ...viewport, vvScale: 2 }, codec, maxBytes: MAX })).toEqual({
+      error: 'fields-not-hidden',
+    });
+  });
+
+  it('aspect mismatch → error', async () => {
+    const codec = maskingCodec();
+    const res = await maskScreenshot({ dataUrl: original, rects, viewport: { ...viewport, innerHeight: 300 }, codec, maxBytes: MAX });
+    expect(res).toEqual({ error: 'fields-not-hidden' });
+    expect(codec.masks).toEqual([]);
+  });
+
+  it('rects all outside the image → treated as an empty mask', async () => {
+    const codec = maskingCodec();
+    const res = await maskScreenshot({ dataUrl: original, rects: [{ x: 2000, y: 0, w: 10, h: 10 }], viewport, codec, maxBytes: MAX });
+    expect(res.shot).toMatchObject({ dataUrl: original, maskedFields: 0 });
+    expect(codec.masks).toEqual([]);
+  });
+
+  it('masked image that cannot fit → size error, not the original', async () => {
+    const codec = maskingCodec({ maskedSize: 900000, bpp: { 45: 10, 30: 10 } });
+    const res = await maskScreenshot({ dataUrl: original, rects, viewport, codec, maxBytes: MAX });
+    expect(res).toEqual({ error: 'too-large' });
+  });
+});
+
+describe('createCanvasCodec mask', () => {
+  it('draws the bitmap, paints #9e9e9e rectangles and encodes JPEG', async () => {
+    const ops = [];
+    const ctx = {
+      set fillStyle(v) {
+        ops.push(['fillStyle', v]);
+      },
+      drawImage: (...a) => ops.push(['drawImage', ...a]),
+      fillRect: (...a) => ops.push(['fillRect', ...a]),
+    };
+    const convertToBlob = vi.fn(async (opts) => new Blob([new Uint8Array(3)], { type: opts.type }));
+    const scope = {
+      createImageBitmap: async () => ({ width: 100, height: 50 }),
+      OffscreenCanvas: class {
+        getContext() {
+          return ctx;
+        }
+        convertToBlob(opts) {
+          return convertToBlob(opts);
+        }
+      },
+    };
+    const bitmap = { width: 100, height: 50 };
+    const blob = await createCanvasCodec(scope).mask(bitmap, 100, 50, [{ x: 1, y: 2, w: 3, h: 4 }, { x: 5, y: 6, w: 7, h: 8 }], 60);
+    expect(blob.size).toBe(3);
+    expect(ops).toEqual([
+      ['drawImage', bitmap, 0, 0, 100, 50],
+      ['fillStyle', '#9e9e9e'],
+      ['fillRect', 1, 2, 3, 4],
+      ['fillRect', 5, 6, 7, 8],
+    ]);
+    expect(convertToBlob).toHaveBeenCalledWith({ type: 'image/jpeg', quality: 0.6 });
   });
 });

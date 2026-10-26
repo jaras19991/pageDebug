@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: DOM structure</title>
+  <style>.secret-style-rule { color: red; }</style>
+  <script>window.secretScriptValue = 'script-body-trap';</script>
+</head>
+<body>
+  <!-- E3-T3a (AC-5.2, AC-5.3): targets marked with class "t" — with a unique id, with data-testid, with neither.
+       comment-trap: this comment must not reach the structure. tests/unit/dom-structure.test.js loads this file. -->
+  <header id="top" class="t" role="banner">
+    <nav aria-label="Menu główne" aria-expanded="false">
+      <a href="https://example.test/a?token=href-trap" class="t">Start</a>
+      <a href="#b" class="t" data-testid="nav-offer" title="title-trap">Oferta</a>
+      <a href="#c">Kontakt jan.kowalski@example.com</a>
+    </nav>
+  </header>
+  <main>
+    <form id="loginForm" class="t" action="/login">
+      <label for="email">E-mail</label>
+      <input type="email" id="email" class="t" value="value-trap@example.com" placeholder="placeholder-trap">
+      <input type="password" class="t" value="password-trap">
+      <input type="text" class="t" aria-label="aria-label-trap" aria-describedby="hint" data-testid="nick">
+      <textarea class="t" aria-placeholder="aria-placeholder-trap">textarea-trap</textarea>
+      <select class="t" data-qa="country"><option value="pl">option-text-trap</option></select>
+      <button type="submit" id="login" class="t" aria-description="aria-description-trap">Zaloguj</button>
+    </form>
+    <section>
+      <p class="t">Pierwszy akapit z adresem anna.nowak@example.com</p>
+      <p class="t">Drugi akapit</p>
+      <div class="t" aria-valuetext="aria-valuetext-trap" role="slider">suwak</div>
+      <div class="t" data-cy="third">trzeci</div>
+      <img src="/img/photo.png" alt="alt-trap" class="t">
+      <template id="tpl"><p>template-trap</p></template>
+      <noscript>noscript-trap</noscript>
+      <button class="t" data-test="same">Taki sam</button>
+      <button class="t" data-test="same">Taki sam</button>
+    </section>
+    <ul>
+      <li id="a:b" class="t">dwukropek</li>
+      <li id="with space" class="t">spacja</li>
+      <li id="1st" class="t">cyfra na początku</li>
+      <li class="t">bez id</li>
+    </ul>
+    <div contenteditable="true" class="t">Edytowalny contenteditable-trap</div>
+    <table class="t"><tr><td class="t">komórka</td></tr></table>
+  </main>
+  <footer class="t"><span class="t">stopka</span><br><span class="t">druga</span></footer>
+</body>
+</html>

@@ -20,8 +20,9 @@ const controller = createController({
 document.getElementById('record').addEventListener('click', () => {
   controller.onRecord();
 });
+// The checkbox is read at the click and never stored: its default is set again on every popup open (E3 D6, N6).
 document.getElementById('save').addEventListener('click', () => {
-  controller.onSave();
+  controller.onSave({ includeScreenshot: document.getElementById('includeScreenshot').checked });
 });
 window.addEventListener('pagehide', () => controller.destroy());
 

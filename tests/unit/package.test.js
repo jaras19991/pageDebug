@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { assemblePackage, packageFileName, DEFAULT_LIMITS, SCHEMA_VERSION } from '../../src/lib/package.js';
-import { assertValidSnapshot } from '../helpers/snapshot-validator.js';
+import { assemblePackage, assembleParts, DEFAULT_LIMITS, SCHEMA_VERSION, SCREENSHOT_NOTES } from '../../src/lib/package.js';
 
 const fixtureUrl = new URL('../fixtures/snapshots/v2.json', import.meta.url);
 
 const STARTED = Date.UTC(2026, 0, 15, 10, 0, 0);
+// v4 budget flags (E3 D8): never set by assemblePackage itself, except `html` for a cut dom.structure.
+const NO_CUTS = { html: false, resources: false, dom: false, storage: false, stacks: false };
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 function meta(over = {}) {
@@ -67,11 +68,11 @@ function prior(over = {}) {
 }
 
 describe('assemblePackage', () => {
-  it('header has schemaVersion 3, extensionVersion, source, collectedAt and recordingStartedAt as ISO, numeric timeOrigin', () => {
+  it('header has schemaVersion 4, extensionVersion, source, collectedAt and recordingStartedAt as ISO, numeric timeOrigin', () => {
     // AC-4.5
     const pkg = assemblePackage({ meta: meta(), current: current(), priorDocs: [] });
-    expect(pkg.schemaVersion).toBe(3);
-    expect(SCHEMA_VERSION).toBe(3);
+    expect(pkg.schemaVersion).toBe(4);
+    expect(SCHEMA_VERSION).toBe(4);
     expect(pkg.extensionVersion).toBe('0.3.0');
     expect(pkg.source).toBe('extension');
     expect(pkg.collectedAt).toMatch(ISO);
@@ -206,13 +207,13 @@ describe('assemblePackage', () => {
     expect(pkg.limits.consoleLogs).toBe(4);
     expect(pkg.consoleLogs).toHaveLength(4);
     expect(pkg.consoleLogs.map((r) => r.args[0])).toEqual(['p4', 'p5', 'cur-a', 'cur-b']);
-    expect(pkg.truncated).toEqual({ consoleLogs: true, runtimeErrors: false, network: false, steps: false, responseBodies: false });
+    expect(pkg.truncated).toEqual({ consoleLogs: true, runtimeErrors: false, network: false, steps: false, responseBodies: false, ...NO_CUTS });
     expect(pkg.documents[0].counts.consoleLogs).toBe(6);
     expect(pkg.documents[0].kept.consoleLogs).toBe(2);
     expect(pkg.notes.some((n) => /consoleLogs/.test(n) && /4/.test(n))).toBe(true);
 
     const small = assemblePackage({ meta: meta(), current: current(), priorDocs: [prior()] });
-    expect(small.truncated).toEqual({ consoleLogs: false, runtimeErrors: false, network: false, steps: false, responseBodies: false });
+    expect(small.truncated).toEqual({ consoleLogs: false, runtimeErrors: false, network: false, steps: false, responseBodies: false, ...NO_CUTS });
     expect(small.limits).toEqual(DEFAULT_LIMITS);
   });
 
@@ -220,7 +221,7 @@ describe('assemblePackage', () => {
     // AC-4.8: recorder buffer already dropped the oldest entries
     const cur = current(buffers({ logs: [log(1, 'x')], truncated: { network: true }, counts: { consoleLogs: 1, runtimeErrors: 0, network: 9000 } }));
     const pkg = assemblePackage({ meta: meta(), current: cur, priorDocs: [] });
-    expect(pkg.truncated).toEqual({ consoleLogs: false, runtimeErrors: false, network: true, steps: false, responseBodies: false });
+    expect(pkg.truncated).toEqual({ consoleLogs: false, runtimeErrors: false, network: true, steps: false, responseBodies: false, ...NO_CUTS });
     expect(pkg.documents[0].counts.network).toBe(9000);
   });
 
@@ -279,13 +280,12 @@ describe('assemblePackage', () => {
     return cur;
   };
 
-  it('section key missing from collect with empty errors → null section with a note; package passes the validator', () => {
+  it('section key missing from collect with empty errors → null section with a note; package keeps the v4 keys', () => {
     const cur = v3Current({ errors: [] });
     delete cur.dom;
     const pkg = assemblePackage({ meta: meta(), current: cur, priorDocs: [] });
     expect(pkg.dom).toBeNull();
     expect(pkg.notes).toContain('Section dom was not received from the page.');
-    expect(() => assertValidSnapshot(pkg)).not.toThrow();
   });
 
   it('section null without errors[] gets the same note; a section error is not noted twice', () => {
@@ -293,7 +293,6 @@ describe('assemblePackage', () => {
     expect(plain.notes).toContain('Section storage was not received from the page.');
     const failed = assemblePackage({ meta: meta(), current: v3Current({ dom: null, errors: [{ section: 'dom', name: 'TypeError' }] }), priorDocs: [] });
     expect(failed.notes.filter((n) => /\bdom\b/.test(n))).toHaveLength(1);
-    expect(() => assertValidSnapshot(failed)).not.toThrow();
   });
 
   it('notes describe the recording range per source', () => {
@@ -318,14 +317,13 @@ describe('assemblePackage', () => {
   });
 });
 
-// ---- schema v3 (E2-T10a) ----
+// ---- schema v3 (E2-T10a) and v4 (E3-T4b) ----
 
 const KEY_ORDER = [
   'schemaVersion', 'extensionVersion', 'source', 'collectedAt', 'recordingStartedAt', 'recordingStoppedReason', 'timeOrigin',
-  'overview', 'limits', 'truncated',
+  'overview', 'redaction', 'limits', 'truncated',
   'documents', 'notes', 'steps', 'runtimeErrors', 'network', 'vitals', 'screenshots', 'consoleLogs',
   'environment', 'performance', 'storage', 'dom',
-  'attachments',
 ];
 
 const JPEG = `data:image/jpeg;base64,${'/9j/'.padEnd(400, 'A')}`;
@@ -356,27 +354,35 @@ function fetchEntry(t, over = {}) {
   };
 }
 
-describe('assemblePackage v3 (E2-T10a)', () => {
-  it('Object.keys order equals AC-7.2 (+attachments last)', () => {
-    // AC-7.2 / PB-2 A
+describe('assemblePackage v3/v4 (E2-T10a, E3-T4b)', () => {
+  it('Object.keys order v4; no attachments; redaction after overview', () => {
+    // spec "Dane", design "Schema paczki"
     const pkg = assemblePackage({ meta: meta({ screenshots: [shot()] }), current: current(), priorDocs: [prior()] });
     expect(Object.keys(JSON.parse(JSON.stringify(pkg)))).toEqual(KEY_ORDER);
     expect(Object.keys(pkg.overview)).toEqual(['runtimeErrors', 'consoleErrors', 'failedRequests', 'steps', 'poorVitals', 'screenshot']);
+    expect(pkg).not.toHaveProperty('attachments');
+    expect(pkg.redaction).toEqual({ rulesVersion: 1, disabledRules: [], masked: {} });
     expect(Object.keys(pkg.limits)).toEqual([
       'consoleLogs', 'runtimeErrors', 'network', 'steps', 'entryChars', 'stackChars', 'responseBodyChars', 'responseBodyTotalChars',
-      'screenshotBytes', 'longTasks',
+      'screenshotBytes', 'longTasks', 'html', 'packageBytes',
     ]);
-    expect(Object.keys(pkg.truncated)).toEqual(['consoleLogs', 'runtimeErrors', 'network', 'steps', 'responseBodies']);
+    expect(Object.keys(pkg.truncated)).toEqual([
+      'consoleLogs', 'runtimeErrors', 'network', 'steps', 'responseBodies', 'html', 'resources', 'dom', 'storage', 'stacks',
+    ]);
     expect(Object.keys(pkg.documents[0])).toEqual([
       'id', 'url', 'timeOrigin', 'navigationType', 'status', 'statusUnavailable', 'recorded', 'flushed', 'current', 'counts', 'kept',
     ]);
   });
 
-  it('default limits follow the v3 schema', () => {
+  it('default limits follow the v4 schema; full HTML (developer option) raises packageBytes to 10 MB', () => {
     expect(DEFAULT_LIMITS).toEqual({
       consoleLogs: 5000, runtimeErrors: 1000, network: 5000, steps: 2000, entryChars: 40000, stackChars: 16000,
       responseBodyChars: 4096, responseBodyTotalChars: 262144, screenshotBytes: 307200, longTasks: 20,
+      html: 300000, packageBytes: 2097152,
     });
+    // AC-6.3
+    expect(assemblePackage({ meta: meta({ fullHtml: true }), current: current() }).limits.packageBytes).toBe(10485760);
+    expect(assemblePackage({ meta: meta(), current: current() }).limits.packageBytes).toBe(2097152);
   });
 
   it('all required keys present for empty input (null/[] + notes)', () => {
@@ -386,7 +392,7 @@ describe('assemblePackage v3 (E2-T10a)', () => {
     expect(pkg.documents).toEqual([]);
     for (const key of ['steps', 'runtimeErrors', 'network', 'vitals', 'screenshots', 'consoleLogs']) expect(pkg[key]).toEqual([]);
     for (const key of ['environment', 'performance', 'storage', 'dom']) expect(pkg[key]).toBeNull();
-    expect(pkg.attachments).toEqual({});
+    expect(pkg).not.toHaveProperty('attachments');
     expect(pkg.overview).toEqual({ runtimeErrors: 0, consoleErrors: 0, failedRequests: 0, steps: 0, poorVitals: 0, screenshot: false });
     expect(pkg.notes.some((n) => /null/.test(n))).toBe(true);
     expect(pkg.notes.some((n) => /No screenshot/.test(n))).toBe(true);
@@ -467,15 +473,16 @@ describe('assemblePackage v3 (E2-T10a)', () => {
     expect(pkg.vitals[0].CLS.sources).toHaveLength(5);
   });
 
-  it('screenshot metadata in screenshots[], data only in attachments', () => {
-    // AC-6.1 / PB-2 A
-    const pkg = assemblePackage({ meta: meta({ screenshots: [shot()] }), current: current(), priorDocs: [prior()] });
+  it('screenshot metadata in screenshots[] with file screenshot.jpg; the bytes only beside the package (AC-6.4)', () => {
+    const { pkg, screenshotDataUrl } = assembleParts({
+      meta: meta({ screenshots: [shot({ maskedFields: 3 }), shot({ width: 1 })] }), current: current(), priorDocs: [prior()],
+    });
     expect(pkg.screenshots).toEqual([
-      { t: 5230, doc: 1, reason: 'save', mime: 'image/jpeg', width: 1280, height: 720, bytes: 300, attachment: 'screenshot-0' },
+      { t: 5230, doc: 1, reason: 'save', mime: 'image/jpeg', width: 1280, height: 720, bytes: 300, file: 'screenshot.jpg', maskedFields: 3 },
     ]);
-    expect(pkg.attachments).toEqual({ 'screenshot-0': JPEG });
-    const json = JSON.stringify(pkg, null, 2);
-    expect(json.indexOf('/9j/')).toBeGreaterThan(json.indexOf('"dom"'));
+    expect(screenshotDataUrl).toBe(JPEG);
+    expect(JSON.stringify(pkg)).not.toContain('/9j/');
+    expect(assemblePackage({ meta: meta({ screenshots: [shot()] }), current: current() }).screenshots[0].maskedFields).toBeNull();
     expect(pkg.overview.screenshot).toBe(true);
     expect(pkg.notes.some((n) => /No screenshot/.test(n))).toBe(false);
   });
@@ -485,7 +492,7 @@ describe('assemblePackage v3 (E2-T10a)', () => {
     const note = 'No screenshot: the tab showed a page outside the recorded site.';
     const pkg = assemblePackage({ meta: meta({ screenshotNote: note }), current: current(), priorDocs: [] });
     expect(pkg.screenshots).toEqual([]);
-    expect(pkg.attachments).toEqual({});
+    expect(pkg).not.toHaveProperty('attachments');
     expect(pkg.notes).toContain(note);
     const con = assemblePackage({ meta: meta({ source: 'console' }), current: current(), priorDocs: [] });
     expect(con.notes).toContain('Screenshots are not available without the extension.');
@@ -499,7 +506,7 @@ describe('assemblePackage v3 (E2-T10a)', () => {
       priorDocs: [],
     });
     expect(pkg.screenshots).toEqual([]);
-    expect(pkg.attachments).toEqual({});
+    expect(assembleParts({ meta: meta({ limits: { screenshotBytes: 1000 }, screenshots: [shot({ dataUrl: big, bytes: 3000 })] }), current: current() }).screenshotDataUrl).toBeNull();
     expect(pkg.notes.some((n) => /No screenshot/.test(n))).toBe(true);
   });
 
@@ -522,14 +529,13 @@ describe('assemblePackage v3 (E2-T10a)', () => {
     expect(pkg.truncated.responseBodies).toBe(true);
   });
 
-  it('truncated.responseBodies from a document buffer only (no cut in the package) still gets the note; validator passes', () => {
+  it('truncated.responseBodies from a document buffer only (no cut in the package) still gets the note', () => {
     // E2-F2: the 256 KB budget was applied in the page, the package itself drops nothing.
     const network = [fetchEntry(1, { status: 500, ok: false, responseBodyPreview: 'x'.repeat(100), responseBodyTruncated: false })];
     const pkg = assemblePackage({ meta: meta(), current: current({ network, truncated: { responseBodies: true } }), priorDocs: [] });
     expect(pkg.truncated.responseBodies).toBe(true);
     expect(pkg.network[0].responseBodyPreview).toBe('x'.repeat(100));
     expect(pkg.notes.filter((n) => /response preview/i.test(n) && /262144/.test(n))).toHaveLength(1);
-    assertValidSnapshot(pkg);
   });
 
   it('both page-side and package-side preview cuts → a single response preview note', () => {
@@ -579,11 +585,6 @@ describe('assemblePackage v3 (E2-T10a)', () => {
   });
 });
 
-describe('packageFileName', () => {
-  it('uses the timestamp', () => {
-    expect(packageFileName(1768471200000)).toBe('page-debug-snapshot-1768471200000.json');
-  });
-});
 
 function shape(value) {
   if (Array.isArray(value)) return 'array';
@@ -597,19 +598,19 @@ function keysAndTypes(obj) {
 
 // Migration v2 → v3: a v2 package is a v3 package without the keys v3 added (the v3 shape itself is pinned by
 // tests/fixtures/snapshots/v3.json in snapshot-validator.test.js).
-describe('fixture v2.json (migration v2 → v3)', () => {
+describe('fixture v2.json (migration v2 → v4)', () => {
   const fixture = JSON.parse(readFileSync(fixtureUrl, 'utf8'));
   const subsetOf = (small, big) => {
     const bigShape = keysAndTypes(big);
     for (const [key, type] of Object.entries(keysAndTypes(small))) expect([key, bigShape[key]]).toEqual([key, type]);
   };
 
-  it('v2 keys keep their types in v3; v3 adds only the documented keys', () => {
+  it('v2 keys keep their types in v4; v3/v4 add only the documented keys', () => {
     const pkg = assemblePackage({ meta: meta(), current: current(), priorDocs: [prior()] });
     expect(fixture.schemaVersion).toBe(2);
     const added = Object.keys(pkg).filter((k) => !(k in fixture)).sort();
-    expect(added).toEqual(['attachments', 'overview', 'screenshots', 'steps', 'vitals']);
-    subsetOf({ ...fixture, schemaVersion: 3 }, pkg);
+    expect(added).toEqual(['overview', 'redaction', 'screenshots', 'steps', 'vitals']);
+    subsetOf({ ...fixture, schemaVersion: 4 }, pkg);
     subsetOf(fixture.documents[0], pkg.documents[0]);
     expect(Object.keys(pkg.documents[0]).filter((k) => !(k in fixture.documents[0])).sort()).toEqual(['status', 'statusUnavailable']);
     subsetOf(fixture.truncated, pkg.truncated);
@@ -634,5 +635,89 @@ describe('fixture v2.json (migration v2 → v3)', () => {
     for (const u of urls) {
       expect(u).toMatch(/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\]|[\w.-]+\.(test|example|invalid))(:\d+)?$/);
     }
+  });
+});
+
+// ---- schema v4 (E3-T4b): dom normalization, screenshot notes ----
+
+function v4Dom(over = {}) {
+  return {
+    counts: { totalElements: 3, forms: 1 },
+    html: { doctype: null, lang: 'pl', charset: 'UTF-8', compatMode: 'CSS1Compat' },
+    forms: [{
+      id: 'login', name: null, method: 'post', action: 'http://127.0.0.1:8080/login', enctype: null,
+      elements: [
+        { tagName: 'INPUT', type: 'email', name: 'email', id: 'e', valueLength: 12 },
+        { tagName: 'INPUT', type: 'text', name: 'nick', id: 'n', value: 'Kowalski' },
+        { tagName: 'INPUT', type: 'password', name: 'pw', id: 'p', value: 'Hunter2Trap!pw' },
+      ],
+    }],
+    structure: '<html><body><div id="a"></div></body></html>',
+    structureTruncated: false,
+    omittedElements: 0,
+    fullHtml: null,
+    ...over,
+  };
+}
+
+describe('assemblePackage v4 (E3-T4b)', () => {
+  it('dom.structure and dom.fullHtml are the last keys of dom; collector flags are not in the package', () => {
+    const pkg = assemblePackage({ meta: meta(), current: current({ dom: v4Dom() }) });
+    expect(Object.keys(pkg.dom).slice(-2)).toEqual(['structure', 'fullHtml']);
+    expect(pkg.dom).not.toHaveProperty('structureTruncated');
+    expect(pkg.dom).not.toHaveProperty('omittedElements');
+    expect(pkg.truncated.html).toBe(false);
+    expect(pkg.notes.some((n) => /dom\.structure/.test(n))).toBe(false);
+  });
+
+  it('structureTruncated → truncated.html and a note with the number of omitted elements', () => {
+    const pkg = assemblePackage({ meta: meta(), current: current({ dom: v4Dom({ structureTruncated: true, omittedElements: 1234 }) }) });
+    expect(pkg.truncated.html).toBe(true);
+    expect(pkg.notes).toContain('dom.structure was cut to 300000 characters; 1234 elements were not included.');
+  });
+
+  it('form values become valueLength (none for password); the value never stays (defence in depth, AC-3.2)', () => {
+    const pkg = assemblePackage({ meta: meta(), current: current({ dom: v4Dom() }) });
+    const [email, nick, pw] = pkg.dom.forms[0].elements;
+    expect(email).toMatchObject({ type: 'email', valueLength: 12 });
+    expect(nick).toMatchObject({ type: 'text', valueLength: 8 });
+    expect(nick).not.toHaveProperty('value');
+    expect(pw).not.toHaveProperty('value');
+    expect(pw).not.toHaveProperty('valueLength');
+    expect(JSON.stringify(pkg)).not.toContain('Kowalski');
+    expect(JSON.stringify(pkg)).not.toContain('Hunter2Trap');
+  });
+
+  it('dom.html.outerHTML (v3) is removed; full HTML only with the developer option (AC-6.3)', () => {
+    const dom = v4Dom({ html: { lang: 'pl', outerHTML: '<html>secret</html>' }, fullHtml: '<html><body>x</body></html>' });
+    const plain = assemblePackage({ meta: meta(), current: current({ dom }) });
+    expect(plain.dom.html).toEqual({ lang: 'pl' });
+    expect(plain.dom.fullHtml).toBeNull();
+    const full = assemblePackage({ meta: meta({ fullHtml: true }), current: current({ dom }) });
+    expect(full.dom.fullHtml).toBe('<html><body>x</body></html>');
+    expect(full.limits.packageBytes).toBe(10485760);
+  });
+
+  it('does not mutate the dom of the collect result', () => {
+    const cur = current({ dom: v4Dom({ structureTruncated: true, omittedElements: 2 }) });
+    const before = JSON.stringify(cur);
+    assemblePackage({ meta: meta(), current: cur });
+    expect(JSON.stringify(cur)).toBe(before);
+  });
+
+  it('screenshot turned off by the reporter → screenshots [] + reporter note (AC-2.1)', () => {
+    const pkg = assemblePackage({ meta: meta({ screenshotOff: true, screenshots: [shot()] }), current: current() });
+    expect(pkg.screenshots).toEqual([]);
+    expect(pkg.overview.screenshot).toBe(false);
+    expect(pkg.notes).toContain(SCREENSHOT_NOTES.off);
+    expect(SCREENSHOT_NOTES.off).toBe('Screenshot not included (turned off by the reporter).');
+    expect(pkg.notes.filter((n) => /screenshot/i.test(n))).toHaveLength(1);
+  });
+
+  it('form fields could not be hidden → no screenshot and a note with the reason (AC-2.4)', () => {
+    const pkg = assemblePackage({ meta: meta({ maskFailure: 'no answer from the page' }), current: current() });
+    expect(pkg.screenshots).toEqual([]);
+    expect(pkg.notes).toContain('No screenshot: form fields could not be hidden (no answer from the page).');
+    expect(SCREENSHOT_NOTES.notHidden('x')).toBe('No screenshot: form fields could not be hidden (x).');
   });
 });

@@ -5,7 +5,7 @@
 // feature detection (supportedEntryTypes, interactionId), never from the user agent.
 // Every buffer is bounded; every failure is swallowed. Top-level helpers carry the `vitalsObs` prefix (D6).
 
-import { rate, unavailable, clsFromShifts, inpFromEvents, inpPhases, topLongTasks, LONG_TASKS_MAX } from './vitals-math.js';
+import { rate, unavailable, clsFromShifts, inpFromEvents, inpPhases, topLongTasks, vitalsMap, LONG_TASKS_MAX } from './vitals-math.js';
 
 export const VITALS_CLS_SOURCES_MAX = 5;
 
@@ -158,7 +158,7 @@ export function installVitals({ win, doc, now, selectorOf, intrinsics = {}, acce
       startTime: entry.startTime,
       duration: entry.duration,
       blockingDuration: entry.blockingDuration,
-      scripts: [...(entry.scripts || [])].slice(0, 10).map((s) => ({
+      scripts: vitalsMap([...(entry.scripts || [])].slice(0, 10), (s) => ({
         sourceURL: s.sourceURL,
         sourceFunctionName: s.sourceFunctionName,
         invoker: s.invoker,

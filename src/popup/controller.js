@@ -8,7 +8,12 @@
 //   armStart    { requestId, tabId, origin, pattern } (not awaited, same tick as the click)
 //   start       { requestId, tabId }                 -> { ok: true, startedAt } | { ok: false, reason }
 //   disarm      { requestId, tabId }
-//   collect     { tabId }                            -> { ok: true, json, fileName } | { ok: false, reason }
+//   collect     { tabId, includeScreenshot }         -> { ok: true, zipBase64, fileName, packageBytes, screenshot? } | { ok: false, reason }
+//                                                       (E3 D7: the zip travels as base64; includeScreenshot from the checkbox;
+//                                                       screenshot 'included'|'off'|'failed' for the "Zapisano" text, QA F-5)
+//   frameCheck  { tabId }                            -> { ok: true, crossOriginFrames } | { ok: false }
+//                                                       (store S1: asked when this tab records; > 0 turns the screenshot
+//                                                       default off; no answer keeps it on)
 //   saveStarted { tabId, downloadId, fileName }      (background ignores fileName, uses downloads.search)
 //   saveFailed  { tabId, reason: 'downloadFailed' }
 // Status: { state: 'idle'|'starting'|'recording'|'stopped'|'saving', startedAt, stopReason,
@@ -23,8 +28,15 @@ import { renderModel } from './view.js';
 export const RESPONSE_TIMEOUT_MS = 15_000;
 export const DOWNLOAD_TIMEOUT_MS = 60_000;
 
+// The background's ceiling is 10 MB of zip (13.3 MB as base64, E3 D7); anything far beyond is not our answer.
+const MAX_ZIP_BASE64_CHARS = 20 * 1024 * 1024;
+
 const START_FAILURES = new Set(['permissionDenied', 'recordFailed', 'restricted', 'fileAccess', 'failed']);
 const COLLECT_FAILURES = new Set(['pageBusy', 'failed']);
+const SCREENSHOT_RESULTS = new Set(['included', 'off', 'failed']);
+// The page may still be reloading right after "Nagrywaj": a failed frameCheck is asked again on a later status.
+const FRAME_CHECK_ATTEMPTS = 3;
+const FRAME_CHECK_TIMEOUT_MS = 3000;
 const STATUS_ERRORS = new Set(['saveCancelled', 'downloadFailed', 'pageBusy', 'permissionDenied', 'recordFailed', 'restricted', 'failed']);
 // Error verdicts stay until the next user action or a new lastError (AC-1.4, AC-2.4): a state change
 // without lastError says nothing new — after a refused consent the background goes starting -> idle
@@ -42,6 +54,15 @@ const STICKY_OUTCOMES = new Set([
 
 class TimeoutError extends Error {}
 
+// base64 -> bytes by hand (atob), so the zip never goes through a network-like API.
+function fromBase64(text) {
+  if (text.length > MAX_ZIP_BASE64_CHARS) throw new RangeError('zip answer too large');
+  const bin = atob(text);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
 /**
  * @param {{ runtime, permissions, downloads, storage, tabs, extension?, URL, Blob,
  *           setTimeout?, clearTimeout?, randomUUID?, render: (model) => void,
@@ -53,7 +74,8 @@ export function createController(api) {
   const randomUUID = api.randomUUID ?? (() => globalThis.crypto.randomUUID());
   const logError = api.logError ?? (() => {});
 
-  const ctx = { target: null, tab: null, origin: null, pattern: null, busy: null, outcome: null };
+  const ctx = { target: null, tab: null, origin: null, pattern: null, busy: null, outcome: null, crossOriginFrames: null, frameCheck: null };
+  const frameCheck = { attempts: 0, running: false, done: false };
   let status = null;
   let requestId = null; // one per popup: a repeated click re-arms the same request (D9)
   let refreshSeq = 0;
@@ -64,7 +86,9 @@ export function createController(api) {
   let destroyed = false;
 
   const render = () => {
-    if (!destroyed) api.render(renderModel(status, { target: ctx.target, busy: ctx.busy, outcome: ctx.outcome }));
+    if (!destroyed) {
+      api.render(renderModel(status, { target: ctx.target, busy: ctx.busy, outcome: ctx.outcome, crossOriginFrames: ctx.crossOriginFrames, frameCheck: ctx.frameCheck }));
+    }
   };
 
   // runtime.sendMessage raced against the 15 s limit (AC-2.4).
@@ -149,12 +173,44 @@ export function createController(api) {
     const lastError = STATUS_ERRORS.has(next.lastError) ? next.lastError : missedError;
     missedError = null;
     if (save && next.lastSaved && next.lastSaved.downloadId === save.downloadId) {
-      finishSave({ kind: 'saved', fileName: next.lastSaved.fileName });
+      finishSave({ kind: 'saved', fileName: next.lastSaved.fileName, screenshot: save.screenshot });
     } else if (lastError) {
       if (save) finishSave({ kind: lastError });
       else ctx.outcome = { kind: lastError };
     }
+    // Fail-closed (review N6): from the first status of this tab's recording until a usable answer, the box is off.
+    if (isRecordingHere(next) && ctx.frameCheck === null) ctx.frameCheck = 'pending';
     render();
+    checkFrames(next);
+  }
+
+  // Store review S1: frames of other sites are never masked on the screenshot, so with any of them on the recorded
+  // page the checkbox starts unchecked. Asked once this tab records; fail-closed (review N6, user decision
+  // 2026-10-26): until an answer of 0 frames the box is off, a failed attempt says so in the note.
+  async function checkFrames(next) {
+    if (!isRecordingHere(next) || frameCheck.done || frameCheck.running || frameCheck.attempts >= FRAME_CHECK_ATTEMPTS) return;
+    frameCheck.running = true;
+    frameCheck.attempts++;
+    let res;
+    try {
+      res = await call({ type: 'frameCheck', tabId: ctx.tab.id }, FRAME_CHECK_TIMEOUT_MS);
+    } catch (error) {
+      logError('frameCheck', error);
+    }
+    frameCheck.running = false;
+    if (destroyed) return;
+    if (res?.ok !== true || !Number.isInteger(res.crossOriginFrames) || res.crossOriginFrames < 0) {
+      ctx.frameCheck = 'failed';
+    } else {
+      frameCheck.done = true;
+      ctx.frameCheck = 'done';
+      ctx.crossOriginFrames = res.crossOriginFrames;
+    }
+    render();
+  }
+
+  function isRecordingHere(next) {
+    return next.isRecordingTab === true && (next.state === 'recording' || next.state === 'stopped');
   }
 
   function finishSave(outcome) {
@@ -241,7 +297,8 @@ export function createController(api) {
     await refresh();
   }
 
-  async function onSave() {
+  // `includeScreenshot` is the checkbox above "Zapisz paczkę" (E3 D6); missing means its default, checked.
+  async function onSave({ includeScreenshot = true } = {}) {
     if (ctx.target !== 'web' || ctx.busy) return;
     const tabId = ctx.tab.id;
     ctx.busy = 'saving';
@@ -259,14 +316,15 @@ export function createController(api) {
       }, RESPONSE_TIMEOUT_MS);
     });
     const work = (async () => {
-      const res = await api.runtime.sendMessage({ type: 'collect', tabId });
-      if (res?.ok !== true || typeof res.json !== 'string' || typeof res.fileName !== 'string' || !res.fileName) {
+      const res = await api.runtime.sendMessage({ type: 'collect', tabId, includeScreenshot: includeScreenshot !== false });
+      if (res?.ok !== true || typeof res.zipBase64 !== 'string' || !res.zipBase64 || typeof res.fileName !== 'string' || !res.fileName) {
         if (!COLLECT_FAILURES.has(res?.reason)) logError('collect: unexpected answer', res);
         return { failure: COLLECT_FAILURES.has(res?.reason) ? res.reason : 'failed' };
       }
       if (timedOut) return { failure: 'pageBusy' };
+      const bytes = fromBase64(res.zipBase64); // a broken answer throws here: still 'collecting' -> failed
       phase = 'downloading';
-      const url = api.URL.createObjectURL(new api.Blob([res.json], { type: 'application/json' }));
+      const url = api.URL.createObjectURL(new api.Blob([bytes], { type: 'application/zip' }));
       let downloadId;
       try {
         downloadId = await api.downloads.download({
@@ -285,7 +343,7 @@ export function createController(api) {
         api.downloads.cancel?.(downloadId)?.catch?.((error) => logError('downloads.cancel', error));
         return { failure: 'failed' };
       }
-      return { downloadId, url, fileName: res.fileName };
+      return { downloadId, url, fileName: res.fileName, screenshot: SCREENSHOT_RESULTS.has(res.screenshot) ? res.screenshot : null };
     })().catch((error) => {
       logError(phase, error);
       return phase === 'downloading' ? { failure: 'downloadFailed', reportSaveFailed: true } : { failure: 'failed' };
@@ -302,7 +360,7 @@ export function createController(api) {
       return endSave({ kind: result.failure });
     }
 
-    save = { downloadId: result.downloadId, url: result.url, timer: null };
+    save = { downloadId: result.downloadId, url: result.url, timer: null, screenshot: result.screenshot };
     save.timer = setTimer(onDownloadTimeout, DOWNLOAD_TIMEOUT_MS);
     notify({ type: 'saveStarted', tabId, downloadId: result.downloadId, fileName: result.fileName });
     // Success only from the background (downloads.onChanged there), never from download().

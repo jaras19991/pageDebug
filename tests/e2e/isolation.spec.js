@@ -9,7 +9,7 @@ import { startFixtureServer } from './helpers/fixtures-server.js';
 import { DIST_CHROME, launchWithExtension } from './helpers/launch.js';
 import { saveRecording, startRecording } from './helpers/recording.js';
 
-const FILE_NAME_RE = /^page-debug-snapshot-\d+\.json$/;
+const FILE_NAME_RE = /^snapshot-[a-z0-9.-]+-\d{8}-\d{6}( \(\d+\))?\.zip$/;
 // Bridge nonce format (src/page/isolated-entry.js: 16 random bytes as hex).
 const NONCE_RE = /[0-9a-f]{32}/;
 // Forged payload token of hostile.html (assembled at runtime there, so not in its source).
@@ -307,7 +307,7 @@ test('csp-strict page is recorded', async () => {
 
     const { fileName, json } = await saveRecording(page);
     expect(fileName).toMatch(FILE_NAME_RE);
-    expect(json.schemaVersion).toBe(3);
+    expect(json.schemaVersion).toBe(4);
     expect(consoleEntriesWith(json, 'csp-strict fixture loaded')).toHaveLength(1);
     expect(consoleEntriesWith(json, text)).toHaveLength(1);
   });

@@ -30,14 +30,43 @@ describe('popup.html', () => {
   it('button set equals E1 set {record, save}', () => {
     const ids = [...document.querySelectorAll('button')].map((b) => b.id).sort();
     expect(ids).toEqual(['record', 'save']);
-    expect(document.querySelectorAll('input, select, textarea, [role="switch"], [role="checkbox"]')).toHaveLength(0);
+    // E3: the only form control is the screenshot checkbox (AC-2.1).
+    const controls = [...document.querySelectorAll('input, select, textarea, [role="switch"], [role="checkbox"]')];
+    expect(controls.map((el) => el.id)).toEqual(['includeScreenshot']);
   });
 
-  it('popup.html static disclosure text equals MESSAGES', () => {
+  it('checkbox #includeScreenshot checked by default, above #save (AC-2.1, AC-1.4)', () => {
+    const box = document.querySelector('#recording #includeScreenshot');
+    expect(box).not.toBeNull();
+    expect(box.getAttribute('type')).toBe('checkbox');
+    expect(box.checked).toBe(true);
+    expect(box.hasAttribute('checked')).toBe(true);
+    const label = box.closest('label');
+    expect(label).not.toBeNull();
+    expect(label.textContent.trim()).toBe(MESSAGES.includeScreenshot);
+    expect(box.compareDocumentPosition(document.getElementById('save')) & 4).toBe(4); // DOCUMENT_POSITION_FOLLOWING
+    // Above the button, not inside the sticky ready actions: one short line, so "Zapisz paczkę" stays visible.
+    expect(label.closest('#ready')).toBeNull();
+  });
+
+  it('#screenshotNote sits between the checkbox and #save, empty and hidden until cross-origin frames are found (store S1)', () => {
+    const note = document.querySelector('#recording #screenshotNote');
+    expect(note).not.toBeNull();
+    expect(note.textContent).toBe('');
+    const box = document.getElementById('includeScreenshot');
+    expect(box.compareDocumentPosition(note) & 4).toBe(4); // DOCUMENT_POSITION_FOLLOWING
+    expect(note.compareDocumentPosition(document.getElementById('save')) & 4).toBe(4);
+    const css = document.querySelector('style').textContent.replace(/\s+/g, ' ');
+    expect(css).toMatch(/#screenshotNote:empty \{[^}]*display: none;/);
+  });
+
+  it('popup.html static texts equal MESSAGES incl. privacyNote and includeScreenshot label (AC-1.3)', () => {
     expect(text('#ready #disclosureTitle')).toBe(MESSAGES.disclosureTitle);
     const items = [...document.querySelectorAll('#ready #disclosure > li')].map((li) => li.textContent.trim());
     expect(items).toEqual([...MESSAGES.disclosureItems]);
+    expect(text('#ready #privacyNote')).toBe(MESSAGES.privacyNote);
     expect(text('#ready #noUpload')).toBe(MESSAGES.noUpload);
+    expect(document.querySelector('#recording #includeScreenshot')?.closest('label')?.textContent.trim()).toBe(MESSAGES.includeScreenshot);
     expect(text('#ready #consentNotice')).toBe(MESSAGES.consentNotice);
     expect(text('#ready #reloadNotice')).toBe(MESSAGES.reloadNotice);
     expect(text('#recording #hint')).toBe(MESSAGES.recordingHint);
@@ -57,8 +86,8 @@ describe('popup.html', () => {
     expect(consent.compareDocumentPosition(record) & 4).toBe(4);
   });
 
-  it('consent order unchanged: disclosure < noUpload < consentNotice < record', () => {
-    const order = ['disclosure', 'noUpload', 'consentNotice', 'record'].map((id) => document.getElementById(id));
+  it('consent order: disclosure < privacyNote < noUpload < consentNotice < record', () => {
+    const order = ['disclosure', 'privacyNote', 'noUpload', 'consentNotice', 'record'].map((id) => document.getElementById(id));
     for (let i = 1; i < order.length; i++) {
       expect(order[i - 1].compareDocumentPosition(order[i]) & 4, order[i].id).toBe(4);
     }
@@ -82,11 +111,12 @@ describe('popup.html', () => {
     expect(css).toMatch(/#status:empty \{[^}]*display: none;/); // no empty gap above the disclosure
   });
 
-  it('README warns that the screenshot shows typed data and hides passwords (QA F-3)', () => {
+  it('README discloses that cross-origin frames are visible on the screenshot (E3 PB-1 B, store S1)', () => {
     const readme = readFileSync(README_PATH, 'utf8').replace(/\r\n/g, '\n');
     const section = readme.match(/^## Znane ograniczenia\n([\s\S]*?)(?=^## |(?![\s\S]))/m)[1];
-    const item = section.split(/\n(?=- )/).find((entry) => entry.includes('Zrzut ekranu'));
-    expect(item?.replace(/\s+/g, ' ')).toMatch(/wpisane w pola .*hasła są ukryte/);
+    const item = section.split(/\n(?=- )/).find((entry) => entry.includes('Zrzut a ramki innych serwisów'));
+    expect(item?.replace(/\s+/g, ' ')).toMatch(/ramki cross-origin .*nie są zakrywane/);
+    expect(section).not.toMatch(/Dane nie są redagowane|Zrzut ekranu nie jest maskowany/);
   });
 
   it('README activeTab line mentions screenshot in PL and EN', () => {
@@ -119,5 +149,12 @@ describe('popup.html', () => {
     expect(document.documentElement.getAttribute('lang')).toBe('pl');
     expect(document.getElementById('runSnapshot')).toBeNull();
     expect(document.body.textContent).not.toMatch(/Debug snapshot|snapshot debugowy/);
+  });
+
+  it('no JSON, zip, hash, redakcja in the popup; "token" only inside #privacyNote (AC-1.3)', () => {
+    const body = document.body.cloneNode(true);
+    for (const el of body.querySelectorAll('script, #privacyNote')) el.remove();
+    const visible = body.textContent.toLowerCase();
+    for (const word of ['json', 'zip', 'hash', 'redakcj', 'token']) expect(visible, word).not.toContain(word);
   });
 });

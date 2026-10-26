@@ -1,13 +1,15 @@
 // @vitest-environment jsdom
-/* global window, document */
+/* global window, document, Element */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
+  COLLECTOR_LIMITS,
   collectPageState,
   collectEnvironment,
   collectDomSnapshot,
   getPerformanceSummary,
   getStorageSnapshot,
 } from '../../src/page/collector.js';
+import { DOM_STRUCTURE_MAX_CHARS, DOM_FULL_MAX_CHARS } from '../../src/page/dom-structure.js';
 
 // Minimal local copy of v1 safeSlice (the real one lives in src/page/serialize.js, E1-T3a).
 // The collector receives it through `deps`, so the test does not depend on T3a.
@@ -18,21 +20,27 @@ function safeSlice(value, max) {
 
 const deps = { safeSlice };
 
-// v1 key lists (snapshot.json without schemaVersion): v2 keeps these sections unchanged.
+// v1 key lists (snapshot.json without schemaVersion); v4 changes only dom (E3-T3b, D5).
 const ENV_KEYS = ['document', 'location', 'navigator', 'screen', 'timestamp', 'viewport'];
 const DOM_KEYS = [
   'canonical',
   'counts',
   'forms',
+  'fullHtml',
   'hreflangs',
   'html',
   'iframes',
   'images',
   'meta',
+  'omittedElements',
   'rootMarkers',
   'scripts',
+  'structure',
+  'structureTruncated',
   'stylesheets',
 ];
+// v4: structure and fullHtml close the dom object (design D5, "Schema paczki").
+const DOM_TAIL = ['structure', 'structureTruncated', 'omittedElements', 'fullHtml'];
 const NAV_KEYS = [
   'connectEnd', 'connectStart', 'decodedBodySize', 'domComplete', 'domContentLoadedEventEnd',
   'domContentLoadedEventStart', 'domInteractive', 'domainLookupEnd', 'domainLookupStart', 'duration',
@@ -114,13 +122,14 @@ describe('collector (E1-T3b)', () => {
     expect(env.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/);
   });
 
-  it('dom keeps v1 keys', () => {
+  it('dom keeps v1 keys plus the v4 structure tail', () => {
     const dom = collectDomSnapshot(window, document, deps);
     expect(sorted(dom)).toEqual(DOM_KEYS);
+    expect(Object.keys(dom).slice(-DOM_TAIL.length)).toEqual(DOM_TAIL);
     expect(sorted(dom.counts)).toEqual(
       ['forms', 'iframes', 'images', 'links', 'scripts', 'stylesheets', 'totalElements'],
     );
-    expect(sorted(dom.html)).toEqual(['charset', 'compatMode', 'doctype', 'lang', 'outerHTML']);
+    expect(sorted(dom.html)).toEqual(['charset', 'compatMode', 'doctype', 'lang']);
     expect(sorted(dom.rootMarkers)).toEqual(
       ['bodyClassName', 'dataAttributesOnBody', 'dataAttributesOnHtml', 'htmlClassName'],
     );
@@ -137,53 +146,134 @@ describe('collector (E1-T3b)', () => {
     expect(dom.scripts[0].textLength).toBe('var inline = 1;'.length);
     expect(dom.stylesheets.map((s) => s.tagName)).toEqual(['LINK', 'STYLE']);
     expect(sorted(dom.stylesheets[0])).toEqual(['attributes', 'disabled', 'href', 'media', 'tagName', 'textLength']);
+    // Review F7: alt and title texts may name a person; only their lengths go to the package.
     expect(sorted(dom.images[0])).toEqual(
-      ['alt', 'height', 'loading', 'naturalHeight', 'naturalWidth', 'src', 'width'],
+      ['altLength', 'height', 'loading', 'naturalHeight', 'naturalWidth', 'src', 'width'],
     );
-    expect(sorted(dom.iframes[0])).toEqual(['attributes', 'id', 'name', 'src', 'title']);
+    expect(dom.images[0].altLength).toBe(1);
+    expect(sorted(dom.iframes[0])).toEqual(['attributes', 'id', 'name', 'src', 'titleLength']);
+    expect(dom.iframes[0].titleLength).toBe('Ramka'.length);
+    expect(dom.iframes[0].attributes).not.toHaveProperty('title');
+    expect(dom.iframes[0].attributes).toMatchObject({ id: 'f1', name: 'frame' });
+    expect(JSON.stringify([dom.images, dom.iframes])).not.toContain('Ramka');
     expect(sorted(dom.forms[0])).toEqual(['action', 'elements', 'enctype', 'id', 'method', 'name']);
     expect(dom.rootMarkers.htmlClassName).toBe('html-root');
     expect(dom.rootMarkers.dataAttributesOnHtml['data-app']).toBe('test');
     expect(dom.rootMarkers.bodyClassName).toBe('page');
   });
 
-  it('dom html.outerHTML is cut by limits.html via injected safeSlice', () => {
-    const dom = collectDomSnapshot(window, document, { safeSlice, limits: { html: 50 } });
-    expect(dom.html.outerHTML).toMatch(/^.{50}\.\.\. \[truncated \d+ chars\]$/s);
+  it('dom has structure ≤ limit and no outerHTML anywhere (AC-5.2)', () => {
+    document.body.insertAdjacentHTML('beforeend', '<p id="msg" data-testid="m" title="tytuł">Tekst akapitu</p><!-- komentarz -->');
+    const dom = collectDomSnapshot(window, document, deps);
+    expect(COLLECTOR_LIMITS.html).toBe(DOM_STRUCTURE_MAX_CHARS);
+    expect(typeof dom.structure).toBe('string');
+    expect(dom.structure.length).toBeLessThanOrEqual(DOM_STRUCTURE_MAX_CHARS);
+    expect(dom.structure.startsWith('<html')).toBe(true);
+    expect(dom.structure).toContain('<p id="msg" data-testid="m"></p>');
+    expect(dom.structure).toContain('<script></script>');
+    for (const absent of ['Tekst akapitu', 'komentarz', 'var inline', 'color: red', 'tytuł', 'Opis testowy', 'jan', 'sekret', 'tok123']) {
+      expect(dom.structure).not.toContain(absent);
+    }
+    expect(dom.structureTruncated).toBe(false);
+    expect(dom.omittedElements).toBe(0);
+    expect(JSON.stringify(dom)).not.toContain('outerHTML');
+    expect(JSON.stringify(collectPageState({ win: window, doc: document, safeSlice }))).not.toContain('outerHTML');
   });
 
-  it('dom forms redact password and hidden as in v1', () => {
+  it('dom structure is cut at limits.html with structureTruncated and omittedElements', () => {
+    document.body.insertAdjacentHTML('beforeend', '<div class="row"></div>'.repeat(500));
+    const dom = collectDomSnapshot(window, document, { safeSlice, limits: { html: 2000 } });
+    expect(dom.structure.length).toBeLessThanOrEqual(2000);
+    expect(dom.structureTruncated).toBe(true);
+    expect(dom.omittedElements).toBeGreaterThan(0);
+    expect(dom.structure.endsWith('</body></html>')).toBe(true);
+  });
+
+  it('dom structure ignores page patches of Element getters made after module load (D5)', () => {
+    // Getters only the walker reads (the v1 sections still use the live DOM).
+    const names = ['localName', 'firstElementChild'];
+    const saved = names.map((name) => Object.getOwnPropertyDescriptor(Element.prototype, name));
+    const clean = collectDomSnapshot(window, document, deps).structure;
+    try {
+      Object.defineProperty(Element.prototype, 'localName', { configurable: true, get() { return 'evil'; } });
+      Object.defineProperty(Element.prototype, 'firstElementChild', { configurable: true, get() { return null; } });
+      expect(collectDomSnapshot(window, document, deps).structure).toBe(clean);
+    } finally {
+      names.forEach((name, i) => Object.defineProperty(Element.prototype, name, saved[i]));
+    }
+  });
+
+  it('fullHtml null by default; string with option (AC-6.3)', () => {
+    expect(collectDomSnapshot(window, document, deps).fullHtml).toBeNull();
+    expect(collectPageState({ win: window, doc: document, safeSlice }).dom.fullHtml).toBeNull();
+    expect(collectPageState({ win: window, doc: document, safeSlice, fullHtml: false }).dom.fullHtml).toBeNull();
+    const state = collectPageState({ win: window, doc: document, safeSlice, fullHtml: true });
+    expect(state.errors).toEqual([]);
+    const full = state.dom.fullHtml;
+    expect(typeof full).toBe('string');
+    expect(full).toContain('var inline = 1;');
+    expect(full).toContain('name="user"');
+    expect(full).not.toContain('value=');
+    expect(full).not.toContain('sekret');
+    expect(full).not.toContain('tok123');
+    expect(state.dom.structure).not.toContain('var inline');
+  });
+
+  it('fullHtml is cut at limits.fullHtml (8 000 000 by default)', () => {
+    expect(COLLECTOR_LIMITS.fullHtml).toBe(DOM_FULL_MAX_CHARS);
+    const dom = collectDomSnapshot(window, document, { safeSlice, limits: { fullHtml: 300 }, fullHtml: true });
+    expect(dom.fullHtml.length).toBeLessThanOrEqual(300);
+    expect(dom.fullHtml.endsWith('</html>')).toBe(true);
+  });
+
+  it('forms elements carry valueLength, password without, no value key (AC-3.2 dom)', () => {
+    document.querySelector('[name="user"]').value = 'jan.kowalski';
     const elements = collectDomSnapshot(window, document, deps).forms[0].elements;
     const byName = Object.fromEntries(elements.map((e) => [e.name, e]));
-    expect(byName.user.value).toBe('jan');
-    expect(byName.pass.value).toBe('[redacted]');
-    expect(byName.csrf.value).toBe('[redacted]');
+    expect(byName.user.valueLength).toBe('jan.kowalski'.length);
+    expect(byName.csrf.valueLength).toBe('tok123'.length);
     expect(byName.remember.checked).toBe(true);
-    expect(sorted(byName.user)).toEqual(['checked', 'id', 'name', 'tagName', 'type', 'value']);
-    expect(JSON.stringify(elements)).not.toContain('sekret');
-    expect(JSON.stringify(elements)).not.toContain('tok123');
+    expect(sorted(byName.user)).toEqual(['checked', 'id', 'name', 'tagName', 'type', 'valueLength']);
+    expect(sorted(byName.pass)).toEqual(['checked', 'id', 'name', 'tagName', 'type']);
+    for (const el of elements) expect(el).not.toHaveProperty('value');
+    const json = JSON.stringify(elements);
+    for (const secret of ['jan.kowalski', 'sekret', 'tok123']) expect(json).not.toContain(secret);
   });
 
-  it('dom html.outerHTML has no value of password and hidden inputs; the page keeps them (QA F-3)', () => {
+  it('password value is never read', () => {
+    const pass = document.querySelector('[name="pass"]');
+    let reads = 0;
+    Object.defineProperty(pass, 'value', { configurable: true, get() { reads++; return 'sekret'; } });
+    collectDomSnapshot(window, document, deps);
+    expect(reads).toBe(0);
+  });
+
+  it('file input: fileCount instead of valueLength, value never read (C:\\fakepath leak, IN4)', () => {
+    document.body.insertAdjacentHTML('beforeend', '<form id="upload"><input type="file" name="doc" multiple></form>');
+    const input = document.querySelector('[name="doc"]');
+    let reads = 0;
+    Object.defineProperty(input, 'value', { configurable: true, get() { reads++; return 'C:\\fakepath\\umowa-jan.pdf'; } });
+    Object.defineProperty(input, 'files', { configurable: true, get: () => ({ length: 2, 0: { name: 'umowa-jan.pdf' }, 1: { name: 'b.pdf' } }) });
+    const form = collectDomSnapshot(window, document, deps).forms.find((f) => f.id === 'upload');
+    const [el] = form.elements;
+    expect(el.fileCount).toBe(2);
+    expect(el).not.toHaveProperty('valueLength');
+    expect(reads).toBe(0);
+    expect(JSON.stringify(form)).not.toMatch(/fakepath|umowa/);
+  });
+
+  it('typed email in input not present in dom section (JSON.stringify grep)', () => {
     document.body.insertAdjacentHTML(
       'beforeend',
-      '<input type="PASSWORD" value="s3cret-upper"><template><input type="hidden" value="tpl-secret"></template>',
+      '<form id="contact"><input type="email" name="mail"><textarea name="msg"></textarea></form>',
     );
-    const before = document.documentElement.outerHTML;
-    const html = collectDomSnapshot(window, document, deps).html.outerHTML;
-    for (const secret of ['sekret', 'tok123', 's3cret-upper', 'tpl-secret']) {
-      expect(html).not.toContain(secret);
-      expect(document.documentElement.outerHTML).toContain(secret);
+    document.querySelector('[name="mail"]').value = 'jan.kowalski@example.com';
+    document.querySelector('[name="msg"]').value = 'pisz na anna@example.com';
+    for (const fullHtml of [false, true]) {
+      const json = JSON.stringify(collectPageState({ win: window, doc: document, safeSlice, fullHtml }).dom);
+      expect(json).not.toContain('jan.kowalski@example.com');
+      expect(json).not.toContain('anna@example.com');
     }
-    expect(html).toContain('name="pass" value="[redacted]"');
-    expect(html).toContain('name="csrf" value="[redacted]"');
-    expect(html).toContain('name="user" value="jan"');
-    expect(document.documentElement.outerHTML).toBe(before);
-  });
-
-  it('dom html.outerHTML without secret inputs equals the page markup', () => {
-    document.body.innerHTML = '<p>bez formularzy</p>';
-    expect(collectDomSnapshot(window, document, deps).html.outerHTML).toBe(document.documentElement.outerHTML);
   });
 
   it('storage keeps cookies string and local/session maps', () => {

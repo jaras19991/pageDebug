@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: review traps</title>
+</head>
+<body>
+  <!-- E3 review traps (F1, F2, F3, F5, F6). Fresh random values on every load, exposed in window.__pdsTraps; the e2e
+       grep of the unzipped package must find none of them. Load with ?code=<value> (F5: OAuth code in the URL). -->
+  <h1>Pułapki review</h1>
+  <div id="app"></div>
+  <p><button type="button" id="t-send">Wyślij</button> <span id="t-result"></span></p>
+  <script>
+    (() => {
+      const hex = (bytes) => Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (b) => b.toString(16).padStart(2, '0')).join('');
+      const code = new URLSearchParams(location.search).get('code') || '';
+      const word = () => 'lorem ipsum dolor ';
+      const filler = (n) => word().repeat(Math.ceil(n / 18)).slice(0, n);
+      const KEPT = 6; // characters of the secret left before the cut
+      const traps = {
+        code,
+        accessToken: hex(16), // hex, low entropy (F1)
+        refreshToken: `rf${hex(6)}`,
+        persistPassword: `Pw!${hex(5)}`,
+        apiKey: `dk${hex(6)}`,
+        cvv: String(100 + (Math.floor(Math.random() * 800))),
+        consolePassword: `Cp${hex(6)}`,
+        cutBody: `Cb${hex(6)}`,
+        cutConsole: `Cc${hex(6)}`,
+      };
+      traps.cutBodyKept = traps.cutBody.slice(0, KEPT);
+      traps.cutConsoleKept = traps.cutConsole.slice(0, KEPT);
+      window.__pdsTraps = traps;
+
+      // F1: redux-persist (JSON in a string in JSON) and data-props with JSON in an attribute.
+      const persist = JSON.stringify({ account: JSON.stringify({ currentUser: { accessToken: traps.accessToken, refreshToken: traps.refreshToken, password: traps.persistPassword } }) });
+      localStorage.setItem('persist:root', persist);
+      document.getElementById('app').setAttribute('data-props', JSON.stringify({ user: { apiKey: traps.apiKey } }));
+
+      // F6: cvv in a query-like string in sessionStorage.
+      sessionStorage.setItem('checkout', `step=pay&cvv=${traps.cvv}&currency=PLN`);
+
+      // F3: `key: "value"` text in a console message.
+      console.log(`login form state password: "${traps.consolePassword}" remember: true`);
+
+      // F2: a secret split by the MAIN cut (requestBody 5000 chars, console entry 40000 chars of JSON).
+      const body = (n) => `{"x":"${filler(n)}","password":"${traps.cutBody}"}`;
+      const bodyOffset = body(0).indexOf(traps.cutBody);
+      traps.cutBodyText = body(5000 - bodyOffset - KEPT);
+      const consoleText = (n) => `{"x":"${filler(n)}","password":"${traps.cutConsole}"}`;
+      const consoleOffset = JSON.stringify([consoleText(0)]).indexOf(traps.cutConsole);
+      console.log(consoleText(40000 - consoleOffset - KEPT));
+
+      document.getElementById('t-send').addEventListener('click', async () => {
+        // F5: ?code= and ?ticket= in a request URL; F2: the cut request body.
+        const res = await fetch(`/api/login?code=${traps.code}&ticket=ST-${traps.accessToken}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: traps.cutBodyText,
+        });
+        document.getElementById('t-result').textContent = `status ${res.status}`;
+      });
+    })();
+  </script>
+</body>
+</html>

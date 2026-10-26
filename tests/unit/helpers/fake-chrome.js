@@ -2,6 +2,7 @@
 // Every API call is appended to `calls` as { name: 'tabs.reload', args: [...] }.
 // Test-only knobs live on `fake`, never on the `chrome` object itself.
 
+import { unzipSync } from 'fflate';
 import { originPatternFor } from '../../../src/lib/origin.js';
 
 const NO_RECEIVER = 'Could not establish connection. Receiving end does not exist.';
@@ -21,6 +22,62 @@ export function jpegDataUrl(width = 1280, height = 720, padBytes = 0) {
   for (const b of head) bin += String.fromCharCode(b);
   bin += '\0'.repeat(padBytes) + '\xff\xd9';
   return `data:image/jpeg;base64,${btoa(bin)}`;
+}
+
+/**
+ * What ISOLATED answers to the background's `fieldRects` (E3-IN1a `collectFieldRects`): one 200×30 field in a
+ * 1280×720 viewport scrolled by 400 px unless overridden. `viewport` is merged into the default one.
+ */
+export function fieldRectsAnswer({ rects = [{ x: 10, y: 20, w: 200, h: 30 }], viewport = {}, overflow = false, frames } = {}) {
+  return {
+    ok: true,
+    viewport: { innerWidth: 1280, innerHeight: 720, scrollX: 0, scrollY: 400, dpr: 1, vvScale: 1, ...viewport },
+    rects,
+    frames: frames ?? { sameOrigin: 0, crossOrigin: 0 },
+    overflow,
+  };
+}
+
+/**
+ * Stand-in for `createCanvasCodec` (no OffscreenCanvas in Node): `decode` reports the given size, `mask` records
+ * the planned rectangles and returns a small JPEG of the same size, `encode` a small JPEG of the requested size.
+ * Without `withMask` it has no `mask` (an E2-era codec).
+ */
+export function createFakeCodec({ width = 1280, height = 720, withMask = true } = {}) {
+  const jpegBlob = (w, h) => {
+    const bin = atob(jpegDataUrl(w, h, 100).split(',')[1]);
+    return new Blob([Uint8Array.from(bin, (c) => c.charCodeAt(0))], { type: 'image/jpeg' });
+  };
+  const codec = {
+    masks: [],
+    encodes: [],
+    decode: async () => ({ bitmap: { close() {} }, width, height }),
+    encode: async (_bitmap, w, h, quality) => {
+      codec.encodes.push([w, h, quality]);
+      return jpegBlob(w, h);
+    },
+  };
+  if (withMask) {
+    codec.mask = async (_bitmap, w, h, rects, quality) => {
+      codec.masks.push({ width: w, height: h, rects, quality });
+      return jpegBlob(w, h);
+    };
+  }
+  return codec;
+}
+
+/**
+ * Unpacks a package zip — the `zipBase64` of a `collect` answer or the bytes the popup downloads: entry names in order,
+ * parsed snapshot.json, summary.md, raw files.
+ * @param {string | Uint8Array} zip
+ * @returns {{ names: string[], json: string, pkg: object, summary: string, files: Record<string, Uint8Array> }}
+ */
+export function readZip(zip) {
+  const bytes = typeof zip === 'string' ? Uint8Array.from(atob(zip), (c) => c.charCodeAt(0)) : zip;
+  const files = unzipSync(bytes);
+  const json = new TextDecoder().decode(files['snapshot.json']);
+  const summary = files['summary.md'] ? new TextDecoder().decode(files['summary.md']) : null;
+  return { names: Object.keys(files), json, pkg: JSON.parse(json), summary, files };
 }
 
 // Mirrors the JSON serialization the real storage applies (undefined dropped, no shared refs).
@@ -81,6 +138,12 @@ export function createFakeChrome({
     captureThrows: async () => {
       throw new Error(NO_ACTIVE_TAB);
     },
+    /**
+     * Handler for tabs.sendMessage(tabId, { type: 'fieldRects' }, options) (E3 D6). null (default): the message goes to
+     * `sendMessage` like any other. Tests set it to answer (`async () => fieldRectsAnswer()`), throw (no bridge),
+     * never settle (timeout) or return different viewports per call (page scrolled).
+     */
+    fieldRects: null,
     /** Handler for runtime.sendMessage(message) (popup → background); default: no receiver. */
     runtimeSendMessage: async () => {
       throw new Error(NO_RECEIVER);
@@ -262,6 +325,7 @@ export function createFakeChrome({
       },
       async sendMessage(tabId, message, options) {
         log('tabs.sendMessage', [tabId, message, options]);
+        if (message?.type === 'fieldRects' && fake.fieldRects) return fake.fieldRects(tabId, message, options);
         return fake.sendMessage(tabId, message, options);
       },
       async captureVisibleTab(windowId, options) {

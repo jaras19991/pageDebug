@@ -4,7 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createFakeChrome } from './helpers/fake-chrome.js';
+import { createFakeChrome, readZip } from './helpers/fake-chrome.js';
 import { createStore, KEYS } from '../../src/lib/session-store.js';
 import { createController } from '../../src/popup/controller.js';
 import { MESSAGES } from '../../src/popup/messages.js';
@@ -63,13 +63,32 @@ describe('background.js entry point', () => {
       /\bimportScripts\b/,
       /\b(?:window|document)\s*[.[]/,
       /\bcreateObjectURL\b/,
-      /\blocalStorage\b/,
+      // The page storage API, not the name: `localStorage`/`sessionStorage` as an identifier (bare or through a global
+      // object) is forbidden; as a schema key (string literal, `pkg.storage.localStorage`) it is fine. String literals are
+      // removed before the check, so a name glued from parts (`local${'Storage'}`) is caught by the second pattern.
+      /(?<![.\w$])(?:local|session)Storage\b/,
+      /\b(?:local|session)\$\{/,
+      /\b(?:globalThis|self)\s*(?:\.\s*(?:local|session)Storage\b|\[)/,
       /\bindexedDB\b/,
       /\bstorage\s*\.\s*local\b/,
     ];
+    const strings = /'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\$]|\\.|\$(?!\{))*`/g;
     for (const file of files.filter((f) => f.endsWith('.js'))) {
       const code = (await readFile(join(ROOT, 'src', file), 'utf8')).replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
-      for (const re of forbidden) expect(code, `${file}: ${re}`).not.toMatch(re);
+      const bare = code.replace(strings, "''");
+      for (const re of forbidden) expect(bare, `${file}: ${re}`).not.toMatch(re);
+    }
+  });
+
+  it('the storage guard: API use fails, the schema key passes', () => {
+    const strings = /'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\$]|\\.|\$(?!\{))*`/g;
+    const api = [/(?<![.\w$])(?:local|session)Storage\b/, /\b(?:local|session)\$\{/, /\b(?:globalThis|self)\s*(?:\.\s*(?:local|session)Storage\b|\[)/];
+    const caught = (code) => api.some((re) => re.test(code.replace(strings, "''")));
+    for (const code of ['localStorage.getItem("a")', 'const s = localStorage;', 'globalThis.localStorage.x', "globalThis[`local${'Storage'}`]", 'self["sessionStorage"]']) {
+      expect([code, caught(code)]).toEqual([code, true]);
+    }
+    for (const code of ["new Set(['localStorage', 'sessionStorage'])", 'pkg.storage.localStorage', '{ "localStorage": {} }']) {
+      expect([code, caught(code)]).toEqual([code, false]);
     }
   });
 
@@ -103,7 +122,7 @@ describe('router sender check (D2)', () => {
   const accepts = (message, sender) => bg.acceptsMessage(chrome, message, sender);
 
   it('router rejects popup commands from content scripts and bridge commands from extension pages', () => {
-    for (const type of ['getStatus', 'armStart', 'start', 'disarm', 'collect', 'saveStarted', 'saveFailed']) {
+    for (const type of ['getStatus', 'armStart', 'start', 'disarm', 'collect', 'saveStarted', 'saveFailed', 'frameCheck']) {
       expect(accepts({ type }, POPUP_SENDER), type).toBe(true);
       expect(accepts({ type }, BRIDGE_SENDER), type).toBe(false);
       // Another extension page (not the popup) and another extension.
@@ -127,7 +146,7 @@ describe('router sender check (D2)', () => {
 // What MAIN answers to `collect` through the bridge (T15): a JSON string.
 function pageResult(docId, logs) {
   return JSON.stringify({
-    protocol: 2,
+    protocol: 3,
     recorderVersion: '0.3.0',
     docId,
     timeOrigin: T0 + 500,
@@ -229,10 +248,14 @@ describe('popup ↔ background through the real router', () => {
     const [download] = named('downloads.download');
     env.fake.completeDownload(1, `C:\\Users\\u\\Downloads\\${download.args[0].filename}`);
     await env.settle();
-    const pkg = JSON.parse(await env.blobs.at(-1).text());
+    const blob = env.blobs.at(-1);
+    expect(blob.type).toBe('application/zip');
+    const { pkg } = readZip(new Uint8Array(await blob.arrayBuffer()));
+    expect(download.args[0].filename).toMatch(/^snapshot-shop\.example\.com-\d{8}-\d{6}\.zip$/);
     expect(pkg.consoleLogs.map((l) => l.args[0])).toEqual(['Nie działa koszyk']);
     expect(pkg.notes).toContain('Section storage could not be collected (SecurityError).');
-    expect(env.last()).toMatchObject({ section: 'ready', statusText: MESSAGES.saved(download.args[0].filename) });
+    // The fake tab is not active, so there is no screenshot (QA F-5: the saved text says so).
+    expect(env.last()).toMatchObject({ section: 'ready', statusText: `${MESSAGES.saved(download.args[0].filename)} ${MESSAGES.screenshotFailedSaved}` });
     expect(await env.store.getRec()).toBeNull();
     expect(env.fake.registered.size).toBe(0);
     popup.destroy();

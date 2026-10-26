@@ -139,3 +139,103 @@ describe('renderModel', () => {
     expect(m.statusText).toBe(MESSAGES.failed);
   });
 });
+
+describe('applyModel: screenshot checkbox (E3 AC-2.1)', () => {
+  it('checkbox disabled while saving, checked state untouched by re-render', () => {
+    const { document } = new JSDOM(html).window;
+    const box = document.getElementById('includeScreenshot');
+    applyModel(document, renderModel(recording(), WEB));
+    expect(box.checked).toBe(true);
+    expect(box.disabled).toBe(false);
+
+    box.checked = false; // the reporter's choice lives until the popup closes
+    applyModel(document, renderModel(recording(), { target: 'web', busy: 'saving' }));
+    expect(box.disabled).toBe(true);
+    expect(box.checked).toBe(false);
+
+    applyModel(document, renderModel(recording(), { target: 'web', outcome: { kind: 'pageBusy' } }));
+    expect(box.disabled).toBe(false);
+    expect(box.checked).toBe(false);
+    applyModel(document, renderModel(recording({ state: 'stopped', stopReason: 'time-limit' }), WEB));
+    expect(box.disabled).toBe(false);
+    expect(box.checked).toBe(false);
+  });
+});
+
+describe('screenshot default with cross-origin frames (store S1, review F4)', () => {
+  it('renderModel: frameCheck pending → off without a note; failed → off with the note; a count wins (N6 fail-closed)', () => {
+    expect(renderModel(recording(), { target: 'web', frameCheck: 'pending' })).toMatchObject({ screenshotDefault: false, screenshotNote: '' });
+    expect(renderModel(recording(), { target: 'web', frameCheck: 'failed' })).toMatchObject({
+      screenshotDefault: false,
+      screenshotNote: MESSAGES.screenshotCheckFailedNote,
+    });
+    expect(renderModel(recording(), { target: 'web', frameCheck: 'done', crossOriginFrames: 0 })).toMatchObject({ screenshotDefault: true, screenshotNote: '' });
+    // Outside a recording of this tab there is no check: default on, as before.
+    expect(renderModel(idle(), { target: 'web', frameCheck: null })).toMatchObject({ screenshotDefault: true, screenshotNote: '' });
+  });
+
+  it('applyModel: pending unchecks, the answer 0 checks again — unless the reporter clicked the box (N6)', () => {
+    const fresh = () => new JSDOM(html).window.document;
+    let document = fresh();
+    let box = document.getElementById('includeScreenshot');
+    applyModel(document, renderModel(recording(), { target: 'web', frameCheck: 'pending' }));
+    expect(box.checked).toBe(false);
+    applyModel(document, renderModel(recording(), { target: 'web', frameCheck: 'done', crossOriginFrames: 0 }));
+    expect(box.checked).toBe(true);
+
+    // The reporter clicks twice (on, off) before the answer: the answer 0 does not override it.
+    document = fresh();
+    box = document.getElementById('includeScreenshot');
+    applyModel(document, renderModel(recording(), { target: 'web', frameCheck: 'pending' }));
+    box.click();
+    box.click();
+    expect(box.checked).toBe(false);
+    applyModel(document, renderModel(recording(), { target: 'web', frameCheck: 'done', crossOriginFrames: 0 }));
+    expect(box.checked).toBe(false);
+
+    // The reporter turns it on during the check; a failed check keeps it on, with the note.
+    document = fresh();
+    box = document.getElementById('includeScreenshot');
+    applyModel(document, renderModel(recording(), { target: 'web', frameCheck: 'pending' }));
+    box.click();
+    applyModel(document, renderModel(recording(), { target: 'web', frameCheck: 'failed' }));
+    expect(box.checked).toBe(true);
+    expect(document.getElementById('screenshotNote').textContent).toBe(MESSAGES.screenshotCheckFailedNote);
+  });
+
+  it('renderModel: crossOriginFrames > 0 turns the default off and adds the note; 0 or unknown keeps it on', () => {
+    const off = renderModel(recording(), { target: 'web', crossOriginFrames: 2 });
+    expect(off.screenshotDefault).toBe(false);
+    expect(off.screenshotNote).toBe(MESSAGES.screenshotFramesNote);
+    for (const crossOriginFrames of [0, null, undefined]) {
+      const on = renderModel(recording(), { target: 'web', crossOriginFrames, frameCheck: crossOriginFrames === 0 ? 'done' : null });
+      expect(on.screenshotDefault, String(crossOriginFrames)).toBe(true);
+      expect(on.screenshotNote, String(crossOriginFrames)).toBe('');
+    }
+    // Saving and stopped keep the same default and note.
+    expect(renderModel(recording(), { target: 'web', busy: 'saving', crossOriginFrames: 1 })).toMatchObject({
+      screenshotDefault: false,
+      screenshotNote: MESSAGES.screenshotFramesNote,
+    });
+    expect(renderModel(recording({ state: 'stopped' }), { target: 'web', crossOriginFrames: 1 }).screenshotDefault).toBe(false);
+  });
+
+  it('applyModel unchecks the box once when the default turns off; the reporter can check it again', () => {
+    const { document } = new JSDOM(html).window;
+    const box = document.getElementById('includeScreenshot');
+    const note = () => document.getElementById('screenshotNote').textContent;
+    applyModel(document, renderModel(recording(), WEB));
+    expect(box.checked).toBe(true);
+    expect(note()).toBe('');
+
+    applyModel(document, renderModel(recording(), { target: 'web', crossOriginFrames: 1 }));
+    expect(box.checked).toBe(false);
+    expect(note()).toBe(MESSAGES.screenshotFramesNote);
+
+    box.checked = true; // the reporter turns it on
+    applyModel(document, renderModel(recording(), { target: 'web', crossOriginFrames: 1 }));
+    applyModel(document, renderModel(recording(), { target: 'web', busy: 'saving', crossOriginFrames: 1 }));
+    expect(box.checked).toBe(true);
+    expect(note()).toBe(MESSAGES.screenshotFramesNote);
+  });
+});

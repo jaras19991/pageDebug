@@ -1,10 +1,12 @@
 // ISOLATED-world entry point (E1 D1, D3, D4), bundled into src/content/isolated-world.js by `npm run gen`.
 // The bridge: asks the background whether this document is recorded (`hello`) and forwards the answer
-// to MAIN as `config`; relays `collect`/`destroy`/`stop` from the background to MAIN and `flush`/`stopped`
-// from MAIN to the background. The document token from `hello` stays here and goes only with `flush`. Sees no page JavaScript; the only module that uses the extension API.
+// to MAIN as `config`; relays `collect` (with its options)/`destroy`/`stop` from the background to MAIN and `flush`/`stopped`
+// from MAIN to the background. Answers `fieldRects` (screenshot mask, E3 D6) itself, without MAIN: this world's
+// DOM prototypes are not the page's, so the page cannot fake the field boxes. The document token from `hello` stays here and goes only with `flush`. Sees no page JavaScript; the only module that uses the extension API.
 // When the extension context is gone (update, reload) every call fails and the bridge stays silent.
 
 import { connectIsolated } from './channel.js';
+import { collectFieldRects, resolveOpenShadowRoot } from './field-rects.js';
 
 const BRIDGE_BIND_TIMEOUT_MS = 2000;
 // Same order as the background's collect timeout; a busy page answers null instead of hanging.
@@ -110,7 +112,7 @@ export function bootIsolated({ win, doc, api }) {
     if (await channel.whenBound) channel.send('config', config);
   });
 
-  function collect(respond) {
+  function collect(respond, options) {
     if (finished || !channel.isBound() || pending.size >= BRIDGE_MAX_PENDING) {
       respond(null);
       return;
@@ -118,7 +120,18 @@ export function bootIsolated({ win, doc, api }) {
     seq += 1;
     const id = `c${seq}`;
     pending.set(id, { respond, timer: later(() => settle(id, null), BRIDGE_COLLECT_TIMEOUT_MS) });
-    if (!channel.send('collect', null, id)) settle(id, null);
+    // Only known options go on to MAIN (developer option `fullHtml`, D12).
+    const payload = options && typeof options === 'object' && options.fullHtml === true ? { options: { fullHtml: true } } : null;
+    if (!channel.send('collect', payload, id)) settle(id, null);
+  }
+
+  // Boxes of the form fields in the viewport for the screenshot mask (D6); `{ ok: false, reason }` on any failure.
+  function fieldRects() {
+    try {
+      return collectFieldRects({ win, doc, openShadowRoot: resolveOpenShadowRoot({ api, win }) });
+    } catch {
+      return { ok: false, reason: 'exception' };
+    }
   }
 
   function finish() {
@@ -133,8 +146,12 @@ export function bootIsolated({ win, doc, api }) {
     if (!message || typeof message !== 'object') return false;
     if (!sender || sender.id !== runtime.id || sender.tab) return false; // only the background
     if (message.type === 'collect') {
-      collect(sendResponse);
+      collect(sendResponse, message.options);
       return true;
+    }
+    if (message.type === 'fieldRects') {
+      bridgeTry(() => sendResponse(fieldRects()));
+      return false;
     }
     if (message.type === 'destroy' && !finished) finish();
     // Time limit reached in the background (E2 D8): MAIN stops its hooks and keeps the buffers for collect.

@@ -33,6 +33,14 @@ function newDocToken() {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+// Appends a document to `rec.docs`, keeping the last MAX_DOCS; `dropped` are the ids that fell off,
+// whose stored copies (`pds:doc:<id>`) the caller removes after the `updateRec` callback (AC-6.5).
+function appendDoc(docs, doc) {
+  const all = [...docs, doc];
+  const cut = Math.max(0, all.length - MAX_DOCS);
+  return { docs: all.slice(cut), dropped: all.slice(0, cut).map((d) => d.id) };
+}
+
 /**
  * Limit for a new recording (D10): the test-only override from `pds:test:recordingLimitMs`
  * (set by the e2e harness through the SW, never by pages or content scripts), clamped to
@@ -60,6 +68,17 @@ export function createRecordingHandlers({
     typeof sender?.tab?.id === 'number' && sender.frameId === 0 && sender.id === chrome.runtime.id;
   // Firefox may omit sender.origin; sender.url is the URL of the sending document.
   const senderUrl = (sender) => sender.url ?? sender.origin ?? sender.tab?.url;
+
+  // Stored copies of documents trimmed from `rec.docs`; a failed removal only leaves data the save ignores
+  // less tidily, so it never fails the message.
+  async function removeDropped(ids) {
+    if (!ids.length) return;
+    try {
+      await store.removeDocs(ids);
+    } catch {
+      // storage error: nothing to report to the page
+    }
+  }
 
   // Same tab and exact origin (with port) as the recording.
   const matchesRecording = (rec, sender) =>
@@ -246,6 +265,7 @@ export function createRecordingHandlers({
       if (!isBridge(sender)) return { record: false };
       let reply = { record: false };
       let stopped = null;
+      let dropped = [];
       await store.updateRec((cur) => {
         if (!matchesRecording(cur, sender)) return undefined;
         const docId = cur.docSeq + 1;
@@ -255,10 +275,13 @@ export function createRecordingHandlers({
         const doc = { id: docId, url: capUrl(senderUrl(sender)), flushed: false, token };
         if (!record) doc.recorded = false;
         reply = { record, docId, token, deadline: cur.deadline, limitMs: cur.limitMs };
-        const next = { ...cur, docSeq: docId, docs: [...cur.docs, doc].slice(-MAX_DOCS) };
+        let docs;
+        ({ docs, dropped } = appendDoc(cur.docs, doc));
+        const next = { ...cur, docSeq: docId, docs };
         if (due) stopped = asStopped(next);
         return stopped ?? next;
       });
+      await removeDropped(dropped);
       if (stopped) await afterStop(stopped);
       else if (reply.record) await setBadge(chrome.action, sender.tab.id, 'recording');
       return reply;
@@ -294,11 +317,22 @@ export function createRecordingHandlers({
       const known = rec?.tabId === sender.tab.id ? rec.docs.find((d) => d.id === docId) : null;
       if (!known || known.token !== msg.token) return fail('rejected');
       const { stored } = await store.putDoc(docId, msg.data);
-      await store.updateRec((cur) =>
-        cur?.requestId === rec.requestId
-          ? { ...cur, docs: cur.docs.map((d) => (d.id === docId ? { ...d, flushed: true } : d)) }
-          : undefined,
-      );
+      // The document may have been trimmed from `rec.docs` (or the recording finished) while the copy was
+      // being written: then nothing references the copy and it is removed (race with removeDropped, AC-6.5).
+      let orphaned = false;
+      await store.updateRec((cur) => {
+        if (!cur) {
+          orphaned = true;
+          return undefined;
+        }
+        if (cur.requestId !== rec.requestId) return undefined;
+        if (!cur.docs.some((d) => d.id === docId)) {
+          orphaned = true;
+          return undefined;
+        }
+        return { ...cur, docs: cur.docs.map((d) => (d.id === docId ? { ...d, flushed: true } : d)) };
+      });
+      if (orphaned) await removeDropped([docId]);
       return { ok: true, stored };
     },
 
@@ -306,14 +340,18 @@ export function createRecordingHandlers({
     async bridgeError(msg, sender) {
       if (!isBridge(sender)) return fail('rejected');
       const bridgeError = String(msg?.reason ?? 'unknown').slice(0, MAX_REASON_LENGTH);
+      let dropped = [];
       await store.updateRec((cur) => {
         if (!matchesRecording(cur, sender)) return undefined;
         if (cur.docs.some((d) => d.id === msg?.docId)) {
           return { ...cur, docs: cur.docs.map((d) => (d.id === msg.docId ? { ...d, bridgeError } : d)) };
         }
         const doc = { id: cur.docSeq + 1, url: capUrl(senderUrl(sender)), flushed: false, recorded: false, bridgeError };
-        return { ...cur, docSeq: doc.id, docs: [...cur.docs, doc].slice(-MAX_DOCS) };
+        let docs;
+        ({ docs, dropped } = appendDoc(cur.docs, doc));
+        return { ...cur, docSeq: doc.id, docs };
       });
+      await removeDropped(dropped);
       return { ok: true };
     },
 

@@ -18,6 +18,20 @@ export const SCREENSHOT_LIMITS = Object.freeze({
   headerChars: 65536,
 });
 
+// Field masking (E3 D6): margin so that 8×8 JPEG blocks and anti-aliasing leave no edge of a glyph.
+export const MASK_LIMITS = Object.freeze({
+  color: '#9e9e9e',
+  marginCssPx: 2,
+  marginImagePx: 8,
+  // Image and viewport proportions may differ this much (device pixel rounding); more means a wrong scale.
+  aspectTolerance: 0.02,
+  // Pinch-zoom (`visualViewport.scale`, spike S0): rectangles are in layout-viewport pixels, the image shows the
+  // visual viewport, so the mask would miss. Beyond this tolerance no image at all.
+  vvScaleTolerance: 0.01,
+  // Above this many rectangles the whole image is covered (fail-closed, like the ISOLATED limit).
+  maxRects: 2000,
+});
+
 const MIME = 'image/jpeg';
 const JPEG_PREFIX = 'data:image/jpeg;base64,';
 
@@ -29,9 +43,10 @@ const FAILURE_REASONS = Object.freeze({
   timeout: 'timeout',
   'no-fit': 'too-large', // nothing at ≥ 320 px width fits into the limit
   'codec-error': 'too-large', // decoding/encoding not available or failed, so the image cannot be shrunk
+  'mask-failed': 'fields-not-hidden', // form fields could not be painted over: no image at all (E3 D6, AC-2.4)
 });
 
-/** @returns {'capture-failed'|'timeout'|'too-large'} */
+/** @returns {'capture-failed'|'timeout'|'too-large'|'fields-not-hidden'} */
 export function screenshotErrorReason(kind) {
   return FAILURE_REASONS[kind] || 'capture-failed';
 }
@@ -206,6 +221,91 @@ export async function captureScreenshot({ tabs, tab, codec, now = Date.now, maxB
   }
 }
 
+const finite = (n) => typeof n === 'number' && Number.isFinite(n);
+
+// `viewport.vvScale` from collectFieldRects; missing means 1 (older bridge, no visualViewport).
+function isPinchZoomed(viewport) {
+  const scale = viewport?.vvScale;
+  if (scale === undefined) return false;
+  return !finite(scale) || Math.abs(scale - 1) > MASK_LIMITS.vvScaleTolerance;
+}
+
+/**
+ * Field rectangles (CSS px, viewport coordinates) → rectangles in image pixels: scaled by
+ * `imageWidth / innerWidth` (covers DPR and zoom), grown by `max(2 CSS px, 8 image px)`, clipped to the image;
+ * rectangles outside the image are dropped. `null` when the scale cannot be trusted (aspect ratio off by > 2%)
+ * the page is pinch-zoomed (`viewport.vvScale` ≠ 1 ± 1%), or the input is malformed — the caller then keeps no image at all.
+ * @param {{ rects: Array<{ x: number, y: number, w: number, h: number }>,
+ *   viewport: { innerWidth: number, innerHeight: number }, imageWidth: number, imageHeight: number }} options
+ * @returns {Array<{ x: number, y: number, w: number, h: number }> | null}
+ */
+export function planMask({ rects, viewport, imageWidth, imageHeight }) {
+  if (!Array.isArray(rects) || !viewport || isPinchZoomed(viewport)) return null;
+  const { innerWidth, innerHeight } = viewport;
+  if (![innerWidth, innerHeight, imageWidth, imageHeight].every((n) => finite(n) && n > 0)) return null;
+  const aspect = imageHeight / imageWidth / (innerHeight / innerWidth);
+  if (Math.abs(aspect - 1) > MASK_LIMITS.aspectTolerance) return null;
+  if (rects.length > MASK_LIMITS.maxRects) return [{ x: 0, y: 0, w: imageWidth, h: imageHeight }];
+  const scale = imageWidth / innerWidth;
+  const margin = Math.max(MASK_LIMITS.marginCssPx * scale, MASK_LIMITS.marginImagePx);
+  const planned = [];
+  for (const rect of rects) {
+    if (!rect || ![rect.x, rect.y, rect.w, rect.h].every(finite)) return null;
+    const x0 = Math.max(0, Math.floor(rect.x * scale - margin));
+    const y0 = Math.max(0, Math.floor(rect.y * scale - margin));
+    const x1 = Math.min(imageWidth, Math.ceil((rect.x + rect.w) * scale + margin));
+    const y1 = Math.min(imageHeight, Math.ceil((rect.y + rect.h) * scale + margin));
+    if (x1 > x0 && y1 > y0) planned.push({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+  }
+  return planned;
+}
+
+function closeBitmap(decoded) {
+  try {
+    decoded?.bitmap?.close?.();
+  } catch {
+    // Closing is best effort.
+  }
+}
+
+/**
+ * Paints the form fields over on a captured JPEG and fits the result into `maxBytes` (E3 D6). The unmasked image
+ * never leaves this function when there is something to hide: any failure (no codec, decode/mask error, wrong scale)
+ * gives `{ error: 'fields-not-hidden' }` (AC-2.4). Nothing to hide → the capture goes through `fitJpeg` unchanged.
+ * @param {{ dataUrl: string, rects: Array<{ x: number, y: number, w: number, h: number }>,
+ *   viewport: { innerWidth: number, innerHeight: number }, codec: object | null, maxBytes?: number }} options
+ * @returns {Promise<{ shot: { dataUrl: string, width: number, height: number, bytes: number, mime: string,
+ *   maskedFields: number } } | { error: string }>}
+ */
+export async function maskScreenshot({ dataUrl, rects, viewport, codec, maxBytes = SCREENSHOT_LIMITS.bytes }) {
+  const done = async (source, maskedFields) => {
+    const fit = await fitJpeg({ dataUrl: source, maxBytes, codec });
+    return fit.error ? fit : { shot: { ...fit, maskedFields } };
+  };
+  // A pinch-zoomed page fails even with no fields: its rectangles cannot be trusted to be complete.
+  if (isPinchZoomed(viewport)) return fail('mask-failed');
+  if (Array.isArray(rects) && rects.length === 0) return done(dataUrl, 0);
+  if (!codec || typeof codec.decode !== 'function' || typeof codec.mask !== 'function') return fail('mask-failed');
+
+  let masked;
+  let maskedFields;
+  let decoded;
+  try {
+    decoded = await codec.decode(dataUrl);
+    const plan = planMask({ rects, viewport, imageWidth: decoded.width, imageHeight: decoded.height });
+    if (!plan) return fail('mask-failed');
+    if (plan.length === 0) return done(dataUrl, 0);
+    const blob = await codec.mask(decoded.bitmap, decoded.width, decoded.height, plan, SCREENSHOT_LIMITS.captureQuality);
+    masked = await blobToDataUrl(blob);
+    maskedFields = plan.length;
+  } catch {
+    return fail('mask-failed');
+  } finally {
+    closeBitmap(decoded);
+  }
+  return done(masked, maskedFields);
+}
+
 /**
  * Codec on `createImageBitmap` + `OffscreenCanvas` (Chrome SW, Firefox event page). Covered by e2e:
  * jsdom/Node have neither API. `null` when the scope lacks them (the screenshot is then kept only if it fits).
@@ -220,6 +320,15 @@ export function createCanvasCodec(scope = globalThis) {
     async encode(bitmap, width, height, quality) {
       const canvas = new scope.OffscreenCanvas(width, height);
       canvas.getContext('2d').drawImage(bitmap, 0, 0, width, height);
+      return canvas.convertToBlob({ type: MIME, quality: quality / 100 });
+    },
+    // Paints `rects` (image pixels) over the bitmap in one flat colour, then encodes JPEG (E3 D6).
+    async mask(bitmap, width, height, rects, quality) {
+      const canvas = new scope.OffscreenCanvas(width, height);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(bitmap, 0, 0, width, height);
+      ctx.fillStyle = MASK_LIMITS.color;
+      for (const { x, y, w, h } of rects) ctx.fillRect(x, y, w, h);
       return canvas.convertToBlob({ type: MIME, quality: quality / 100 });
     },
   };

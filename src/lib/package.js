@@ -1,10 +1,12 @@
-// Assembles the v3 snapshot package (docs/snapshot-schema.md, design E1 D12, E2 D9) from the current document's
+// Assembles the v4 snapshot package (docs/snapshot-schema.md, design E1 D12, E2 D9, E3 D10) from the current document's
 // `collect` result, the per-document snapshots flushed on `pagehide` (D4) and the background's screenshot (E2 D5).
+// The result is NOT redacted yet: export.js redacts it, fits the size budget and writes the zip (E3 D8); the screenshot
+// bytes travel beside the package (`assembleParts`), never inside it.
 // Pure: no chrome.*, no DOM, no clock. Bundled into the console fallback too, so it imports only mask-secrets.js.
 
 import { maskSecrets, cutPreview } from './mask-secrets.js';
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const RECORD_KEYS = ['consoleLogs', 'runtimeErrors', 'network', 'steps'];
 
@@ -20,6 +22,19 @@ export const DEFAULT_LIMITS = Object.freeze({
   responseBodyTotalChars: 262144,
   screenshotBytes: 307200,
   longTasks: 20,
+  html: 300000,
+  packageBytes: 2097152,
+});
+
+// `limits.packageBytes` when the developer turned on full HTML (`html-structure` in disabledRules, AC-6.3).
+const FULL_HTML_PACKAGE_BYTES = 10485760;
+// The one image of the package (E3 D7): its entry in the zip.
+export const SCREENSHOT_FILE = 'screenshot.jpg';
+
+/** Notes of a missing screenshot that the background knows the reason of (E3-IN1c). */
+export const SCREENSHOT_NOTES = Object.freeze({
+  off: 'Screenshot not included (turned off by the reporter).',
+  notHidden: (reason) => `No screenshot: form fields could not be hidden (${cap(reason, NOTE_TEXT_MAX)}).`,
 });
 
 const PAGE_SECTIONS = ['environment', 'performance', 'storage', 'dom'];
@@ -38,10 +53,6 @@ const SCREENSHOT_REASONS = ['save'];
 
 const NOTE_NOT_FINAL = 'LCP, CLS and INP are values at the time of saving; they could still grow.';
 const NOTE_NO_STATUS = 'HTTP statuses of the page and its files are not available in this browser.';
-
-export function packageFileName(now) {
-  return `page-debug-snapshot-${now}.json`;
-}
 
 function toIso(value) {
   if (value === null || value === undefined) return null;
@@ -74,6 +85,11 @@ function zeroCounts() {
 
 function zeroTruncated() {
   return { consoleLogs: false, runtimeErrors: false, network: false, steps: false, responseBodies: false };
+}
+
+// Package-level flags (v4): records, previews, then the size budget's sections (budget.js sets them).
+function packageTruncated() {
+  return { ...zeroTruncated(), html: false, resources: false, dom: false, storage: false, stacks: false };
 }
 
 function isObject(value) {
@@ -183,11 +199,11 @@ function limitResponseBodies(network, limits) {
   return over;
 }
 
-// Screenshots from the background (`captureScreenshot` shots): metadata in `screenshots[]`, bytes in `attachments`.
+// The screenshot from the background (`captureScreenshot` shot, masked in E3): metadata in `screenshots[]`, the data URL
+// returned beside the package. One image per package (one zip entry), so only the first valid shot is used.
 function screenshotsOf(shots, limits, doc, docIndex) {
   const screenshots = [];
-  const attachments = {};
-  if (!Array.isArray(shots) || doc === null) return { screenshots, attachments };
+  if (!Array.isArray(shots) || doc === null) return { screenshots, dataUrl: null };
   for (const shot of shots) {
     const dataUrl = shot?.dataUrl;
     if (typeof dataUrl !== 'string' || !dataUrl.startsWith(JPEG_PREFIX)) continue;
@@ -196,7 +212,6 @@ function screenshotsOf(shots, limits, doc, docIndex) {
     const decoded = Math.floor(((dataUrl.length - JPEG_PREFIX.length) * 3) / 4);
     if (bytes === null || bytes > limits.screenshotBytes || decoded > limits.screenshotBytes + 2) continue;
     const epochMs = finite(shot.epochMs);
-    const id = `screenshot-${screenshots.length}`;
     screenshots.push({
       t: epochMs !== null && doc.timeOrigin !== null ? Math.round((epochMs - doc.timeOrigin) * 10) / 10 : null,
       doc: docIndex,
@@ -205,11 +220,43 @@ function screenshotsOf(shots, limits, doc, docIndex) {
       width: finite(shot.width),
       height: finite(shot.height),
       bytes,
-      attachment: id,
+      file: SCREENSHOT_FILE,
+      maskedFields: Number.isInteger(shot.maskedFields) && shot.maskedFields >= 0 ? shot.maskedFields : null,
     });
-    attachments[id] = dataUrl;
+    return { screenshots, dataUrl };
   }
-  return { screenshots, attachments };
+  return { screenshots, dataUrl: null };
+}
+
+// Form field of `dom.forms[].elements[]`: a value never stays, only its length (none for password; AC-3.2, defence in depth —
+// the v4 collector sends `valueLength` already).
+function formElementOf(el) {
+  if (!isObject(el) || !('value' in el)) return el;
+  const { value, ...rest } = el;
+  const type = typeof el.type === 'string' ? el.type.toLowerCase() : '';
+  // No length for a password; a file input's value is a fake path with the file name (its count is `fileCount`).
+  if (type !== 'password' && type !== 'file' && typeof value === 'string' && !('valueLength' in rest)) rest.valueLength = value.length;
+  return rest;
+}
+
+// `dom` of the collect result → v4: no v3 `html.outerHTML`, the collector's structure flags become `truncated.html` and a
+// note, form values become lengths, `structure` and `fullHtml` are the last keys; full HTML only with the developer option.
+function domOf(dom, limits, fullHtml, truncated, notes) {
+  if (!isObject(dom)) return dom ?? null;
+  const { structure, structureTruncated, omittedElements, fullHtml: full, ...rest } = dom;
+  if (isObject(rest.html) && 'outerHTML' in rest.html) {
+    rest.html = { ...rest.html };
+    delete rest.html.outerHTML;
+  }
+  if (Array.isArray(rest.forms)) {
+    rest.forms = rest.forms.map((form) => (isObject(form) && Array.isArray(form.elements) ? { ...form, elements: form.elements.map(formElementOf) } : form));
+  }
+  if (structureTruncated === true) {
+    truncated.html = true;
+    const omitted = Number.isInteger(omittedElements) && omittedElements > 0 ? `; ${omittedElements} elements were not included` : '';
+    notes.push(`dom.structure was cut to ${limits.html} characters${omitted}.`);
+  }
+  return { ...rest, structure: typeof structure === 'string' ? structure : null, fullHtml: fullHtml && typeof full === 'string' ? full : null };
 }
 
 function describeCounts(counts) {
@@ -217,26 +264,33 @@ function describeCounts(counts) {
 }
 
 /**
+ * The v4 package (not redacted) and the screenshot that goes beside it as `screenshot.jpg`.
  * @param {object} input
  * @param {{ extensionVersion: string, source: 'extension'|'console', startedAt: number|string, collectedAt: number|string,
  *           stopReason?: string|null, limits?: object, deadline?: number,
  *           currentMissingReason?: 'loadedAfterStop',
  *           screenshots?: { epochMs: number, mime: string, width: number, height: number, bytes: number, dataUrl: string,
- *                           reason?: 'save' }[],
- *           screenshotNote?: string }} input.meta  `currentMissingReason`: why `current` is null, when known
+ *                           reason?: 'save', maskedFields?: number }[],
+ *           screenshotOff?: boolean, maskFailure?: string, screenshotNote?: string,
+ *           fullHtml?: boolean }} input.meta  `currentMissingReason`: why `current` is null, when known
  *           (`loadedAfterStop`: the tab has no recorder because it was loaded after the time limit stopped the recording).
- *           `screenshots`: `shot`s of `captureScreenshot` (epoch ms); `screenshotNote`: why there is none (goes to `notes`)
+ *           `screenshots`: `shot`s of `captureScreenshot` (epoch ms); why there is none (goes to `notes`): `screenshotOff`
+ *           (the reporter's switch), `maskFailure` (fields could not be hidden: the reason), else `screenshotNote`.
+ *           `fullHtml`: the developer turned on full HTML (`dom.fullHtml` kept, `limits.packageBytes` 10 MB)
  * @param {object|null} input.current  parsed `collect` result of the current document, or null when unavailable;
  *           besides the v2 fields it may carry `steps`, `vitals`, `documentStatus`, `truncated.responseBodies`
  * @param {object[]} [input.priorDocs] snapshots from `pds:doc:*` (without the current docId); the same v3 fields
  *           flat or inside `buffers`
  * @param {{ id, url?, flushed?, recorded?, bridgeError? }[]} [input.docs] documents known to the background (`pds:rec.docs`), in opening order
+ * @returns {{ pkg: object, screenshotDataUrl: string|null }}
  */
-export function assemblePackage({ meta, current, priorDocs = [], docs = [] }) {
+export function assembleParts({ meta, current, priorDocs = [], docs = [] }) {
   const limits = { ...DEFAULT_LIMITS };
   for (const [key, value] of Object.entries(isObject(meta.limits) ? meta.limits : {})) {
     if (key in DEFAULT_LIMITS && Number.isInteger(value) && value >= 0) limits[key] = value;
   }
+  const fullHtml = meta.fullHtml === true;
+  if (fullHtml) limits.packageBytes = FULL_HTML_PACKAGE_BYTES;
   const deadline = finite(meta.deadline);
   const notes = [];
 
@@ -272,7 +326,7 @@ export function assemblePackage({ meta, current, priorDocs = [], docs = [] }) {
 
   // Records: documents in order, by `t` inside a document; global limit keeps the newest.
   const out = {};
-  const truncated = {};
+  const truncated = packageTruncated();
   for (const key of RECORD_KEYS) {
     const all = [];
     ordered.forEach((doc, index) => {
@@ -371,9 +425,15 @@ export function assemblePackage({ meta, current, priorDocs = [], docs = [] }) {
   // The screenshot belongs to the current document; without it, to the newest document with a time origin.
   let shotIndex = currentDoc ? ordered.length - 1 : -1;
   if (shotIndex < 0) shotIndex = ordered.findLastIndex((d) => d.timeOrigin !== null);
-  const { screenshots, attachments } = screenshotsOf(meta.screenshots, limits, ordered[shotIndex] ?? null, shotIndex);
+  const shotOff = meta.screenshotOff === true;
+  const maskFailed = !shotOff && typeof meta.maskFailure === 'string' && meta.maskFailure !== '';
+  const { screenshots, dataUrl } = shotOff || maskFailed
+    ? { screenshots: [], dataUrl: null }
+    : screenshotsOf(meta.screenshots, limits, ordered[shotIndex] ?? null, shotIndex);
   if (!screenshots.length) {
-    if (typeof meta.screenshotNote === 'string' && meta.screenshotNote !== '') notes.push(cap(meta.screenshotNote, NOTE_TEXT_MAX));
+    if (shotOff) notes.push(SCREENSHOT_NOTES.off);
+    else if (maskFailed) notes.push(SCREENSHOT_NOTES.notHidden(meta.maskFailure));
+    else if (typeof meta.screenshotNote === 'string' && meta.screenshotNote !== '') notes.push(cap(meta.screenshotNote, NOTE_TEXT_MAX));
     else if (source === 'console') notes.push('Screenshots are not available without the extension.');
     else if (Array.isArray(meta.screenshots) && meta.screenshots.length) notes.push('No screenshot: the image could not be included.');
     else notes.push('No screenshot: none was taken.');
@@ -390,8 +450,8 @@ export function assemblePackage({ meta, current, priorDocs = [], docs = [] }) {
   };
 
   const lastWithOrigin = [...documents].reverse().find((d) => d.timeOrigin !== null);
-  // Built in the order of the package keys (AC-7.2): records before the page sections, `dom` the last text section,
-  // `attachments` (binary data only) at the very end (PB-2 A).
+  // Built in the order of the package keys (AC-7.2, E3 D10): `redaction` (filled by export.js) after `overview`,
+  // records before the page sections, `dom` last; no binary data in the package.
   const pkg = {
     schemaVersion: SCHEMA_VERSION,
     extensionVersion: String(meta.extensionVersion ?? ''),
@@ -401,6 +461,7 @@ export function assemblePackage({ meta, current, priorDocs = [], docs = [] }) {
     recordingStoppedReason: stopped ? 'time-limit' : null,
     timeOrigin: finite(current?.timeOrigin) ?? lastWithOrigin?.timeOrigin ?? null,
     overview,
+    redaction: { rulesVersion: 1, disabledRules: [], masked: {} },
     limits,
     truncated,
     documents,
@@ -413,6 +474,11 @@ export function assemblePackage({ meta, current, priorDocs = [], docs = [] }) {
     consoleLogs: out.consoleLogs,
   };
   for (const section of PAGE_SECTIONS) pkg[section] = current ? (current[section] ?? null) : null;
-  pkg.attachments = attachments;
-  return pkg;
+  pkg.dom = domOf(pkg.dom, limits, fullHtml, truncated, notes);
+  return { pkg, screenshotDataUrl: dataUrl };
+}
+
+/** The v4 package only (see `assembleParts`). */
+export function assemblePackage(input) {
+  return assembleParts(input).pkg;
 }

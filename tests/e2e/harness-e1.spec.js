@@ -28,8 +28,8 @@ test('harness: record basic fixture, log a marker and save a v3 package', async 
     await page.evaluate((m) => console.log(m), marker);
 
     const { fileName, json } = await saveRecording(page);
-    expect(fileName).toMatch(/^page-debug-snapshot-\d+\.json$/);
-    expect(json.schemaVersion).toBe(3);
+    expect(fileName).toMatch(/^snapshot-[a-z0-9.-]+-\d{8}-\d{6}( \(\d+\))?\.zip$/);
+    expect(json.schemaVersion).toBe(4);
     expect(json.documents.length).toBeGreaterThanOrEqual(1);
     expect(JSON.stringify(json.consoleLogs)).toContain(marker);
   } finally {

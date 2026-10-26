@@ -40,6 +40,13 @@ function str(value, max) {
   return s.length > max ? s.slice(0, max) + `... [truncated ${s.length - max} chars]` : s;
 }
 
+// `items.map(fn)` as a loop: Array.prototype.map belongs to the page, which may replace it (AC-3.6).
+function mergeMap(items, fn) {
+  const out = [];
+  for (let i = 0; i < items.length; i++) out.push(fn(items[i], i));
+  return out;
+}
+
 function num(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
@@ -167,8 +174,7 @@ export function correlateSizes(hookEntries, rtEntries, { docOrigin, intrinsics }
     .sort((a, b) => a.startTime - b.startTime);
   const used = new I.Set();
   const sizes = new I.Map();
-  const order = records
-    .map((entry, index) => ({ entry, index }))
+  const order = mergeMap(records, (entry, index) => ({ entry, index }))
     .filter(({ entry }) => entry && (entry.type === 'fetch' || entry.type === 'xhr'))
     .sort((a, b) => (num(a.entry.t) ?? Infinity) - (num(b.entry.t) ?? Infinity));
   for (const { entry, index } of order) {
@@ -185,7 +191,7 @@ export function correlateSizes(hookEntries, rtEntries, { docOrigin, intrinsics }
       break;
     }
   }
-  return records.map((entry, index) => {
+  return mergeMap(records, (entry, index) => {
     if (!entry || (entry.type !== 'fetch' && entry.type !== 'xhr')) return entry && { ...entry };
     return withSize(entry, sizes.has(index) ? sizes.get(index) : entry.sizeBytes ?? null);
   });
@@ -200,7 +206,7 @@ export function correlateSizes(hookEntries, rtEntries, { docOrigin, intrinsics }
  * @param {{ t: number, url: string, kind: string }[]} loadErrors
  */
 export function mergeLoadErrors(records, loadErrors) {
-  const out = (Array.isArray(records) ? records : []).map((e) => e && { ...e });
+  const out = mergeMap(Array.isArray(records) ? records : [], (e) => e && { ...e });
   const errors = (Array.isArray(loadErrors) ? loadErrors : []).filter((e) => e && typeof e.url === 'string');
   const added = [];
   for (const err of errors) {
@@ -225,11 +231,9 @@ export function mergeLoadErrors(records, loadErrors) {
     });
   }
   if (added.length === 0) return out;
-  return out
-    .concat(added)
-    .map((entry, index) => ({ entry, index }))
-    .sort((a, b) => (num(a.entry && a.entry.t) ?? Infinity) - (num(b.entry && b.entry.t) ?? Infinity) || a.index - b.index)
-    .map(({ entry }) => entry);
+  const sorted = mergeMap(out.concat(added), (entry, index) => ({ entry, index }))
+    .sort((a, b) => (num(a.entry && a.entry.t) ?? Infinity) - (num(b.entry && b.entry.t) ?? Infinity) || a.index - b.index);
+  return mergeMap(sorted, ({ entry }) => entry);
 }
 
 /**

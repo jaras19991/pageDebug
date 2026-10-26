@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: privacy, hostile page</title>
+  <script>
+    // E3-TEST3 (AC-3.6): the same secrets as privacy.html, on a page that replaces the built-ins redaction could rely
+    // on with ones that return wrong results: JSON.stringify/parse, String.prototype.replace,
+    // RegExp.prototype[Symbol.replace] and Array.prototype.map. The recorder captured its intrinsics at document_start,
+    // the background has its own realm, so the package must still be valid JSON with 0 trap values.
+    // The page's own code keeps the originals; e2e reads window.__pdsTraps over CDP (no page-realm helpers).
+    (() => {
+      const stringify = JSON.stringify;
+      const hex = (bytes) => {
+        let out = '';
+        for (const b of crypto.getRandomValues(new Uint8Array(bytes))) out += b.toString(16).padStart(2, '0');
+        return out;
+      };
+      const b64url = (value) => {
+        let s = btoa(stringify(value));
+        while (s.endsWith('=')) s = s.slice(0, -1);
+        return s.split('+').join('-').split('/').join('_');
+      };
+      const traps = {
+        jwt: `${b64url({ alg: 'HS256', typ: 'JWT' })}.${b64url({ sub: `pds-trap-${hex(6)}`, exp: 1893456000 })}.${hex(24)}`,
+        sid: hex(16),
+        token: `tk${hex(14)}`,
+        bearer: `br${hex(16)}`,
+      };
+      window.__pdsTraps = traps;
+      window.__pdsLogin = async (email, password) => {
+        console.log({ token: traps.token });
+        const res = await fetch(`/api/login?access_token=${traps.token}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${traps.bearer}`, 'Content-Type': 'application/json' },
+          body: stringify({ email, password }),
+        });
+        return res.status;
+      };
+
+      // Wrong results, never exceptions: a page like this still works for its own (broken) code.
+      JSON.stringify = function stringify() { return '{"hostile":true}'; };
+      JSON.parse = function parse() { return { hostile: true }; };
+      String.prototype.replace = function replace() { return 'hostile'; };
+      RegExp.prototype[Symbol.replace] = function hostileReplace() { return 'hostile'; };
+      Array.prototype.map = function map() { return []; };
+
+      localStorage.setItem('auth', traps.jwt);
+      document.cookie = `sid=${traps.sid}; path=/`;
+      console.log({ token: traps.token });
+    })();
+  </script>
+</head>
+<body>
+  <h1>Strona wroga</h1>
+  <form id="login" action="/api/login" method="post">
+    <label>E-mail <input type="email" id="f-email" name="email" value=""></label>
+    <label>Hasło <input type="password" id="f-password" name="password" value=""></label>
+  </form>
+  <p><button type="button" id="t-login">Zaloguj</button> <span id="t-result"></span></p>
+  <script>
+    document.getElementById('t-login').addEventListener('click', async () => {
+      const status = await window.__pdsLogin(document.getElementById('f-email').value, document.getElementById('f-password').value);
+      document.getElementById('t-result').textContent = `status ${status}`;
+    });
+  </script>
+</body>
+</html>

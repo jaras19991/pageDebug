@@ -12,6 +12,8 @@
 //   JS        import/export … from '…', import '…', import('…')             (relative to the JS file)
 //             files: ['…'] / js: ['…'] in executeScript/registerContentScripts (relative to root)
 //             runtime.getURL('…')                                             (relative to root)
+//             JS comments are blanked first (review F11): a word in a comment is never a reference.
+//             Method calls on other objects (`x.url(`, `x.getURL(`) are not references either.
 // Absolute URLs (http:, chrome-extension:, data:, //host) are ignored.
 // Fail-safe (AC-6.3): a reference the walker sees but cannot resolve — url(…) that is not a plain
 // literal or sits in JS, runtime.getURL/import() with a non-literal, importScripts(, files:/js:
@@ -159,7 +161,108 @@ function cssUrlRefs(text, file) {
   return refs;
 }
 
-function jsRefs(js, file) {
+// Keywords after which `/` starts a regex literal, not a division.
+const REGEX_AFTER_WORDS = new Set([
+  'return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void', 'throw', 'case', 'do', 'else', 'yield', 'await',
+]);
+const IDENT_CHAR = /[\w$]/;
+
+/**
+ * JS source with every comment replaced by spaces (newlines kept), so indices and line numbers stay the same.
+ * A small scanner, not a parser: it follows strings, template literals (with nested `${…}`) and regex literals
+ * (`/` after an operator, an opening bracket or a keyword), which is enough for our hand-written modules.
+ */
+export function blankJsComments(js) {
+  const out = js.split('');
+  const blank = (from, to) => {
+    for (let k = from; k < to; k++) if (out[k] !== '\n' && out[k] !== '\r') out[k] = ' ';
+  };
+  const templates = []; // brace depth at each `${` of an open template literal
+  let depth = 0;
+  let regexAllowed = true;
+  let i = 0;
+  const n = js.length;
+  const skipQuoted = (quote) => {
+    i++;
+    while (i < n && js[i] !== quote && js[i] !== '\n') i += js[i] === '\\' ? 2 : 1;
+    i++;
+  };
+  // Template text from i (after ` or a closing `}` of `${`) up to its end or the next `${`.
+  const scanTemplate = () => {
+    while (i < n) {
+      if (js[i] === '\\') i += 2;
+      else if (js[i] === '`') {
+        i++;
+        return;
+      } else if (js[i] === '$' && js[i + 1] === '{') {
+        i += 2;
+        templates.push(depth);
+        depth++;
+        return;
+      } else i++;
+    }
+  };
+  while (i < n) {
+    const c = js[i];
+    if (c === '/' && js[i + 1] === '/') {
+      const end = js.indexOf('\n', i);
+      const stop = end === -1 ? n : end;
+      blank(i, stop);
+      i = stop;
+    } else if (c === '/' && js[i + 1] === '*') {
+      const end = js.indexOf('*/', i + 2);
+      const stop = end === -1 ? n : end + 2;
+      blank(i, stop);
+      i = stop;
+    } else if (c === '"' || c === "'") {
+      skipQuoted(c);
+      regexAllowed = false;
+    } else if (c === '`') {
+      i++;
+      scanTemplate();
+      regexAllowed = false;
+    } else if (c === '/' && regexAllowed) {
+      // Regex literal: escapes and character classes may hold `/`.
+      let inClass = false;
+      i++;
+      while (i < n && js[i] !== '\n') {
+        if (js[i] === '\\') {
+          i += 2;
+          continue;
+        }
+        if (js[i] === '/' && !inClass) break;
+        if (js[i] === '[') inClass = true;
+        else if (js[i] === ']') inClass = false;
+        i++;
+      }
+      i++;
+      regexAllowed = false;
+    } else if (IDENT_CHAR.test(c)) {
+      const start = i;
+      while (i < n && IDENT_CHAR.test(js[i])) i++;
+      regexAllowed = REGEX_AFTER_WORDS.has(js.slice(start, i));
+    } else if (c === '{') {
+      depth++;
+      i++;
+      regexAllowed = true;
+    } else if (c === '}') {
+      depth--;
+      i++;
+      if (templates.length > 0 && templates.at(-1) === depth) {
+        templates.pop();
+        scanTemplate();
+        regexAllowed = false;
+      } else regexAllowed = true;
+    } else {
+      if (!/\s/.test(c)) regexAllowed = c !== ')' && c !== ']';
+      i++;
+    }
+  }
+  return out.join('');
+}
+
+function jsRefs(source, file) {
+  const js = blankJsComments(source);
   const refs = [];
   for (const re of [JS_STATIC_IMPORT, JS_DYNAMIC_IMPORT]) {
     for (const m of js.matchAll(re)) {

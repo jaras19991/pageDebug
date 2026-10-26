@@ -1,6 +1,7 @@
 // Recording flow for e2e (E1-T18): Nagrywaj and Zapisz paczkę through the real popup, as the
 // reporter does it. Popup ids from src/popup/popup.html, texts from src/popup/messages.js.
-import { readFile } from 'node:fs/promises';
+import { assertValidSnapshot, validateZipEntries } from '../../helpers/snapshot-validator.js';
+import { readZipPackage } from './download.js';
 import { harnessOf, openPopupFor, waitForDownloadFile } from './launch.js';
 
 const STEP_TIMEOUT = 10_000;
@@ -10,8 +11,11 @@ const SAVE_RESULT_TIMEOUT = 16_000;
 /** storage.session key read by the background instead of the 10-minute limit (E1-T12). */
 export const TEST_LIMIT_KEY = 'pds:test:recordingLimitMs';
 
-const SAVED_RE = /^Zapisano plik (\S+) — /;
+// Two saves within one second get the same name and Chrome uniquifies it to `… (1).zip`, so the name may have a space.
+const SAVED_RE = /^Zapisano plik (.+?) — /;
 const RECORDING_RE = /^Nagrywam od \d{2}:\d{2}:\d{2}$/;
+
+export const SCREENSHOT_DECIDED = `document.getElementById('includeScreenshot').checked || document.getElementById('screenshotNote').textContent !== ''`;
 
 const STATE_EXPRESSION = `(() => {
   const byId = (id) => document.getElementById(id);
@@ -100,20 +104,31 @@ export async function startRecording(page, { grant = true, timeout = STEP_TIMEOU
 }
 
 /**
- * Clicks "Zapisz paczkę" for `page`, waits for "Zapisano plik …" and reads that file from the
- * harness download dir.
+ * Clicks "Zapisz paczkę" for `page`, waits for "Zapisano plik …" and unzips that file from the
+ * harness download dir in memory (v4 zip, E3-TEST0). Every save is checked against schema v4
+ * (`validate: false` skips it, for tests that look at a broken package on purpose).
  * @param {import('@playwright/test').Page} page
- * @param {{ timeout?: number }} [options]
- * @returns {Promise<{ fileName: string, path: string, json: any, statusText: string, savedAfterMs: number }>}
+ * @param {{ timeout?: number, resultTimeout?: number, validate?: boolean }} [options]
+ * @returns {Promise<{ fileName: string, path: string, entries: string[], json: any, summary: string,
+ *   files: Record<string, Uint8Array>, statusText: string, savedAfterMs: number }>}
+ *   json: parsed snapshot.json; summary: summary.md text; files: raw bytes of every entry.
  *   savedAfterMs: click on "Zapisz paczkę" → "Zapisano plik …" visible (popup polled every 50 ms).
  */
-export async function saveRecording(page, { timeout = STEP_TIMEOUT, resultTimeout = SAVE_RESULT_TIMEOUT } = {}) {
+export async function saveRecording(
+  page,
+  { timeout = STEP_TIMEOUT, resultTimeout = SAVE_RESULT_TIMEOUT, validate = true, awaitFrameCheck = true, forceScreenshot = false } = {},
+) {
   const popup = await openPopupFor(page);
   let statusText;
   let clickedAt;
   let savedAfterMs;
   try {
     await waitForState(popup, (s) => s.section === 'recording' && s.saveEnabled, '"Zapisz paczkę" button', timeout);
+    // Review N6 (fail-closed): until frameCheck answers the screenshot switch is OFF with an empty note; an early click saves
+    // without the screenshot. Wait for the verdict: switch on (0 frames) or a note (frames / check failed).
+    if (awaitFrameCheck) await popup.waitFor(SCREENSHOT_DECIDED, 10_000);
+    // forceScreenshot: the reporter switches it on after a failed check / frames note (the tab is off the recorded origin etc.).
+    if (forceScreenshot && !(await popup.evaluate(`document.getElementById('includeScreenshot').checked`))) await popup.click('#includeScreenshot');
     clickedAt = Date.now();
     await popup.click('#save');
     const state = await waitForState(
@@ -130,7 +145,13 @@ export async function saveRecording(page, { timeout = STEP_TIMEOUT, resultTimeou
   }
   const fileName = SAVED_RE.exec(statusText)[1];
   const { path } = await waitForDownloadFile(page, { fileName, timeout });
-  return { fileName, path, json: JSON.parse(await readFile(path, 'utf8')), statusText, savedAfterMs };
+  const pkg = await readZipPackage(path);
+  if (validate) {
+    assertValidSnapshot(pkg.json);
+    const zip = validateZipEntries(pkg.entries, pkg.json);
+    if (!zip.ok) throw new Error(`Zip entries of ${fileName}:\n${zip.errors.join('\n')}`);
+  }
+  return { fileName, path, ...pkg, statusText, savedAfterMs };
 }
 
 /**

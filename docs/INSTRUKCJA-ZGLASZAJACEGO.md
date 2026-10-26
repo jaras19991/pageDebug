@@ -10,25 +10,29 @@ Przed rozpoczęciem nagrywania dodatek pokazuje listę danych. Do pliku trafią:
 - adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu
 - lista Twoich działań na stronie: w co kliknąłeś i na jakie podstrony przeszedłeś (bez tego, co wpisałeś)
 - logi konsoli i błędy
-- zapytania sieciowe strony: adresy, nagłówki i wysyłana treść (mogą zawierać dane logowania) oraz adresy wczytanych plików
+- zapytania sieciowe strony: adresy, nagłówki i wysyłana treść oraz adresy wczytanych plików
 - fragmenty odpowiedzi serwera, gdy coś się nie uda
-- treść i struktura strony, w tym wartości wpisane w formularze (bez haseł i pól ukrytych)
-- zdjęcie ekranu w chwili zapisu (patrz niżej)
-- ciasteczka i dane zapisane przez stronę (mogą zawierać dane logowania)
+- struktura strony bez tekstów i bez wartości wpisanych w formularze
+- zrzut ekranu w chwili zapisu (możesz go wyłączyć) — pola formularzy tej strony są na nim zakryte, ale formularze osadzone z innych serwisów (np. płatność, logowanie) mogą być widoczne
+- nazwy i rozmiary ciasteczek oraz dane zapisane przez stronę
 
-Plik zostaje na Twoim dysku, rozszerzenie niczego nie wysyła.
+**Co jest usuwane.** Hasła i tokeny dodatek usuwa z pliku automatycznie, a wartości ciasteczek zastępuje krótkim skrótem. Plik nadal może
+zawierać adresy odwiedzanych stron i treść logów — a także tytuł strony. Plik zostaje na Twoim dysku, dodatek niczego nie wysyła.
 
-**Uwaga na zdjęcie ekranu.** Przy zapisie dodatek robi jedno zdjęcie tej części strony, którą widzisz na ekranie. Widać na nim wszystko,
-co tam jest — także to, co wpisałeś w pola (na przykład adres e-mail albo numer karty). Hasła są na nim ukryte (kropki). Zanim klikniesz
-„Zapisz paczkę”, zamknij lub usuń z ekranu rzeczy, których nie chcesz pokazywać. Zdjęcie robi się tylko wtedy, gdy oglądasz stronę,
-którą nagrywałeś; w przeciwnym razie plik powstanie bez zdjęcia.
+**Uwaga na zrzut ekranu.** To zdjęcie tej części strony, którą widzisz na ekranie. Pola do wpisywania na tej stronie (e-mail, numer karty,
+hasło i inne) są na nim zakryte szarymi prostokątami — zakryte są też części podpisów tuż nad nimi. **Ale okienka osadzone na stronie
+przez inne serwisy (na przykład formularz płatności albo logowania) mogą być widoczne wraz z tym, co w nich wpisałeś.** Jeśli widzisz na
+stronie takie okienko, **wyłącz zrzut ekranu** (odznacz „Dołącz zrzut ekranu”, patrz krok 6). Poza polami na zrzucie widać wszystko,
+co jest na ekranie — także na przykład imię i nazwisko wyświetlone w nagłówku strony. Zanim klikniesz „Zapisz paczkę”, zamknij lub usuń
+z ekranu to, czego nie chcesz pokazywać.
 
-Plik może zawierać Twoje dane osobowe i dane logowania — wyślij go tylko developerowi. Klikając „Nagrywaj”, zgadzasz się na zapisanie tych danych w pliku.
+**Kiedy zrzut jest od początku wyłączony.** Gdy dodatek zauważy na stronie okienka innych serwisów, sam odznacza „Dołącz zrzut ekranu”
+i pisze o tym pod spodem. Tak samo, gdy nie udało mu się sprawdzić strony. Możesz go włączyć z powrotem, ale rób to tylko wtedy, gdy
+w tych okienkach nic nie widać albo nic w nich nie wpisano. Przy każdym następnym otwarciu okna dodatku wybór wraca do domyślnego.
 
-Uczciwie: te dane **nie są jeszcze zamaskowane**. Hasło wpisane w formularzu logowania lub wysłane razem z zapytaniem może
-znaleźć się w pliku wprost. Dlatego wysyłaj plik tylko osobie, która ma naprawić problem, i nie nagrywaj na stronie, na której
-widać cudze dane. Maskowanie haseł i danych logowania dopiero planujemy. Nagrywanie obejmuje tylko tę witrynę, na której
-je zacząłeś, i tylko tę kartę — innych witryn dodatek nie nagrywa.
+Plik może zawierać Twoje dane osobowe — wyślij go tylko osobie, która ma naprawić problem. Klikając „Nagrywaj”, zgadzasz się na zapisanie
+tych danych w pliku. Usuwanie haseł działa według reguł, więc nie jest nieomylne: nie nagrywaj na stronie, na której widać cudze dane.
+Nagrywanie obejmuje tylko tę witrynę, na której je zacząłeś, i tylko tę kartę — innych witryn dodatek nie nagrywa.
 
 ## Zanim zaczniesz (jednorazowo)
 
@@ -54,12 +58,15 @@ Pomoże Ci w tym osoba, która dała Ci ten dodatek. Dostaniesz od niej folder (
 5. Poczekaj, aż strona odświeży się sama. Od tej chwili dodatek nagrywa. Zrób na stronie dokładnie to, po czym pojawia się problem. Dodatek zapamięta, w co klikasz, ale nie to, co wpisujesz.
    Nagrywanie trwa najwyżej 10 minut.
    ![krok 5](img/krok-5.png)
-6. Zostań na tej samej stronie, kliknij ponownie ikonę dodatku, potem „Zapisz paczkę”. Poczekaj na zielony tekst
-   „Zapisano plik … — znajdziesz go w pobranych plikach.”
+6. Zostań na tej samej stronie i kliknij ponownie ikonę dodatku. Nad przyciskiem „Zapisz paczkę” jest pole „Dołącz zrzut ekranu”.
+   Zostaw je zaznaczone, chyba że na stronie widzisz okienko innego serwisu (np. płatność) — wtedy odznacz je. Kliknij „Zapisz paczkę”
+   i poczekaj na zielony tekst „Zapisano plik … — znajdziesz go w pobranych plikach.”
    ![krok 6](img/krok-6.png)
-7. Otwórz folder z pobranymi plikami, znajdź plik, którego nazwa zaczyna się od `page-debug-snapshot-`, i wyślij go tak,
-   jak opisano niżej w części „Gdzie wysłać”.
+7. Otwórz folder z pobranymi plikami, znajdź plik, którego nazwa zaczyna się od `snapshot-` i kończy na `.zip` (to jeden spakowany
+   plik — nie rozpakowuj go), i wyślij go tak, jak opisano niżej w części „Gdzie wysłać”.
    ![krok 7](img/krok-7.png)
+
+Dodatek zapisuje jeden plik. Jeśli zapiszesz dwa razy w tej samej sekundzie, drugi dostanie dopisek „ (1)” — dodatek podaje dokładną nazwę w zielonym komunikacie.
 
 Jeśli minie 10 minut, nagrywanie zatrzyma się samo i dodatek napisze „Nagrywanie zatrzymane po 10 minutach — zapisz paczkę.”
 Nic się nie traci — kliknij „Zapisz paczkę”; w pliku będzie to, co udało się nagrać.
@@ -88,7 +95,11 @@ Inne komunikaty:
   — odśwież stronę (klawisz F5) i spróbuj jeszcze raz od kroku 2. Jeśli nadal tak jest, opisz problem własnymi słowami
   i dopisz, że zapisanie pliku się nie udało.
 - Nie widzisz ikony dodatku w Firefoksie — dodatek zniknął po zamknięciu przeglądarki; dodaj go ponownie według części „Zanim zaczniesz”.
-- W Firefoksie plik jest bez zdjęcia ekranu, jeśli strona odświeżyła się, gdy okno dodatku było otwarte — zamknij okno dodatku, otwórz je jeszcze raz i kliknij „Zapisz paczkę”.
+- Po zapisie dodatek dopisuje „Plik nie zawiera zrzutu ekranu.” albo „… nie udało się go bezpiecznie wykonać.” — plik jest w porządku, tylko bez zrzutu. Przyczyną bywa
+  powiększenie strony gestem (dwa palce na ekranie dotykowym) albo w Firefoksie odświeżenie strony, gdy okno dodatku było otwarte. Zamknij okno dodatku, wróć do zwykłego
+  powiększenia, otwórz okno jeszcze raz i zapisz ponownie (trzeba zacząć od „Nagrywaj”).
+- Pod polem „Dołącz zrzut ekranu” jest napis o okienkach innych serwisów albo „Nie udało się sprawdzić strony — zrzut wyłączony.” — to zamierzone zabezpieczenie.
+  Zrzut możesz włączyć, ale pamiętaj o ostrzeżeniu wyżej.
 - Nie możesz znaleźć pliku — w przeglądarce użyj skrótu `Ctrl+J` (otwiera listę pobranych plików).
 
 Po zapisaniu pliku dodatek niczego już na tej stronie nie nagrywa. Zgodę na dostęp do strony możesz cofnąć:

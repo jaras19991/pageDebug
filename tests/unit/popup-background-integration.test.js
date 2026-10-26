@@ -6,7 +6,7 @@
 //   permissions.onAdded → recording.onPermissionAdded; downloads.onChanged → save.onDownloadChanged
 //   one store for both handler sets; recording gets `expireSave: save.expireSave`.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createFakeChrome } from './helpers/fake-chrome.js';
+import { createFakeChrome, readZip } from './helpers/fake-chrome.js';
 import { createRecordingHandlers } from '../../src/lib/recording.js';
 import { createSaveHandlers } from '../../src/lib/save.js';
 import { createStore, KEYS } from '../../src/lib/session-store.js';
@@ -21,7 +21,7 @@ const ORIGIN = 'https://shop.example.com';
 const PATTERN = 'https://shop.example.com/*';
 const EXTENSION_ID = 'pds-test-id';
 
-const POPUP_TYPES = new Set(['getStatus', 'armStart', 'start', 'disarm', 'collect', 'saveStarted', 'saveFailed']);
+const POPUP_TYPES = new Set(['getStatus', 'armStart', 'start', 'disarm', 'collect', 'saveStarted', 'saveFailed', 'frameCheck']);
 const BRIDGE_TYPES = new Set(['hello', 'flush', 'stopped', 'bridgeError']);
 
 /** Minimal router: dispatch by `type`, popup commands only from extension pages, bridge only from a top frame. */
@@ -39,7 +39,7 @@ function createRouter(chrome, handlers) {
 // What MAIN answers to `collect` through the bridge (T15): a JSON string.
 function pageResult(docId, logs) {
   return JSON.stringify({
-    protocol: 2,
+    protocol: 3,
     recorderVersion: '0.3.0',
     docId,
     timeOrigin: T0 + 500,
@@ -143,7 +143,9 @@ async function saveFromPopup(popup, savedAs) {
   const id = 1;
   env.fake.completeDownload(id, `C:\\Users\\u\\Downloads\\${savedAs ?? download.args[0].filename}`);
   await env.settle();
-  return { id, requested: download.args[0].filename, pkg: JSON.parse(await env.blobs.at(-1).text()) };
+  const blob = env.blobs.at(-1);
+  const zip = readZip(new Uint8Array(await blob.arrayBuffer()));
+  return { id, requested: download.args[0].filename, pkg: zip.pkg, names: zip.names, type: blob.type };
 }
 
 beforeEach(() => {
@@ -172,10 +174,13 @@ describe('popup ↔ background (contract for E1-T1c)', () => {
     expect(firstOf('start')).toEqual({ type: 'start', requestId: 'req-1', tabId: TAB });
 
     env.page.logs = ['Nie działa koszyk'];
-    const savedAs = 'page-debug-snapshot-1792929600000 (1).json';
-    const { pkg, requested } = await saveFromPopup(popup, savedAs);
+    const savedAs = 'snapshot-shop.example.com-20261022-120000 (1).zip';
+    const { pkg, requested, names, type } = await saveFromPopup(popup, savedAs);
 
-    expect(requested).toBe(`page-debug-snapshot-${T0}.json`);
+    // The name and the zip come from the background (AC-1.1, D7): application/zip with snapshot.json first.
+    expect(requested).toMatch(/^snapshot-shop\.example\.com-\d{8}-\d{6}\.zip$/);
+    expect(type).toBe('application/zip');
+    expect(names[0]).toBe('snapshot.json');
     expect(named('downloads.download')[0].args[0]).toMatchObject({ saveAs: false, conflictAction: 'uniquify' });
     expect(sentTypes()).toEqual(expect.arrayContaining(['collect', 'saveStarted']));
     expect(named('runtime.sendMessage').find((c) => c.args[0].type === 'saveStarted').args[0]).toEqual({
@@ -184,11 +189,25 @@ describe('popup ↔ background (contract for E1-T1c)', () => {
       downloadId: 1,
       fileName: requested,
     });
-    expect(pkg).toMatchObject({ schemaVersion: 3, source: 'extension', recordingStoppedReason: null });
+    expect(pkg).toMatchObject({ schemaVersion: 4, source: 'extension', recordingStoppedReason: null });
+    // The fake tab is not the active one: no screenshot and no capture. The only fieldRects is the popup's frameCheck
+    // (store S1), asked before the save; the page did not answer it, so the checkbox stayed checked.
+    expect(named('tabs.captureVisibleTab')).toEqual([]);
+    expect(pkg.screenshots).toEqual([]);
+    const fieldRectsAsked = named('tabs.sendMessage').filter((c) => c.args[1].type === 'fieldRects');
+    const collectAsked = named('tabs.sendMessage').findIndex((c) => c.args[1].type === 'collect');
+    expect(fieldRectsAsked.length).toBeGreaterThan(0);
+    expect(fieldRectsAsked.every((c) => named('tabs.sendMessage').indexOf(c) < collectAsked)).toBe(true);
+    expect(sentTypes().filter((type) => type === 'frameCheck').length).toBeGreaterThan(0);
     expect(pkg.consoleLogs.map((l) => l.args[0])).toEqual(['Nie działa koszyk']);
 
     // Success comes from the background (pds:last with downloadId), with the real file name.
-    expect(env.last()).toMatchObject({ section: 'ready', statusText: MESSAGES.saved(savedAs), isError: false });
+    // No screenshot (hidden tab) → "Zapisano…" says so (QA F-5).
+    expect(env.last()).toMatchObject({
+      section: 'ready',
+      statusText: `${MESSAGES.saved(savedAs)} ${MESSAGES.screenshotFailedSaved}`,
+      isError: false,
+    });
     expect(env.urlApi.revokeObjectURL).toHaveBeenCalledTimes(1);
     expect(await env.store.getLast(TAB)).toEqual({ fileName: savedAs, downloadId: 1, at: T0 });
     expect(await env.store.getRec()).toBeNull();
@@ -258,7 +277,7 @@ describe('popup ↔ background (contract for E1-T1c)', () => {
     const { pkg } = await saveFromPopup(later);
     expect(pkg.recordingStoppedReason).toBe('time-limit');
     expect(pkg.consoleLogs.map((l) => l.args[0])).toEqual(['przed limitem']);
-    expect(env.last().statusText).toMatch(/^Zapisano plik page-debug-snapshot-\d+\.json/);
+    expect(env.last().statusText).toMatch(/^Zapisano plik snapshot-shop\.example\.com-\d{8}-\d{6}\.zip/);
     later.destroy();
   });
 
@@ -284,5 +303,58 @@ describe('popup ↔ background (contract for E1-T1c)', () => {
     expect(await env.chrome.runtime.sendMessage({ type: 'stopped', reason: 'time-limit' })).toBeUndefined();
     expect((await env.store.getRec()).status).toBe('recording');
     popup.destroy();
+  });
+});
+
+describe('popup ↔ background: screenshot default with cross-origin frames (store review S1)', () => {
+  it('reopened popup on a page with a payment frame: checkbox default off with the note; collect sends the reporter\'s choice', async () => {
+    await recordFromPopup(env.openPopup());
+    env.fake.fieldRects = async () => ({
+      ok: true,
+      viewport: { innerWidth: 1280, innerHeight: 720, scrollX: 0, scrollY: 0, dpr: 1, vvScale: 1 },
+      rects: [],
+      frames: { sameOrigin: 0, crossOrigin: 1 },
+      overflow: false,
+    });
+    const popup = env.openPopup();
+    await popup.init();
+    await env.settle();
+    const frameCheck = named('runtime.sendMessage').filter((c) => c.args[0].type === 'frameCheck').at(-1).args[0];
+    expect(frameCheck).toEqual({ type: 'frameCheck', tabId: TAB });
+    const fieldRects = named('tabs.sendMessage').filter((c) => c.args[1].type === 'fieldRects').at(-1);
+    expect(fieldRects.args).toEqual([TAB, { type: 'fieldRects' }, { frameId: 0 }]);
+    expect(env.last()).toMatchObject({ section: 'recording', screenshotDefault: false, screenshotNote: MESSAGES.screenshotFramesNote });
+
+    // Unchecked (the default) → the file has no screenshot and "Zapisano…" says it was not included.
+    await popup.onSave({ includeScreenshot: false });
+    await env.settle();
+    expect(named('runtime.sendMessage').filter((c) => c.args[0].type === 'collect').at(-1).args[0]).toEqual({
+      type: 'collect',
+      tabId: TAB,
+      includeScreenshot: false,
+    });
+    env.fake.completeDownload(1, 'C:\\Users\\u\\Downloads\\x.zip');
+    await env.settle();
+    expect(env.last().statusText).toBe(`${MESSAGES.saved('x.zip')} ${MESSAGES.screenshotOffSaved}`);
+  });
+
+  it('no cross-origin frames → default stays checked, no note', async () => {
+    await recordFromPopup(env.openPopup());
+    env.fake.fieldRects = async () => ({
+      ok: true,
+      viewport: { innerWidth: 1280, innerHeight: 720, scrollX: 0, scrollY: 0, dpr: 1, vvScale: 1 },
+      rects: [],
+      frames: { sameOrigin: 2, crossOrigin: 0 },
+      overflow: false,
+    });
+    const popup = env.openPopup();
+    await popup.init();
+    await env.settle();
+    expect(env.last()).toMatchObject({ section: 'recording', screenshotDefault: true, screenshotNote: '' });
+  });
+
+  it('frameCheck from a content script is ignored', async () => {
+    await recordFromPopup(env.openPopup());
+    expect(await env.fromPage({ type: 'frameCheck', tabId: TAB })).toBeUndefined();
   });
 });

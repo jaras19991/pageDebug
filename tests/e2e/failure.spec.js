@@ -111,7 +111,7 @@ test('page main thread blocked during save: pageBusy/failed after 15 s, never Za
     expect(files).toEqual([]);
 
     const { json } = await saveRecording(page);
-    expect(json.schemaVersion).toBe(3);
+    expect(json.schemaVersion).toBe(4);
     expect(JSON.stringify(json.consoleLogs)).toContain(marker);
   } finally {
     await page.close();
@@ -165,7 +165,7 @@ test('download blocked by the browser: saveCancelled, no file, recording continu
     }
 
     const { json } = await saveRecording(page);
-    expect(json.schemaVersion).toBe(3);
+    expect(json.schemaVersion).toBe(4);
     expect(JSON.stringify(json.consoleLogs)).toContain(marker);
   } finally {
     await page.close();

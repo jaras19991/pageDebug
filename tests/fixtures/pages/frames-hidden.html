@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: frames not visible</title>
+  <style>
+    body { margin: 16px; font: 20px sans-serif; }
+    .mask { width: 280px; height: 40px; }
+    #below { position: absolute; left: 16px; top: 3000px; width: 340px; height: 80px; }
+    #tiny { width: 1px; height: 1px; border: 0; }
+    #none { display: none; }
+    #hidden { visibility: hidden; width: 340px; height: 80px; }
+    #faded { opacity: 0; width: 340px; height: 80px; }
+  </style>
+</head>
+<body>
+  <!-- E3 store review S1 (frameCheck, crossOriginVisible): cross-origin iframes that are NOT visible — 1×1 px, below the
+       fold, display:none, visibility:hidden, opacity:0. The reporter's switch stays on for such a page. -->
+  <h1>Ramki innych serwisów poza widokiem</h1>
+  <input type="text" id="f-name" class="mask" value="Jan Kowalski">
+  <iframe id="tiny" title="1x1"></iframe>
+  <iframe id="none" title="display none"></iframe>
+  <iframe id="hidden" title="visibility hidden"></iframe>
+  <iframe id="faded" title="opacity 0"></iframe>
+  <iframe id="below" title="below the fold"></iframe>
+  <script>
+    const src = 'http://localhost:' + location.port + '/mask-frame.html';
+    for (const frame of document.querySelectorAll('iframe')) frame.src = src;
+  </script>
+</body>
+</html>

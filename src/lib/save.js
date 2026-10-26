@@ -1,21 +1,29 @@
-// Background side of "Zapisz paczkę" (design D7, E1-T8b). The background collects the
-// current document through the ISOLATED bridge, assembles the package and hands the JSON
-// string to the popup, which owns the Blob and calls downloads.download (the service worker
-// has no URL.createObjectURL). The background then tracks the download and is the only
-// source of truth about success. All state lives in `pds:rec.save` (storage.session), so
-// a fresh instance after an SW / event page restart continues where the old one stopped.
+// Background side of "Zapisz paczkę" (design D7, E1-T8b; E3 D6–D8). The background takes the masked
+// screenshot, collects the current document through the ISOLATED bridge, builds the redacted zip
+// (export.js) and hands it to the popup as base64; the popup owns the Blob and calls
+// downloads.download (the service worker has no URL.createObjectURL). The background then tracks
+// the download and is the only source of truth about success. All state lives in `pds:rec.save`
+// (storage.session; only the file name, never the package), so a fresh instance after an SW /
+// event page restart continues where the old one stopped.
 
-import { assemblePackage, packageFileName } from './package.js';
+import { assembleParts } from './package.js';
+import { exportAssembled as exportZip } from './export.js';
+import { resolveDisabledRules } from './redact.js';
+import { fromBase64, toBase64 } from './zip.js';
 import { isSameOrigin } from './origin.js';
-import { captureScreenshot } from './screenshot.js';
+import { captureScreenshot, maskScreenshot, MASK_LIMITS, SCREENSHOT_LIMITS } from './screenshot.js';
 
 // D7 / AC-2.4: click → download id, and download start → complete.
 export const COLLECT_TIMEOUT_MS = 15_000;
 export const DOWNLOAD_TIMEOUT_MS = 60_000;
+// E3 D6: one `fieldRects` answer from ISOLATED; counted in the 15 s of the collect.
+export const FIELD_RECTS_TIMEOUT_MS = 1000;
+// `frameCheck` only needs "any or none"; a bigger count is reported as this.
+const MAX_FRAMES_REPORTED = 999;
 
 // Protocol of the MAIN `collect` result (design T15: `{ protocol, recorderVersion, docId, … }`).
 // Mirrors PROTOCOL from src/page/constants.js (T3c, E2-T9a); src/lib does not import page modules.
-export const RESULT_PROTOCOL = 2;
+export const RESULT_PROTOCOL = 3;
 // Same bound as CHANNEL_MAX_MESSAGE: one serialized result never exceeds this many characters.
 const MAX_RESULT_CHARS = 32 * 1024 * 1024;
 const MAX_FILE_NAME = 255;
@@ -28,8 +36,63 @@ const TIMEOUT = Symbol('timeout');
 const SHOT_NOTE_OTHER_SITE = 'No screenshot: the tab showed a page outside the recorded site.';
 const SHOT_NOTE_HIDDEN = 'No screenshot: the tab was not visible.';
 const SHOT_NOTE_TOO_LARGE = 'No screenshot: the image could not be made smaller than 300 KB.';
+const SHOT_NOTE_MOVED = 'No screenshot: the page moved while the screenshot was taken.';
 const shotFailedNote = (reason) =>
   reason === 'too-large' ? SHOT_NOTE_TOO_LARGE : `No screenshot: capture failed (${String(reason).slice(0, 40)}).`;
+// The image is kept, but over FIELD_RECTS_MAX fields ISOLATED gives one rectangle of the whole view (E3-IN1a).
+const NOTE_FIELDS_OVERFLOW = 'More than 2000 form fields: the whole screenshot is covered.';
+
+// Why form fields could not be hidden: `SCREENSHOT_NOTES.notHidden(reason)` in package.js (E3 D6, AC-2.4).
+const MASK_REASONS = Object.freeze({
+  noAnswer: 'the page did not answer', // no bridge (e.g. loadedAfterStop), timeout, sendMessage threw
+  invalid: 'invalid answer',
+  zoomed: 'page is zoomed in', // pinch-zoom: rectangles do not match the image (spike S0)
+  notMasked: 'the image could not be masked', // no codec with `mask`, decode/mask error, scale off
+});
+const MASK_REASON_MAX = 120;
+
+const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+// `viewport.vvScale` of collectFieldRects; missing means 1 (no visualViewport). Same tolerance as planMask.
+function isPinchZoomed(viewport) {
+  const scale = viewport.vvScale;
+  if (scale === undefined) return false;
+  return !Number.isFinite(scale) || Math.abs(scale - 1) > MASK_LIMITS.vvScaleTolerance;
+}
+
+/** Checks a `fieldRects` answer: `{ rects, viewport, overflow }` or `{ reason }` (no screenshot then). */
+function checkFieldRects(answer) {
+  if (isObject(answer) && answer.ok === false && typeof answer.reason === 'string' && answer.reason !== '') {
+    return { reason: answer.reason.slice(0, MASK_REASON_MAX) };
+  }
+  if (!isObject(answer) || answer.ok !== true || !isObject(answer.viewport) || !Array.isArray(answer.rects)) {
+    return { reason: MASK_REASONS.invalid };
+  }
+  const { viewport } = answer;
+  if (![viewport.innerWidth, viewport.innerHeight, viewport.scrollX, viewport.scrollY].every(Number.isFinite)) {
+    return { reason: MASK_REASONS.invalid };
+  }
+  if (isPinchZoomed(viewport)) return { reason: MASK_REASONS.zoomed };
+  return { rects: answer.rects, viewport, overflow: answer.overflow === true };
+}
+
+// R1 ∪ R2 without repeats: a field that did not move is one rectangle (and one in `maskedFields`). Malformed entries
+// stay as they are, so planMask rejects them.
+function unionRects(first, second) {
+  const seen = new Set();
+  const out = [];
+  for (const rect of [...first, ...second]) {
+    const key = isObject(rect) ? `${rect.x},${rect.y},${rect.w},${rect.h}` : null;
+    if (key !== null && seen.has(key)) continue;
+    if (key !== null) seen.add(key);
+    out.push(rect);
+  }
+  return out;
+}
+
+// R1 and R2 describe the same view: nothing scrolled or resized while the image was taken.
+const samePlace = (a, b) =>
+  a.innerWidth === b.innerWidth && a.innerHeight === b.innerHeight && a.scrollX === b.scrollX && a.scrollY === b.scrollY;
 
 function basename(path) {
   if (typeof path !== 'string' || path === '') return null;
@@ -62,10 +125,15 @@ const isOurDownload = (rec, downloadId) =>
  * @param {object} api  `store` (session-store.js) and the chrome.* namespaces `tabs`, `downloads`,
  *   `runtime`, `scripting`, `action`; optional `now`, `setTimeout`, `clearTimeout`, and
  *   `unregisterAll(scripting)` / `setBadge(action, tabId, kind)` from content-scripts.js (T1b);
- *   optional `codec` (screenshot.js `createCanvasCodec`) to shrink a screenshot over the limit.
+ *   optional `codec` (screenshot.js `createCanvasCodec`) to mask form fields and shrink the screenshot;
+ *   optional `devOptions` (E3 D12; `{ disabledRules }`, background.js passes `{}`); optional `exportAssembled`
+ *   (export.js, injected by tests).
  */
 export function createSaveHandlers(api) {
   const { store, tabs, downloads, runtime, scripting, action } = api;
+  const codec = api.codec ?? null;
+  const devOptions = isObject(api.devOptions) ? api.devOptions : {};
+  const exportAssembled = api.exportAssembled ?? exportZip;
   const now = () => (api.now ?? Date.now)();
   const schedule = (fn, ms) => (api.setTimeout ?? globalThis.setTimeout)(fn, ms);
   const unschedule = (id) => (api.clearTimeout ?? globalThis.clearTimeout)(id);
@@ -94,16 +162,67 @@ export function createSaveHandlers(api) {
     return changed;
   }
 
-  async function sendCollect(tabId, timeoutMs) {
+  // `promise` or TIMEOUT after `timeoutMs`, whichever comes first.
+  async function withTimeout(promise, timeoutMs) {
     let timer;
     const timeout = new Promise((resolve) => {
       timer = schedule(() => resolve(TIMEOUT), Math.max(0, timeoutMs));
     });
     try {
-      return await Promise.race([tabs.sendMessage(tabId, { type: 'collect' }, { frameId: 0 }), timeout]);
+      return await Promise.race([promise, timeout]);
     } finally {
       unschedule(timer);
     }
+  }
+
+  function sendCollect(tabId, timeoutMs, fullHtml) {
+    const message = fullHtml ? { type: 'collect', options: { fullHtml: true } } : { type: 'collect' };
+    return withTimeout(tabs.sendMessage(tabId, message, { frameId: 0 }), timeoutMs);
+  }
+
+  // Field rectangles from ISOLATED (E3-IN1a); never throws.
+  async function requestFieldRects(tabId, timeoutMs) {
+    let answer;
+    try {
+      answer = await withTimeout(tabs.sendMessage(tabId, { type: 'fieldRects' }, { frameId: 0 }), Math.min(FIELD_RECTS_TIMEOUT_MS, timeoutMs));
+    } catch {
+      return { reason: MASK_REASONS.noAnswer };
+    }
+    return answer === TIMEOUT ? { reason: MASK_REASONS.noAnswer } : checkFieldRects(answer);
+  }
+
+  /**
+   * D6: R1 = fieldRects → captureVisibleTab → origin re-check → R2 = fieldRects; a view that moved gets one retry
+   * (R2 becomes R1). The mask is R1 ∪ R2. The unmasked capture never leaves this function: every failure gives a
+   * note instead of an image (AC-2.4).
+   * @returns {Promise<{ tab: object|null, shot?: object, overflow?: boolean, maskFailure?: string, note?: string }>}
+   */
+  async function takeScreenshot({ tabId, tab, origin, getTab, timeLeft }) {
+    let before = await requestFieldRects(tabId, timeLeft());
+    if (before.reason) return { tab, maskFailure: before.reason };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      // No size limit here: maskScreenshot fits the masked image.
+      const captured = await captureScreenshot({ tabs, tab, codec, now, maxBytes: Infinity });
+      // The tab may have navigated while the image was taken: re-check, and drop the image of another site.
+      tab = await getTab();
+      if (!(tab && isSameOrigin(tab.url, origin))) return { tab, note: SHOT_NOTE_OTHER_SITE };
+      if (captured.error) return { tab, note: shotFailedNote(captured.error) };
+      const after = await requestFieldRects(tabId, timeLeft());
+      if (after.reason) return { tab, maskFailure: after.reason };
+      if (!samePlace(before.viewport, after.viewport)) {
+        before = after;
+        continue;
+      }
+      const masked = await withTimeout(
+        maskScreenshot({ dataUrl: captured.shot.dataUrl, rects: unionRects(before.rects, after.rects), viewport: after.viewport, codec }),
+        SCREENSHOT_LIMITS.timeoutMs,
+      );
+      if (masked === TIMEOUT) return { tab, note: shotFailedNote('timeout') };
+      if (masked.error === 'fields-not-hidden') return { tab, maskFailure: MASK_REASONS.notMasked };
+      if (masked.error) return { tab, note: shotFailedNote(masked.error) };
+      return { tab, shot: { ...masked.shot, epochMs: captured.shot.epochMs }, overflow: before.overflow || after.overflow };
+    }
+    return { tab, note: SHOT_NOTE_MOVED };
   }
 
   // Cleanup after a confirmed download (D7, AC-2.5). Idempotent: every step tolerates "already done".
@@ -177,8 +296,11 @@ export function createSaveHandlers(api) {
   }
 
   return {
-    /** Popup command: collect the current document and assemble the package. */
-    async collect({ tabId } = {}) {
+    /**
+     * Popup command: masked screenshot (unless switched off), current document, redacted zip (E3 D6–D8).
+     * `includeScreenshot` missing = true (the checkbox default). Answer: `{ ok: true, zipBase64, fileName, packageBytes, screenshot: 'included'|'off'|'failed' }`.
+     */
+    async collect({ tabId, includeScreenshot } = {}) {
       const startedAt = now();
       let rec = null;
       await store.updateRec((current) => {
@@ -188,6 +310,8 @@ export function createSaveHandlers(api) {
       });
       if (!rec) return { ok: false, reason: 'failed' };
       const sameAttempt = (r) => r.save?.startedAt === startedAt;
+      // Screenshot, fieldRects and the page share the same 15 s (expireSave measures from startedAt too).
+      const timeLeft = () => COLLECT_TIMEOUT_MS - (now() - startedAt);
 
       const getTab = async () => {
         try {
@@ -201,17 +325,22 @@ export function createSaveHandlers(api) {
 
       // Screenshot first, so it shows the page at the click (D5). Only of the recorded site and only when the tab
       // is the visible one: the check comes before the API call, nothing of another site is ever captured (AC-6.3).
-      // Failures only add a note; the save goes on (AC-6.4).
+      // Switched off by the reporter: no API call at all (AC-2.1). Failures only add a note; the save goes on (AC-6.4).
       let screenshots;
       let screenshotNote;
-      if (tab && isSameOrigin(tab.url, rec.origin)) {
+      let maskFailure;
+      let fieldsOverflow = false;
+      const screenshotOff = includeScreenshot === false;
+      if (screenshotOff) {
+        // package.js writes the reporter's note.
+      } else if (tab && isSameOrigin(tab.url, rec.origin)) {
         if (tab.active) {
-          const result = await captureScreenshot({ tabs, tab, codec: api.codec ?? null, now });
-          // The tab may have navigated while the image was taken: re-check, and drop the image of another site.
-          tab = await getTab();
-          if (!(tab && isSameOrigin(tab.url, rec.origin))) screenshotNote = SHOT_NOTE_OTHER_SITE;
-          else if (result.shot) screenshots = [{ ...result.shot, reason: 'save' }];
-          else screenshotNote = shotFailedNote(result.error);
+          const result = await takeScreenshot({ tabId, tab, origin: rec.origin, getTab, timeLeft });
+          tab = result.tab;
+          if (result.shot) screenshots = [{ ...result.shot, reason: 'save' }];
+          else if (result.maskFailure) maskFailure = result.maskFailure;
+          else screenshotNote = result.note;
+          fieldsOverflow = result.overflow === true;
         } else {
           screenshotNote = SHOT_NOTE_HIDDEN;
         }
@@ -220,14 +349,15 @@ export function createSaveHandlers(api) {
       }
 
       const version = runtime.getManifest().version;
+      // `html-structure` among the developer's disabled rules = full HTML (E3 D12, AC-6.3).
+      const fullHtml = resolveDisabledRules(devOptions.disabledRules).includes('html-structure');
       let current = null;
       let currentMissingReason;
       if (tab && isSameOrigin(tab.url, rec.origin)) {
         let raw;
         let noReceiver = false;
         try {
-          // The screenshot's time counts towards the same 15 s (expireSave measures from startedAt too).
-          raw = await sendCollect(tabId, COLLECT_TIMEOUT_MS - (now() - startedAt));
+          raw = await sendCollect(tabId, timeLeft(), fullHtml);
         } catch {
           noReceiver = true;
         }
@@ -255,24 +385,44 @@ export function createSaveHandlers(api) {
       const collectedAt = now();
       const deadline = typeof rec.deadline === 'number' ? rec.deadline : undefined;
       const stopReason = rec.stopReason ?? (deadline !== undefined && collectedAt >= deadline ? 'time-limit' : null);
-      const pkg = assemblePackage({
-        meta: {
-          extensionVersion: version,
-          source: 'extension',
-          startedAt: rec.startedAt,
-          collectedAt,
-          stopReason,
-          deadline,
-          currentMissingReason,
-          screenshots,
-          screenshotNote,
-        },
-        current,
-        priorDocs,
-        docs: Array.isArray(rec.docs) ? rec.docs : [],
-      });
-      const json = JSON.stringify(pkg, null, 2);
-      const fileName = packageFileName(collectedAt);
+
+      // The package stays in memory only: redacted and zipped here, handed to the popup, never stored (NFR privacy).
+      let exported;
+      let screenshotBytes = null;
+      try {
+        const { pkg, screenshotDataUrl } = assembleParts({
+          meta: {
+            extensionVersion: version,
+            source: 'extension',
+            startedAt: rec.startedAt,
+            collectedAt,
+            stopReason,
+            deadline,
+            currentMissingReason,
+            screenshots,
+            screenshotOff,
+            maskFailure,
+            screenshotNote,
+            fullHtml,
+          },
+          current,
+          priorDocs,
+          docs: Array.isArray(rec.docs) ? rec.docs : [],
+        });
+        if (fieldsOverflow && pkg.screenshots.length > 0) pkg.notes.push(NOTE_FIELDS_OVERFLOW);
+        if (screenshotDataUrl !== null) {
+          try {
+            screenshotBytes = fromBase64(screenshotDataUrl.slice(screenshotDataUrl.indexOf(',') + 1));
+          } catch {
+            screenshotBytes = null; // exportAssembled drops the metadata with a note
+          }
+        }
+        exported = await exportAssembled(pkg, { screenshot: screenshotBytes, devOptions, date: new Date(collectedAt), origin: rec.origin });
+      } catch {
+        await failSave(sameAttempt);
+        return { ok: false, reason: 'failed' };
+      }
+      const { bytes, fileName, packageBytes } = exported;
 
       let stillOurs = false;
       await store.updateRec((r) => {
@@ -284,7 +434,37 @@ export function createSaveHandlers(api) {
       // Popup closed before starting the download → the attempt expires (live instance only;
       // after a restart expireSave runs from getStatus).
       schedule(() => expireSave().catch(() => {}), COLLECT_TIMEOUT_MS + 1);
-      return { ok: true, json, fileName };
+      // QA F-5: the popup tells the reporter when the file has no screenshot.
+      const screenshot = screenshotOff ? 'off' : screenshotBytes !== null ? 'included' : 'failed';
+      return { ok: true, zipBase64: toBase64(bytes), fileName, packageBytes, screenshot };
+    },
+
+    /**
+     * Popup question at open (store review S1): cross-origin frames of the recorded page are never masked (PB-1 = B),
+     * so with any of them in view the popup turns the screenshot off by default. Reuses ISOLATED's `fieldRects` (top frame,
+     * ≤ 1 s); nothing is stored or captured. Answer: `{ ok: true, crossOriginFrames }` or `{ ok: false }`.
+     */
+    async frameCheck({ tabId } = {}) {
+      const current = await store.getRec();
+      if (!isRecordingTab(current, tabId)) return { ok: false };
+      let tab;
+      try {
+        tab = await tabs.get(tabId);
+      } catch {
+        return { ok: false };
+      }
+      if (!tab || !isSameOrigin(tab.url, current.origin)) return { ok: false };
+      let answer;
+      try {
+        answer = await withTimeout(tabs.sendMessage(tabId, { type: 'fieldRects' }, { frameId: 0 }), FIELD_RECTS_TIMEOUT_MS);
+      } catch {
+        return { ok: false };
+      }
+      // Only frames the reporter can see count (`crossOriginVisible`); an answer without it falls back to all of them.
+      const frames = isObject(answer) && answer.ok === true && isObject(answer.frames) ? answer.frames : {};
+      const count = 'crossOriginVisible' in frames ? frames.crossOriginVisible : frames.crossOrigin;
+      if (!Number.isInteger(count) || count < 0) return { ok: false };
+      return { ok: true, crossOriginFrames: Math.min(count, MAX_FRAMES_REPORTED) };
     },
 
     /** Popup command: downloads.download resolved with `downloadId`. The popup's file name is ignored. */

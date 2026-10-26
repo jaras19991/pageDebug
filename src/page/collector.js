@@ -1,14 +1,29 @@
 // Page state collector (environment / DOM / performance / storage) for the MAIN world.
-// Logic moved 1:1 from E0 page-debug-snapshot.js; v2 keeps these sections "bez zmian treści".
+// Logic moved 1:1 from E0 page-debug-snapshot.js; v4 changes only `dom` (E3-T3b, design D5): no outerHTML,
+// `structure` without texts, form values as `valueLength`, `fullHtml` only on the developer's request.
 // Every function takes (win, doc, deps); deps.safeSlice is injected (src/page/serialize.js in the recorder).
 // No chrome.* here: this module runs in the page's MAIN world.
 
+import { captureDomIntrinsics, serializeDom, DOM_STRUCTURE_MAX_CHARS, DOM_FULL_MAX_CHARS } from './dom-structure.js';
+
 export const COLLECTOR_LIMITS = Object.freeze({
-  html: 2000000, // v1 config.maxHtmlLength
+  html: DOM_STRUCTURE_MAX_CHARS, // dom.structure (limits.html in the package)
+  fullHtml: DOM_FULL_MAX_CHARS, // dom.fullHtml, developer option only
   storageValue: 5000,
-  formValue: 500,
   text: 300,
 });
+
+// DOM getters captured when the module loads (document_start in MAIN), so page patches made later
+// cannot change dom.structure (D5). Outside a DOM realm serializeDom captures them on its own.
+function collectorCaptureIntrinsics() {
+  try {
+    return typeof globalThis.Element === 'function' ? captureDomIntrinsics(globalThis) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const COLLECTOR_DOM_INTRINSICS = collectorCaptureIntrinsics();
 
 function collectorLimits(deps) {
   return { ...COLLECTOR_LIMITS, ...(deps && deps.limits) };
@@ -95,34 +110,23 @@ export function collectEnvironment(win, doc, _deps) {
   };
 }
 
-// The disclosure promises "bez haseł i pól ukrytych" (QA F-3): their value attribute must not
-// reach outerHTML either. Template contents are serialized too, so they are searched as well.
-const SECRET_INPUTS = 'input[type="password" i], input[type="hidden" i]';
-const REDACTED = '[redacted]';
-
-function redactSecretInputs(root) {
-  for (const el of root.querySelectorAll(SECRET_INPUTS)) {
-    if (el.hasAttribute('value')) el.setAttribute('value', REDACTED);
+// Form field value as its length only (AC-3.2); a password value is never read. A file input gives only the
+// file count; its value (a fake path with the file name) is never read (IN4).
+function collectorFieldValue(el) {
+  if (el.type === 'password') return {};
+  if (el.type === 'file') {
+    const files = el.files;
+    const count = files ? Number(files.length) : NaN;
+    return Number.isFinite(count) ? { fileCount: count } : {};
   }
-  for (const tpl of root.querySelectorAll('template')) {
-    if (tpl.content) redactSecretInputs(tpl.content);
-  }
-}
-
-// Page markup without secret input values; the page itself is never touched. The copy lives in
-// an inert document: no browsing context, so images do not load and custom elements do not upgrade.
-function redactedOuterHTML(doc) {
-  const root = doc.documentElement;
-  if (!doc.querySelector(`${SECRET_INPUTS}, template`)) return root.outerHTML;
-  const inert = doc.implementation.createHTMLDocument('');
-  const copy = inert.importNode(root, true);
-  redactSecretInputs(copy);
-  return copy.outerHTML;
+  const value = el.value;
+  return typeof value === 'string' ? { valueLength: value.length } : {};
 }
 
 export function collectDomSnapshot(win, doc, deps) {
-  const { safeSlice } = deps;
   const limits = collectorLimits(deps);
+  const intrinsics = deps.intrinsics || COLLECTOR_DOM_INTRINSICS;
+  const structure = serializeDom(doc, { mode: 'structure', maxChars: limits.html, intrinsics });
   const allElements = Array.from(doc.querySelectorAll('*'));
 
   return {
@@ -146,7 +150,6 @@ export function collectDomSnapshot(win, doc, deps) {
       lang: doc.documentElement.lang || null,
       charset: doc.characterSet,
       compatMode: doc.compatMode,
-      outerHTML: safeSlice(redactedOuterHTML(doc), limits.html),
     },
     meta: Array.from(doc.querySelectorAll('meta')).map((el) => getElementSummary(el, deps)),
     canonical: doc.querySelector('link[rel="canonical"]')?.href || null,
@@ -178,15 +181,20 @@ export function collectDomSnapshot(win, doc, deps) {
       width: img.width,
       height: img.height,
       loading: img.loading || null,
-      alt: img.alt || null,
+      // Review F7: alt and title texts may name a person ("Avatar Jana Kowalskiego"); only their lengths are kept.
+      altLength: (img.alt || '').length,
     })),
-    iframes: Array.from(doc.querySelectorAll('iframe')).map((el) => ({
-      src: el.src || null,
-      id: el.id || null,
-      name: el.name || null,
-      title: el.title || null,
-      attributes: getAttributes(el),
-    })),
+    iframes: Array.from(doc.querySelectorAll('iframe')).map((el) => {
+      const attributes = getAttributes(el);
+      delete attributes.title;
+      return {
+        src: el.src || null,
+        id: el.id || null,
+        name: el.name || null,
+        titleLength: (el.title || '').length,
+        attributes,
+      };
+    }),
     forms: Array.from(doc.forms).map((form) => ({
       id: form.id || null,
       name: form.name || null,
@@ -198,7 +206,7 @@ export function collectDomSnapshot(win, doc, deps) {
         type: el.type || null,
         name: el.name || null,
         id: el.id || null,
-        value: ['password', 'hidden'].includes(el.type) ? '[redacted]' : safeSlice(el.value, limits.formValue),
+        ...collectorFieldValue(el),
         checked: typeof el.checked === 'boolean' ? el.checked : undefined,
       })),
     })),
@@ -208,6 +216,13 @@ export function collectDomSnapshot(win, doc, deps) {
       dataAttributesOnHtml: getAttributes(doc.documentElement),
       dataAttributesOnBody: doc.body ? getAttributes(doc.body) : {},
     },
+    // Last keys of dom (schema v4).
+    structure: structure.html,
+    structureTruncated: structure.truncated,
+    omittedElements: structure.omittedElements,
+    fullHtml: deps.fullHtml
+      ? serializeDom(doc, { mode: 'full', maxChars: limits.fullHtml, intrinsics }).html
+      : null,
   };
 }
 
@@ -298,8 +313,9 @@ const COLLECTOR_SECTIONS = [
 ];
 
 // Collects all four sections; a throwing section becomes null plus { section, error: error.name }.
-export function collectPageState({ win, doc, safeSlice, limits }) {
-  const deps = { safeSlice, limits };
+// `fullHtml: true` (developer option, D12) adds dom.fullHtml; otherwise it is null.
+export function collectPageState({ win, doc, safeSlice, limits, fullHtml = false, intrinsics }) {
+  const deps = { safeSlice, limits, fullHtml: fullHtml === true, intrinsics };
   const result = { environment: null, dom: null, performance: null, storage: null, errors: [] };
   for (const [section, collect] of COLLECTOR_SECTIONS) {
     try {

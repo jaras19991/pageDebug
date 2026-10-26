@@ -62,6 +62,30 @@
       padding: 8px 0;
     }
 
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      line-height: 1.4;
+      color: #111;
+      cursor: pointer;
+    }
+
+    .toggle input {
+      margin: 0;
+    }
+
+    #screenshotNote {
+      margin: -4px 0 0;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    #screenshotNote:empty {
+      display: none;
+    }
+
     button {
       border: 0;
       border-radius: 8px;
@@ -107,12 +131,13 @@
       <li>adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu</li>
       <li>kroki: co klikasz i na jakich stronach — bez treści, które wpisujesz</li>
       <li>logi konsoli i błędy</li>
-      <li>zapytania sieciowe strony: adresy, nagłówki i wysyłana treść (mogą zawierać dane logowania) oraz adresy wczytanych plików</li>
+      <li>zapytania sieciowe strony: adresy, nagłówki i wysyłana treść oraz adresy wczytanych plików</li>
       <li>fragmenty odpowiedzi serwera, gdy coś się nie uda</li>
-      <li>treść i struktura strony, w tym wartości wpisane w formularze (bez haseł i pól ukrytych)</li>
-      <li>zrzut ekranu w chwili zapisu — widać na nim wszystko, co jest na ekranie, także dane wpisane w pola (np. e-mail, numer karty); hasła są ukryte</li>
-      <li>ciasteczka i dane zapisane przez stronę (mogą zawierać dane logowania)</li>
+      <li>struktura strony bez tekstów i bez wartości wpisanych w formularze</li>
+      <li>zrzut ekranu w chwili zapisu (możesz go wyłączyć) — pola formularzy tej strony są na nim zakryte, ale formularze osadzone z innych serwisów (np. płatność, logowanie) mogą być widoczne</li>
+      <li>nazwy i rozmiary ciasteczek oraz dane zapisane przez stronę</li>
     </ul>
+    <p id="privacyNote">Hasła i tokeny są usuwane z pliku automatycznie, a wartości ciasteczek zastępowane krótkim skrótem. Plik nadal może zawierać adresy odwiedzanych stron i treść logów.</p>
     <p id="noUpload">Plik zostaje na Twoim dysku, rozszerzenie niczego nie wysyła.</p>
     <p id="consentNotice">Plik może zawierać Twoje dane osobowe i dane logowania — wyślij go tylko developerowi. Klikając „Nagrywaj”, zgadzasz się na zapisanie tych danych w pliku.</p>
     <p id="reloadNotice">Po kliknięciu „Nagrywaj” strona odświeży się, a nagrywanie zacznie się od jej początku.</p>
@@ -126,6 +151,11 @@
     <p id="hint">Odtwórz problem, a potem kliknij „Zapisz paczkę”.</p>
     <p id="note"></p>
     <div class="actions">
+      <!-- Checked on every popup open (off when the page has frames of other sites, store S1), never remembered (E3 D6);
+           popup.js reads it on "Zapisz paczkę". -->
+      <label class="toggle"><input type="checkbox" id="includeScreenshot" checked /> Dołącz zrzut ekranu</label>
+      <!-- Filled by view.js when the page embeds frames of other sites (store S1); empty = not shown. -->
+      <p id="screenshotNote"></p>
       <button id="save" type="button">Zapisz paczkę</button>
     </div>
   </section>

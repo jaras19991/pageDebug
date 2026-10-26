@@ -4,6 +4,43 @@ Format: [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/). Wpisy per epik
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-26
+
+### E3 — Prywatność i rozmiar paczki (schemat paczki v4)
+
+#### Dodano
+- Paczka jako jeden plik `snapshot-<host>-<YYYYMMDD-HHMMSS>.zip` ze `snapshot.json`, `summary.md` (minimalne podsumowanie po polsku z raportem redakcji) i `screenshot.jpg`; zip otwiera się Eksploratorem Windows i Archiwizatorem macOS (`src/lib/zip.js`, `file-name.js`, `summary.js`).
+- Redakcja całej paczki w tle przed zapisem (`src/lib/redact.js`, `redact-rules.js`, `redact-page.js`; `rulesVersion: 1`): poziom *Zawsze* (klucze wrażliwe, JWT, `Bearer`/`Basic`, karta, IBAN, PESEL, długie sekrety, dane w adresach, wartości pól) i *Domyślnie* (`email`, `phone`, `html-structure`; wyłączane tylko opcją developerską). Znaczniki `[redacted:<reguła>]`, raport `redaction` (`rulesVersion`, `disabledRules`, `masked` per sekcja) i linia w `summary.md`.
+- Nowe klucze wrażliwe: `cvv`, `cvc`, `pass`, `pw` (cały klucz) oraz `code`, `ticket` tylko jako parametr adresu URL; pary w JSON-ie zagnieżdżonym w stringu, w encjach (`&quot;`, `&lt;`), w wartościach uciętych na granicy limitu, w treści formularzy kodowanej procentowo oraz w argumentach konsoli (`console.log('password:', x)`).
+- `storage.cookies[]`: `name`, `sizeBytes`, `valueHash` (8 znaków hex SHA-256, czysty JS w `src/lib/sha256.js`) i `storage.cookiesTotalBytes`.
+- `dom.structure` (struktura bez tekstów, ≤ 300 000 znaków) i `dom.fullHtml` (tylko z opcją developerską) zamiast `dom.html.outerHTML`; `dom.images[].altLength`, `dom.iframes[].titleLength`, `dom.forms[].elements[].fileCount`; element DOM w `consoleLogs[].args` ma `structure`.
+- Przełącznik „Dołącz zrzut ekranu” przy *Zapisz paczkę* (domyślnie włączony, niezapamiętywany; wyłączony, gdy na stronie są okienka innych serwisów albo nie udało się sprawdzić strony — wtedy z notatką pod spodem) oraz maska pól formularzy na zrzucie (`screenshots[].maskedFields`, fail-closed: bez maski nie ma obrazu).
+- Popup po zapisie mówi, że plik nie ma zrzutu (wyłączony albo nie udało się go bezpiecznie wykonać).
+- Budżet rozmiaru: zip ≤ 2 MB (`limits.packageBytes`), stała kolejność cięcia (`src/lib/budget.js`), nowe flagi `truncated.html|resources|dom|storage|stacks`, notatki z liczbami i notatki o całkowitej różnicy między nagranym a zapisanym (`recordLoss`).
+- Kontrakt opcji developerskich `devOptions: { disabledRules }` w `exportPackage` (bez źródła opcji w tym epiku — E4-D4).
+- Walidator v4 i fixture `tests/fixtures/snapshots/v4.json`; korpusy redakcji (sensitive/benign), testy property-based, e2e prywatności, maski zrzutu, formatu i rozmiaru.
+
+#### Zmieniono
+- **Schemat paczki v3 → v4 jest łamiący**: kontener zip zamiast `page-debug-snapshot-<ms>.json`, nowy klucz `redaction`, usunięte `attachments` i `dom.html.outerHTML`, `storage.cookies` z tekstu na listę, `dom.forms[].elements[].value` → `valueLength`, `alt`/`title` → długości; migracja v3 → v4 w `docs/snapshot-schema.md`. `schemaVersion: 4` także w fallbacku konsolowym (ten sam potok eksportu, bez zrzutu).
+- Lista „Do pliku trafią:” w popupie: bez „mogą zawierać dane logowania” przy sieci i ciasteczkach; nowe zdanie, że hasła i tokeny są usuwane, a wartości ciasteczek zastępowane krótkim skrótem; pozycja o zrzucie mówi, że pola tej strony są zakryte, ale formularze osadzone z innych serwisów mogą być widoczne.
+- Zrzut i potok eksportu: `maskSecrets` w MAIN zostaje obroną w głąb; rozstrzyga redakcja w tle. Pełny HTML nie jest osiągalny dla zgłaszającego.
+- Krok `change` na `input[type=file]` ma `fileCount` zamiast `valueLength` (długości ścieżki `C:\fakepath\…`).
+- Serializacja argumentów konsoli z budżetem (`serializeCapped`), przechwycone `JSON`/`RegExp`/metody `String` w MAIN, przycinanie `rec.docs` usuwa odpowiadające `pds:doc:*`.
+- Walker osiągalności plików (`scripts/lib/reachability.mjs`) pomija komentarze i wywołania metod.
+
+#### Naprawiono
+- Przecieki znalezione w review: JSON zagnieżdżony w stringu i w encjach, cięcie przed redakcją zostawiające początek sekretu, para `klucz: "wartość"`, karta po prefiksie (`order-id-<numer>`), JSON w treści formularza, pary `{name, value}`, XML po `&lt;`, pary w argumentach konsoli (w tym łańcuch kluczy), wroga strona podmieniająca `Array.prototype.map`/`String.prototype.replace` (puste lub przekłamane sekcje).
+- Fałszywie dodatnie `card` na UUID; utrata `?x=1` po `;jsessionid=` w tekście; kolejność skracania podglądów odpowiedzi (zostają najnowsze).
+- Notatka o cięciu logów nie zaniża już straty (`recordLoss`).
+
+#### Bezpieczeństwo
+- **Zmiana obsługi danych:** rozszerzenie nadal nic nie wysyła, ale plik zmienił się z jawnego JSON-a w zredagowany zip. Hasła, tokeny i wartości ciasteczek są usuwane automatycznie (zamiast jawnych), e-mail i telefon w danych strony są maskowane domyślnie, a pełny HTML i wartości pól nie trafiają do paczki. Zmiana jest ujawniona zgłaszającemu w popupie przed *Nagrywaj* i w instrukcji.
+- Brak nowych uprawnień względem 0.3.0; surowe dane żyją tylko w `storage.session` do chwili zapisu, redakcja następuje przy eksporcie, a obraz bez maski żyje wyłącznie w pamięci tła.
+- Znane ograniczenia (patrz README „Znane ograniczenia”): **ramki z innych originów (płatność, logowanie) nie są zakrywane na zrzucie** (decyzja PB-1 B; przełącznik startuje wyłączony przy widocznych ramkach), fałszywie dodatnie i luki redakcji regułowej (N7, N8, N12, N15, `console.log('Your password is', x)`, `&amp;quot;`, podwójne kodowanie procentowe, base64 < 32 znaków, `AKIA…` jako identyfikator), `valueHash` bez soli, notatka „turned off by the reporter” także przy wyłączeniu przez popup.
+- Do ręcznej weryfikacji: Eksplorator Windows 11 i Archiwizator macOS, mignięcie przy zrzucie, pinch-zoom fizycznym gestem, zamknięty shadow DOM w Firefoksie, stoper developera.
+
+## [0.3.0] - 2026-10-23
+
 ## [0.4.0] - 2026-10-23
 
 ### E2 — Kompletność danych: kroki, CWV, statusy, zrzut (schemat paczki v3)

@@ -6,8 +6,11 @@
 // previewed (E2 D3): fetch through `clone()` + a bounded stream reader (8192 chars or 2 s, then `cancel()`),
 // XHR from `responseText`/`response` of text/json types only. The preview is masked (maskSecrets) before it is cut
 // and reaches the recorder asynchronously through `ctx.attach(entry, fields, chars)`; without `attach` nothing is read.
+// Redaction at the source (E3 D1, defence in depth; the background pass decides): values of request headers with a
+// sensitive name become `[redacted:key-<token>]` and the URL goes through the Always rules for URL fields, both
+// before anything reaches the buffer. The call of the page always gets its own, unchanged arguments.
 
-import { maskSecrets, cutPreview } from '../lib/mask-secrets.js';
+import { maskSecrets, cutPreview, maskUrl, secretKeyRule, MASK_LIMITS, redactRegExp, redactReplace, redactSplit, redactSlice } from '../lib/mask-secrets.js';
 
 export const NETWORK_LIMITS = Object.freeze({
   urlChars: 4000,
@@ -22,7 +25,9 @@ export const NETWORK_LIMITS = Object.freeze({
 });
 
 // Trailing "word" left by a read stopped at the char limit: dropped so a half token never stays (D3).
-const READ_TRAILING_WORD = /[A-Za-z0-9._~+/=-]+$/;
+const READ_TRAILING_WORD = redactRegExp(/[A-Za-z0-9._~+/=-]+$/);
+// XHR response header lines (page-replaced split/replace must not change them, AC-3.6).
+const LINE_BREAKS = redactRegExp(/[\r\n]+/);
 
 /**
  * Content types whose error bodies are previewed (D3): `text/*`, `application/json`, `*+json`, `*xml`,
@@ -71,8 +76,9 @@ function defaultIntrinsics() {
   };
 }
 
+// String.prototype.slice captured at load (review E3 F9): URL fields and header values are cut with it.
 function slice(value, max) {
-  return value.length > max ? value.slice(0, max) + `... [truncated ${value.length - max} chars]` : value;
+  return value.length > max ? redactSlice(value, 0, max) + `... [truncated ${value.length - max} chars]` : value;
 }
 
 function toStr(value, max) {
@@ -100,20 +106,33 @@ function makeTools(ctx) {
   const emit = (entry) => safe(() => ctx.record('network', entry));
   const json = (value) => safe(() => ctx.json(value), safe(() => toStr(value, 200), '[unserializable]'));
 
+  // URL field of an entry: masked whole (Always rules, AC-3.3), then cut, so a cut never leaves half a token.
+  // A masking failure keeps no address at all rather than an unmasked one.
+  const urlField = (str) => {
+    const capped = str.length > MASK_LIMITS.inputChars ? redactSlice(str, 0, MASK_LIMITS.inputChars) : str;
+    return slice(safe(() => maskUrl(capped).text, '[redacted:url]'), NETWORK_LIMITS.urlChars);
+  };
+
   const resolveUrl = (raw) => {
     const str = String(raw);
     const base = safe(() => win.document.baseURI, undefined) || safe(() => win.location.href, undefined);
-    return slice(safe(() => new I.URL(str, base).href, str), NETWORK_LIMITS.urlChars);
+    return urlField(safe(() => new I.URL(str, base).href, str));
   };
 
-  const headersToObject = (headers) => {
+  // Request header value as stored: a sensitive name (`Authorization`, `Cookie`, `X-Api-Key`…) gives the marker.
+  const requestHeaderValue = (name, value) => {
+    const rule = secretKeyRule(name);
+    return rule === null ? toStr(value, NETWORK_LIMITS.headerChars) : `[redacted:${rule}]`;
+  };
+
+  const headersToObject = (headers, mask) => {
     const out = {};
     let count = 0;
     const add = (key, value) => {
       if (count >= NETWORK_LIMITS.headers) return;
       const k = toStr(key, NETWORK_LIMITS.headerChars);
       if (!Object.prototype.hasOwnProperty.call(out, k)) count++;
-      out[k] = toStr(value, NETWORK_LIMITS.headerChars);
+      out[k] = mask ? requestHeaderValue(k, value) : toStr(value, NETWORK_LIMITS.headerChars);
     };
     if (headers == null || typeof headers !== 'object') return out;
     if (Array.isArray(headers)) {
@@ -152,7 +171,7 @@ function makeTools(ctx) {
 
   // Preview fields from read text: mask first, then cut (D3). `readCut` = the read stopped at the char limit.
   const previewFields = (raw, readCut) => {
-    const text = readCut ? raw.replace(READ_TRAILING_WORD, '') : raw;
+    const text = readCut ? redactReplace(raw, READ_TRAILING_WORD, '') : raw;
     const masked = maskSecrets(text).text;
     const { preview, truncated } = cutPreview(masked, NETWORK_LIMITS.responseBodyChars);
     return { responseBodyPreview: preview, responseBodyTruncated: truncated || readCut };
@@ -170,7 +189,7 @@ function makeTools(ctx) {
     && status >= 400 && isTextual(contentTypeOf(headers)) && canAttach();
 
   return {
-    I, win, safe, isOn, now, emit, json, resolveUrl, headersToObject, bodyPreview, later, cancelLater, then,
+    I, win, safe, isOn, now, emit, json, urlField, resolveUrl, requestHeaderValue, headersToObject, bodyPreview, later, cancelLater, then,
     attach, wantsBody,
   };
 }
@@ -231,7 +250,8 @@ function readLimited(tools, stream, done) {
 // unexplained 0 is `unknown`. `statusUnavailable` is placed right after `status` (key order of the package schema).
 function markStatusUnavailable(entry, reason) {
   const keys = Object.keys(entry);
-  const tail = keys.slice(keys.indexOf('status') + 1).map((key) => [key, entry[key]]);
+  const tail = [];
+  for (const key of keys.slice(keys.indexOf('status') + 1)) tail.push([key, entry[key]]);
   for (const [key] of tail) delete entry[key];
   entry.status = null;
   entry.statusUnavailable = reason;
@@ -262,14 +282,14 @@ export function installFetchHook(ctx) {
       t: now(),
       type: 'fetch',
       method: toStr(rawMethod, NETWORK_LIMITS.methodChars).toUpperCase(),
-      url: req ? slice(req.url, NETWORK_LIMITS.urlChars) : tools.resolveUrl(input),
+      url: req ? tools.urlField(req.url) : tools.resolveUrl(input),
       status: null,
       statusText: null,
       ok: null,
       redirected: null,
       durationMs: null,
       sizeBytes: null,
-      requestHeaders: safe(() => tools.headersToObject(hasInit && init.headers != null ? init.headers : req && req.headers), {}),
+      requestHeaders: safe(() => tools.headersToObject(hasInit && init.headers != null ? init.headers : req && req.headers, true), {}),
       responseHeaders: {},
       requestBody: hasInit && init.body !== undefined ? safe(() => tools.bodyPreview(init.body), null) : null,
       error: null,
@@ -348,7 +368,7 @@ export function installFetchHook(ctx) {
 function parseResponseHeaders(raw, toObject) {
   if (typeof raw !== 'string' || !raw) return {};
   const pairs = [];
-  for (const line of raw.trim().split(/[\r\n]+/)) {
+  for (const line of redactSplit(raw.trim(), LINE_BREAKS)) {
     const i = line.indexOf(':');
     if (i > 0) pairs.push([line.slice(0, i).trim(), line.slice(i + 1).trim()]);
     if (pairs.length >= NETWORK_LIMITS.headers) break;
@@ -395,7 +415,7 @@ export function installXhrHook(ctx) {
             const known = Object.prototype.hasOwnProperty.call(state.headers, k);
             if (!known && state.headerCount >= NETWORK_LIMITS.headers) return;
             if (!known) state.headerCount++;
-            state.headers[k] = toStr(value, NETWORK_LIMITS.headerChars);
+            state.headers[k] = tools.requestHeaderValue(k, value);
           });
         }
         return result;
@@ -448,7 +468,7 @@ export function installXhrHook(ctx) {
           status,
           statusText: toStr(xhr.statusText, NETWORK_LIMITS.statusTextChars),
           ok: status >= 200 && status < 300,
-          redirected: safe(() => !!xhr.responseURL && xhr.responseURL !== state.url, false),
+          redirected: safe(() => !!xhr.responseURL && tools.urlField(xhr.responseURL) !== state.url, false),
           durationMs: end != null && t != null ? round2(end - t) : null,
           sizeBytes: null,
           requestHeaders: state.headers,

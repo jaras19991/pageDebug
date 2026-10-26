@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: screenshot mask</title>
+  <style>
+    body { margin: 16px; background: #fff; font: bold 20px sans-serif; color: #000; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    .row { display: flex; gap: 16px; margin: 8px 0; }
+    .mask { width: 280px; height: 40px; margin: 0; background: rgb(230, 20, 20); color: #000; font: bold 22px sans-serif; border: 0; }
+    textarea.mask { height: 60px; }
+    iframe { width: 340px; height: 80px; border: 6px solid #333; padding: 4px; background: #fff; }
+    #spacer { height: 2000px; background: repeating-linear-gradient(#fff 0 20px, #000 20px 24px); }
+  </style>
+</head>
+<body>
+  <!-- E3-TEST4 (AC-2.2–2.4, PB-1 = B): red fields with black text, so an unmasked field is far from the uniform grey
+       of the mask; a same-origin iframe (border + padding, spike S0) and a cross-origin iframe with the same field;
+       a tall striped spacer so the page can scroll. The cross-origin src is set from the port of this page. -->
+  <h1 id="control">Kontrolny nagłówek ABC 123 — tekst poza polami</h1>
+  <div class="row">
+    <input type="email" id="f-email" class="mask" value="jan.kowalski@example.com">
+    <input type="tel" id="f-tel" class="mask" value="+48 600 700 800">
+    <input type="text" id="f-card" class="mask" autocomplete="cc-number" value="4111 1111 1111 1111">
+  </div>
+  <div class="row">
+    <textarea id="f-textarea" class="mask">Proszę zadzwonić po 18:00</textarea>
+    <select id="f-select" class="mask"><option value="de">Niemcy</option><option value="pl" selected>Polska</option></select>
+    <div id="f-editable" class="mask" contenteditable="true">Notatka: ul. Prosta 1</div>
+  </div>
+  <div class="row">
+    <iframe id="same" title="Ramka z tej samej witryny" src="mask-frame.html"></iframe>
+    <iframe id="cross" title="Ramka z innej witryny"></iframe>
+  </div>
+  <div id="spacer"></div>
+  <script>
+    document.getElementById('cross').src = 'http://localhost:' + location.port + '/mask-frame.html';
+  </script>
+</body>
+</html>

@@ -866,3 +866,149 @@ describe('XMLHttpRequest hook: error response body preview', () => {
     expect('statusUnavailable' in records[1].entry).toBe(false);
   });
 });
+
+// E3-T2c: redaction at the source (D1 defence in depth, AC-3.3, AC-3.5). Values of request headers with a sensitive
+// name and secrets in the URL never reach the buffer; the page call itself is unchanged.
+describe('network hooks: redaction at the source (E3-T2c)', () => {
+  const SECRET = 'S3cr3tTrapValue-0123456789';
+  const URL_TRAP = `https://api.test/cb?user=7&access_token=${SECRET}#id_token=${SECRET}`;
+
+  it('Authorization/Cookie/X-Api-Key request header values never stored in buffer; request sent with original headers', async () => {
+    const calls = [];
+    const win = {
+      fetch(input, init) {
+        calls.push({ input, init });
+        return Promise.resolve(new Response('ok', { status: 200 }));
+      },
+      document: { baseURI: BASE },
+    };
+    const { ctx, records } = makeCtx(win);
+    const restore = installFetchHook(ctx);
+    const headers = { Authorization: `Bearer ${SECRET}`, Cookie: `sid=${SECRET}`, 'X-Api-Key': SECRET, 'X-Trace': 'abc' };
+    const init = { method: 'POST', headers };
+    await win.fetch('/login', init);
+    expect(calls[0].init).toBe(init);
+    expect(calls[0].init.headers).toEqual({ Authorization: `Bearer ${SECRET}`, Cookie: `sid=${SECRET}`, 'X-Api-Key': SECRET, 'X-Trace': 'abc' });
+    const e = records[0].entry;
+    expect(JSON.stringify(e)).not.toContain(SECRET);
+    expect(e.requestHeaders).toEqual({
+      Authorization: '[redacted:key-authorization]',
+      Cookie: '[redacted:key-cookie]',
+      'X-Api-Key': '[redacted:key-key]',
+      'X-Trace': 'abc',
+    });
+    // Request object and Headers instance go through the same path.
+    await win.fetch(new Request('http://x.test/a', { headers: { authorization: SECRET } }));
+    expect(JSON.stringify(records[1].entry)).not.toContain(SECRET);
+    expect(records[1].entry.requestHeaders.authorization).toMatch(/^\[redacted:key-/);
+    restore();
+  });
+
+  it('XHR: sensitive request header values never stored in buffer; native setRequestHeader gets the original', async () => {
+    const restore = (() => {
+      const made = makeCtx(window);
+      return { made, undo: installXhrHook(made.ctx) };
+    })();
+    const seen = [];
+    const native = XMLHttpRequest.prototype.setRequestHeader;
+    XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
+      seen.push([name, value]);
+      return native.call(this, name, value);
+    };
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', 'data:text/plain,ok');
+      xhr.setRequestHeader('Authorization', `Bearer ${SECRET}`);
+      xhr.setRequestHeader('X-CSRF-Token', SECRET);
+      xhr.setRequestHeader('X-Trace', 'abc');
+      const done = waitLoadend(xhr);
+      xhr.send('x');
+      await done;
+      expect(seen).toEqual([['Authorization', `Bearer ${SECRET}`], ['X-CSRF-Token', SECRET], ['X-Trace', 'abc']]);
+      const e = restore.made.records[0].entry;
+      expect(JSON.stringify(e)).not.toContain(SECRET);
+      expect(e.requestHeaders['X-Trace']).toBe('abc');
+      expect(e.requestHeaders.Authorization).toBe('[redacted:key-authorization]');
+      expect(e.requestHeaders['X-CSRF-Token']).toMatch(/^\[redacted:key-/);
+    } finally {
+      XMLHttpRequest.prototype.setRequestHeader = native;
+      restore.undo();
+    }
+  });
+
+  it('?access_token= in fetch URL masked in buffer entry', async () => {
+    const calls = [];
+    const win = {
+      fetch(input) {
+        calls.push(input);
+        return Promise.resolve(new Response('ok', { status: 200 }));
+      },
+      document: { baseURI: BASE },
+    };
+    const { ctx, records } = makeCtx(win);
+    installFetchHook(ctx);
+    await win.fetch(URL_TRAP);
+    await win.fetch(new Request(URL_TRAP));
+    await win.fetch(`api?q=1&password=${SECRET}`);
+    expect(calls[0]).toBe(URL_TRAP);
+    for (const { entry } of records) expect(entry.url).not.toContain(SECRET);
+    expect(records[0].entry.url).toBe('https://api.test/cb?user=7&access_token=[redacted:key-token]#[redacted:url-fragment]');
+    expect(records[2].entry.url).toBe(BASE + 'api?q=1&password=[redacted:key-password]');
+  });
+
+  it('XHR URL with a token is masked in the buffer entry; redirected stays false', async () => {
+    const made = makeCtx(window);
+    const undo = installXhrHook(made.ctx);
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', `data:text/plain,ok?token=${SECRET}`);
+      const done = waitLoadend(xhr);
+      xhr.send();
+      await done;
+      const e = made.records[0].entry;
+      expect(e.url).not.toContain(SECRET);
+      expect(e.url).toContain('token=[redacted:key-token]');
+      expect(e.redirected).toBe(false);
+    } finally {
+      undo();
+    }
+  });
+
+  it('long URL: masked before the cut, no half token at the limit', async () => {
+    const win = { fetch: () => Promise.resolve(new Response('ok')), document: { baseURI: BASE } };
+    const { ctx, records } = makeCtx(win);
+    installFetchHook(ctx);
+    const pad = 'p'.repeat(NETWORK_LIMITS.urlChars - 40);
+    await win.fetch(`https://a.test/x?pad=${pad}&access_token=${SECRET}`);
+    expect(records[0].entry.url).not.toContain(SECRET.slice(0, 8));
+    expect(records[0].entry.url.length).toBeLessThan(NETWORK_LIMITS.urlChars + 40);
+  });
+
+  it('fetch hook p95 overhead unchanged within +0.2 ms on 1000 calls', async () => {
+    const resolved = Promise.resolve(new Response('ok', { status: 200 }));
+    const native = () => resolved;
+    const plainWin = { fetch: native, document: { baseURI: BASE } };
+    const url = `https://api.test/v1/items?page=2&access_token=${SECRET}`;
+    const init = { method: 'POST', headers: { Authorization: `Bearer ${SECRET}`, 'Content-Type': 'application/json', 'X-Trace': 'abc' }, body: '{"a":1}' };
+    const p95 = (samples) => samples.sort((a, b) => a - b)[Math.floor(samples.length * 0.95)];
+    const measure = (fn) => {
+      const samples = [];
+      for (let i = 0; i < 1000; i++) {
+        const t0 = performance.now();
+        fn();
+        samples.push(performance.now() - t0);
+      }
+      return p95(samples);
+    };
+    // Baseline: the same hook without anything to mask; measured: secrets in the URL and the headers.
+    const { ctx } = makeCtx(plainWin, { record: () => {} });
+    installFetchHook(ctx);
+    const plainInit = { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Trace': 'abc', Accept: '*/*' }, body: '{"a":1}' };
+    for (let i = 0; i < 200; i++) { plainWin.fetch(url, init); plainWin.fetch('https://api.test/v1/items?page=2', plainInit); }
+    const base = measure(() => plainWin.fetch('https://api.test/v1/items?page=2&x=abcdefghijklmnopqrstuvwxyz', plainInit));
+    const masked = measure(() => plainWin.fetch(url, init));
+    expect(masked - base).toBeLessThanOrEqual(0.2);
+    expect(masked).toBeLessThanOrEqual(2);
+    await flush();
+  });
+});

@@ -2,8 +2,9 @@
 
 Rozszerzenie przeglądarkowe (MV3, Chrome i Firefox z jednej bazy kodu). Zgłaszający klika „Nagrywaj”, strona odświeża się,
 a rozszerzenie od początku jej ładowania zapisuje konsolę, błędy, zapytania sieciowe i zasoby strony, kroki zgłaszającego
-oraz metryki wydajności, a przy zapisie także stan strony (środowisko, DOM, storage) i zrzut widocznej części karty. Po „Zapisz paczkę” powstaje jeden plik `.json` w pobranych, który zgłaszający przekazuje
-developerowi; rozszerzenie niczego nie wysyła do sieci.
+oraz metryki wydajności, a przy zapisie także stan strony (środowisko, struktura DOM, storage) i zrzut widocznej części karty.
+Po „Zapisz paczkę” powstaje jeden plik `.zip` w pobranych (`snapshot.json`, `summary.md`, `screenshot.jpg`), z którego tło usunęło hasła,
+tokeny i wartości ciasteczek, a który zgłaszający przekazuje developerowi; rozszerzenie niczego nie wysyła do sieci.
 Instrukcja dla osoby zgłaszającej: [docs/INSTRUKCJA-ZGLASZAJACEGO.md](docs/INSTRUKCJA-ZGLASZAJACEGO.md).
 
 ## Szybki start
@@ -58,7 +59,7 @@ Potem otwórz zwykłą stronę `http(s)://` i kliknij ikonę: popup pokazuje lis
 Dla testera: `npm run pack` i wysłać zip właściwego targetu (Chrome: rozpakować i „Załaduj rozpakowane”; Firefox: nie rozpakowywać).
 
 Klucz `.pem` trzymamy poza repo (jest w `.gitignore`; nie kopiujemy go, nie commitujemy). Prawdziwych snapshotów
-(`page-debug-snapshot-*.json`) też nie commitujemy.
+(`snapshot-*.zip`, `page-debug-snapshot-*.json`) też nie commitujemy.
 
 ## Jak to działa
 
@@ -83,27 +84,77 @@ Przepływ:
    i termin (limit 10 min). Od tej chwili hooki zbierają wpisy w buforach pierścieniowych. Przy opuszczaniu strony (`pagehide`)
    bufor trafia do tła (`flush`), więc dane przeżywają przeładowania i nawigacje w obrębie witryny.
 4. **Zapisz paczkę** — popup wysyła `collect`; tło robi zrzut karty (`captureVisibleTab`, limit 3 s; tylko gdy karta jest aktywna i na origin nagrania), prosi bieżący dokument o resztę danych (limit 15 s), dołącza dane wcześniejszych dokumentów
-   i składa paczkę (`assemblePackage`, schemat v3). Popup robi `Blob` i woła `downloads.download`, a potem `saveStarted` z `downloadId`.
+   i składa paczkę (`assemblePackage`, schemat v4). Jeśli zgłaszający zostawił włączony przełącznik „Dołącz zrzut ekranu”, tło najpierw ustala
+   prostokąty pól formularzy (most ISOLATED) i zamalowuje je na obrazie; gdy się nie da, zrzutu nie ma (fail-closed). Potem `exportPackage`
+   przycina, redaguje, mieści w budżecie 2 MB i pakuje do zipa (patrz „Co trafia do paczki”). Popup robi `Blob` i woła `downloads.download`,
+   a potem `saveStarted` z `downloadId`.
 5. Tło śledzi `downloads.onChanged`. Dopiero `complete` daje komunikat „Zapisano plik …”; wtedy tło wyrejestrowuje skrypty,
    zdejmuje hooki i czyści `storage.session`. Przerwane lub nieudane pobranie zostawia nagrywanie włączone.
 
-Limit nagrywania to 10 minut (auto-stop; zapis nadal możliwy). Uzasadnienia decyzji: `docs/epics/E1/design.md`.
+Limit nagrywania to 10 minut (auto-stop; zapis nadal możliwy). Uzasadnienia decyzji: `docs/epics/E1/design.md`, `docs/epics/E3/design.md`.
 
-## Co trafia do paczki (schemat v3)
+## Co trafia do paczki (schemat v4)
 
-Pełny opis pól: [docs/snapshot-schema.md](docs/snapshot-schema.md). Plik czyta się od góry: `overview` (same liczby: błędy,
-nieudane zapytania, kroki, metryki `poor`, czy jest zrzut) → `notes` → `steps` → `runtimeErrors` → `network` → `vitals` →
-`screenshots` → `consoleLogs` → sekcje strony → `attachments` (obraz w base64, zawsze na końcu).
+Pełny opis pól: [docs/snapshot-schema.md](docs/snapshot-schema.md).
+
+### Format pliku
+
+`snapshot-<host>-<YYYYMMDD-HHMMSS>.zip` (host bez portu, czas lokalny zgłaszającego; dokładny czas UTC jest w `collectedAt`).
+Wpisy zipa w stałej kolejności:
+
+| Wpis | Co to |
+|---|---|
+| `snapshot.json` | paczka: `schemaVersion: 4`, wszystkie sekcje, JSON z wcięciem |
+| `summary.md` | krótki opis po polsku, budowany ze **zredagowanego** `snapshot.json`: środowisko, `overview`, linia „Zamaskowano N wartości w M sekcjach”, pierwsze notatki |
+| `screenshot.jpg` | tylko gdy jest zrzut: JPEG ≤ 300 KB z zamalowanymi polami formularzy |
+
+`unzip -t` powinno dać „No errors detected”; zip otwiera się Eksploratorem Windows i Archiwizatorem macOS bez dodatkowych programów.
+Plik `snapshot.json` czyta się od góry: `overview` (same liczby) → `redaction` (co zamaskowano) → `limits`/`truncated` → `notes` → `steps` →
+`runtimeErrors` → `network` → `vitals` → `screenshots` → `consoleLogs` → sekcje strony; `dom.structure` jest na końcu.
 
 | Dane | Gdzie | Co zawiera |
 |---|---|---|
-| Kroki zgłaszającego | `steps[]` | klik (selektor CSS, etykieta ≤ 80 znaków), `input`/`change` (typ pola i **długość**, nigdy wartość; bez długości dla `password`, checkboxów i radio), `submit`, `key` (tylko Enter/Escape/Tab/strzałki), `navigate` (adres z zamaskowanymi tokenami; kolejne `replaceState` scalane) |
-| Metryki wydajności | `vitals[]` (jeden wpis na dokument) | TTFB, FCP, LCP, CLS, INP z oceną `good`/`needs-improvement`/`poor` i atrybucją (LCP: selektor i `url`; CLS: do 5 źródeł; INP: cel, typ zdarzenia, fazy), do 20 najdłuższych long tasks ze skryptem. Niedostępna metryka to `{available:false, reason}`, nigdy `0` |
-| Zasoby i statusy | `network[]` | oprócz `fetch`/XHR także `img`/`script`/`css`/`font`/`other` z `status`, `sizeBytes`; status dokumentu w `documents[].status`. Brak statusu zawsze ma `statusUnavailable` |
-| Podglądy odpowiedzi z błędem | `network[].responseBodyPreview` | tylko `fetch`/XHR ze statusem ≥ 400 i treścią tekstową, ≤ 4096 znaków na wpis, ≤ 256 KB łącznie (zostają najnowsze); tokeny zamaskowane (`[redacted:…]`) |
-| Zrzut ekranu | `screenshots[]` + `attachments` | jeden JPEG widocznej części karty (≤ 300 KB) przy *Zapisz paczkę*, tylko gdy karta jest widoczna i pokazuje nagrywaną witrynę; bez zrzutu: `screenshots: []` + notatka |
-| iframe'y | `runtimeErrors[].frame`, `consoleLogs[].frame` | tylko błędy z ramek tego samego originu (do 20 naraz, zagnieżdżenie do 2); kroki, sieć i metryki tylko z dokumentu głównego |
-| Stosy błędów | `stack`, `args` | do 16 000 znaków, `Error.cause` do 5 poziomów |
+| Kroki zgłaszającego | `steps[]` | klik (selektor CSS, etykieta ≤ 80 znaków), `input`/`change` (typ pola i **długość**, nigdy wartość; bez długości dla `password`, checkboxów i radio; pole pliku: tylko `fileCount`), `submit`, `key` (tylko Enter/Escape/Tab/strzałki), `navigate` |
+| Metryki wydajności | `vitals[]` | TTFB, FCP, LCP, CLS, INP z oceną i atrybucją, do 20 najdłuższych long tasks; niedostępna metryka to `{available:false, reason}` |
+| Zasoby i statusy | `network[]` | `fetch`/XHR i zasoby strony z `status`, `sizeBytes`; brak statusu zawsze ma `statusUnavailable` |
+| Podglądy odpowiedzi z błędem | `network[].responseBodyPreview` | tylko `fetch`/XHR ze statusem ≥ 400 i treścią tekstową, ≤ 4096 znaków na wpis, ≤ 256 KB łącznie |
+| Ciasteczka | `storage.cookies[]` | `name`, `sizeBytes`, `valueHash` (8 znaków hex SHA-256 wartości, bez soli); wartości nie ma w paczce |
+| Struktura DOM | `dom.structure` | tagi i atrybuty `id`, `class`, `role`, `data-*`, `aria-*`, `type`; bez tekstów, `value`, `href`, `src`; ≤ 300 000 znaków. **Nie ma `outerHTML`** |
+| Formularze | `dom.forms[]` | typ, nazwa, `valueLength` (nie wartość), `fileCount` dla pola pliku |
+| Obrazki i ramki | `dom.images[]`, `dom.iframes[]` | `altLength` / `titleLength` zamiast tekstów |
+| Zrzut ekranu | `screenshots[]` + `screenshot.jpg` | jeden JPEG widocznej części karty, tylko gdy karta jest widoczna i pokazuje nagrywaną witrynę; `maskedFields` = liczba zamalowanych pól; bez zrzutu: `screenshots: []` + notatka z powodem |
+| iframe'y | `runtimeErrors[].frame`, `consoleLogs[].frame` | tylko błędy z ramek tego samego originu; kroki, sieć i metryki tylko z dokumentu głównego |
+
+### Redakcja
+
+Całą paczkę redaguje tło (`src/lib/redact.js`, `redact-rules.js`, `redact-page.js`) na kopii złożonej paczki, przed budżetem i zipem.
+Ochrona u źródła w MAIN (nagłówki, adresy i podglądy w hookach sieci, kroki) to tylko obrona w głąb. Reguły: skill `privacy-redaction`,
+`rulesVersion: 1`.
+
+- **Zawsze** (nie do wyłączenia): wartości przy kluczach wrażliwych (`token`, `password`, `auth`, `session`, `key`, `cvv`, `cvc`, `pass`, `pw`, …;
+  `code`/`ticket` tylko jako parametr adresu URL), JWT, `Bearer`/`Basic`, karta (Luhn), IBAN, PESEL, długie sekrety, `user:hasło@`, fragment `#…` z tokenem,
+  wartości pól formularzy.
+- **Domyślnie** (developer może wyłączyć, zgłaszający nie): `email`, `phone`, `html-structure` (pełny HTML w `dom.fullHtml`).
+- Zamaskowana wartość to string `[redacted:<reguła>]` (np. `[redacted:key-token]`, `[redacted:jwt]`), nigdy `null`. Liczby i booleany
+  przy kluczu wrażliwym w danych użytkownika też stają się stringiem znacznika — to jedyna zmiana typu.
+- Raport: `redaction.masked` (liczba znaczników per sekcja, bez wartości; suma = liczba `[redacted:` w pliku) oraz linia w `summary.md`.
+  Redakcja jest idempotentna i nie zmienia struktury obiektu.
+
+### Budżet rozmiaru i notatki
+
+Cel: zip ≤ 2 MB (`limits.packageBytes`; 10 MB z pełnym HTML). Przed redakcją paczka jest przycinana do 10 MB JSON-u (tylko całe wpisy), potem budżet
+usuwa dane w stałej kolejności: pełny HTML → zasoby wydajności → udane zapytania sieciowe → logi konsoli `debug`…`warn` → listy `dom.*` →
+`dom.structure` do 100 000 znaków → długie wartości storage → logi `error` → stosy do 4000 znaków. Każdy krok ustawia flagę w `truncated`
+i dodaje notatkę z liczbą. **Nigdy nie są cięte:** `overview`, `redaction`, `documents`, `notes`, `steps`, `runtimeErrors`, nieudane zapytania (status ≥ 400
+lub `error`), `vitals`, zrzut. Rozmiar nie blokuje zapisu — gdy po wszystkich cięciach jest za duża, paczka powstaje z notatką.
+`notes` zawiera też, dla `consoleLogs`, `runtimeErrors`, `network` i `steps`, jedną notatkę o całkowitej różnicy między nagranym a zapisanym
+(`<sekcja>: N recorded, M in the package; …`, tzw. `recordLoss`) — liczby z samych notatek o cięciach budżetu byłyby zaniżone.
+
+### Opcje developerskie
+
+Kontrakt jest w kodzie (`devOptions: { disabledRules }` w `exportPackage`/`exportAssembled`, dopuszczalne tylko `email`, `phone`, `html-structure`;
+próba wyłączenia reguły poziomu *Zawsze* jest ignorowana), ale **w E3 nie ma źródła tych opcji**: `src/background.js` przekazuje `{}`.
+Dostarczy je E4-D4 (konfiguracja developerska). Do tego czasu pełny HTML i wyłączenie `email`/`phone` są możliwe tylko w testach.
 
 ### Chrome i Firefox
 
@@ -113,7 +164,8 @@ nieudane zapytania, kroki, metryki `poor`, czy jest zrzut) → `notes` → `step
 - **Zrzut w Firefoksie:** `activeTab` jest tam cofany przy każdym przeładowaniu karty. Jeśli strona przeładuje się po otwarciu popupu,
   zapis nie zrobi zrzutu (`screenshots: []` + notatka); zamknij popup, otwórz go ponownie i zapisz. Chrome cofa `activeTab` dopiero
   przy zmianie originu.
-- Fallback konsolowy (`console-snapshot.js`) ma te same klucze, ale bez zrzutu, a `INP` obejmuje tylko interakcje po wklejeniu skryptu.
+- Fallback konsolowy (`console-snapshot.js`) ma te same klucze i ten sam potok eksportu (`PageDebugSnapshot.download()` daje zip v4), ale bez zrzutu, a `INP` obejmuje tylko interakcje po wklejeniu skryptu.
+  Działa w realmie strony, więc wroga strona może osłabić jego redakcję (tło rozszerzenia nie ma tego problemu).
 
 ## Struktura repo
 
@@ -121,9 +173,11 @@ nieudane zapytania, kroki, metryki `poor`, czy jest zrzut) → `notes` → `step
 src/
   manifest.base.json, manifest.chrome.json, manifest.firefox.json   wspólna baza + różnice targetów
   background.js    tło: router wiadomości, top-level listenery, bez stanu w pamięci
-  lib/             logika tła: recording.js, save.js, package.js (schemat v3), session-store.js, content-scripts.js, origin.js
+  lib/             logika tła: recording.js, save.js, package.js (schemat v4), session-store.js, content-scripts.js, origin.js;
+                   eksport: export.js (potok: przycięcie → redakcja → budżet → zip), redact.js / redact-rules.js / redact-page.js (redakcja),
+                   budget.js (cięcia do 2 MB), zip.js, sha256.js, summary.js (summary.md), file-name.js, screenshot.js (zrzut + maska), mask-secrets.js
   popup/           popup.html, popup.js, controller.js, view.js, target.js, messages.js
-  page/            moduły ES kodu działającego na stronie (recorder, hooki, kanał, collector, *-entry.js)
+  page/            moduły ES kodu działającego na stronie (recorder, hooki, kanał, collector, dom-structure.js, field-rects.js, *-entry.js)
   content/         isolated-world.js, main-world.js — GENEROWANE z src/page (npm run gen); nie edytuj ręcznie
   standalone/      console-snapshot.js — GENEROWANY; wersja do wklejenia w konsolę; nie trafia do dist
   icons/           icon16/48/128.png        generowane przez npm run icons
@@ -154,7 +208,7 @@ Bundle w `src/content` i `src/standalone` są w repo; test `gen-content` pada, g
 
 ## Viewer / MCP
 
-Nie istnieją jeszcze (planowane w kolejnych epikach, patrz `docs/BACKLOG.md`).
+Nie istnieją jeszcze (E4, patrz `docs/BACKLOG.md`). Do czasu viewera paczkę czyta się z `summary.md` i `snapshot.json` po rozpakowaniu zipa.
 
 ## Firefox
 
@@ -171,13 +225,15 @@ Nie istnieją jeszcze (planowane w kolejnych epikach, patrz `docs/BACKLOG.md`).
 - `activeTab` — dostęp do bieżącej karty tylko po kliknięciu ikony rozszerzenia; daje adres strony, aby zaproponować nagranie tej witryny, a po kliknięciu „Zapisz paczkę” pozwala dołączyć do raportu zrzut widocznej części tej karty (tylko gdy pokazuje nagrywaną witrynę).
 - `scripting` — rejestracja dołączonego skryptu nagrywania tylko dla jednej wybranej witryny (od początku ładowania strony); skrypt jest wyrejestrowywany po zapisie raportu.
 - `storage` — stan nagrania oraz dane zebrane z podstron przeładowanych w trakcie nagrania, w pamięci sesji (`storage.session`) czyszczonej przez przeglądarkę przy zamknięciu i niedostępnej dla stron; usuwane po zapisaniu pliku, nic nie trafia do pamięci trwałej.
-- `downloads` — zapis pliku raportu do folderu pobranych i sprawdzenie, że plik naprawdę powstał.
+- `downloads` — zapis pliku raportu (`.zip`) do folderu pobranych i sprawdzenie, że plik naprawdę powstał.
 - `optional_host_permissions` (`http://*/*`, `https://*/*`, `file:///*`) — nie są przyznawane przy instalacji; rozszerzenie prosi w trakcie działania wyłącznie o dostęp do witryny z bieżącej karty (jeden wzorzec), gdy użytkownik wybierze jej nagranie.
 
 Rozszerzenie nie dostaje przy instalacji dostępu do wszystkich witryn i niczego nie wysyła do sieci.
 
-E2 (0.4.0) **nie dodaje żadnych uprawnień**: manifesty są takie same jak w 0.3.0. Statusy zasobów pochodzą z Resource Timing
-(`responseStatus`), a nie z `webRequest`; zrzut korzysta z istniejącego `activeTab` (`tabs.captureVisibleTab`, po otwarciu popupu).
+E2 (0.4.0) i E3 (0.5.0) **nie dodają żadnych uprawnień**: manifesty są takie same jak w 0.3.0. Statusy zasobów pochodzą z Resource Timing
+(`responseStatus`), a nie z `webRequest`; zrzut korzysta z istniejącego `activeTab` (`tabs.captureVisibleTab`, po otwarciu popupu). Zip, redakcja, SHA-256
+i maska zrzutu (`OffscreenCanvas`, `CompressionStream`) używają natywnych API lub czytelnego kodu w paczce — bez zdalnego kodu i bez uprawnień `offscreen`/`cookies`.
+Ciasteczka czytamy przez `document.cookie` (bez `HttpOnly`), nie przez uprawnienie `cookies`.
 
 Wersje do formularzy sklepów (Chrome Web Store, AMO):
 
@@ -219,8 +275,10 @@ Test `tests/unit/icons-script.test.js` pilnuje, by `src/icons/*.png` były ident
    i nowy fixture `tests/fixtures/snapshots/v<N>.json` (`PDS_UPDATE_FIXTURES=1 npx vitest run tests/unit/snapshot-validator.test.js`);
    pole opcjonalne = tylko wpis w dokumentacji. Walidator `tests/helpers/snapshot-validator.js` musi znać nowe pole. Reguły: skill `snapshot-schema`.
 4. Opisz pole w [docs/snapshot-schema.md](docs/snapshot-schema.md) i dopisz wpis do [CHANGELOG.md](CHANGELOG.md).
-5. Jeśli pole może zawierać dane użytkownika — redakcja (skill `privacy-redaction`, E3) i aktualizacja listy „Do pliku trafią” w
-   `src/popup/messages.js` oraz jej kopii w `popup.html` (test pilnuje zgodności).
+5. Jeśli pole może zawierać dane użytkownika — sprawdź, że przechodzi przez redakcję (`src/lib/redact.js` obchodzi całą paczkę; nowa sekcja
+   najwyższego poziomu musi być znana walidatorowi i `redaction.masked`), dodaj do korpusu w `tests/unit` przypadek-pułapkę (skill `privacy-redaction`)
+   i zaktualizuj listę „Do pliku trafią” w `src/popup/messages.js` oraz jej kopię w `popup.html` (test pilnuje zgodności).
+6. Pole z limitem rozmiaru: dopisz je do `limits` i do kolejności cięcia w `src/lib/budget.js` oraz do tabeli w `docs/snapshot-schema.md`.
 
 ## Troubleshooting
 
@@ -240,8 +298,12 @@ Test `tests/unit/icons-script.test.js` pilnuje, by `src/icons/*.png` były ident
   nie jest w Firefoksie nagrywana (popup nie prosi o zgodę). Otwórz ją przez `http(s)://` (np. lokalny serwer).
 - **Firefox: dodatek zniknął** — tymczasowy dodatek znika po restarcie; załaduj ponownie (`npm run dev:firefox`).
   W Firefoksie ikona bywa pod „puzzlem” (panel rozszerzeń), nie na pasku.
-- **Paczka bez zrzutu (`screenshots: []`)** — przeczytaj `notes`: karta nie była aktywna, pokazywała inną witrynę, zrzut przekroczył 300 KB
-  albo (Firefox) strona przeładowała się przy otwartym popupie. Otwórz popup ponownie na tej karcie i zapisz jeszcze raz.
+- **Paczka bez zrzutu (`screenshots: []`)** — przeczytaj `notes`: zgłaszający wyłączył przełącznik (albo popup zostawił go wyłączonego: na stronie są
+  okienka innych serwisów lub nie udało się sprawdzić strony — notatka jest ta sama), karta nie była aktywna, pokazywała inną witrynę, pól formularzy nie dało
+  się zakryć (np. pinch-zoom), zrzut przekroczył 300 KB albo (Firefox) strona przeładowała się przy otwartym popupie. Otwórz popup ponownie na tej karcie i zapisz jeszcze raz.
+- **Dwa zapisy w tej samej sekundzie** — nazwa pliku ma rozdzielczość sekundy; Chrome dopisuje „ (1)”, a komunikat w popupie podaje faktyczną nazwę.
+- **W paczce widać za dużo `[redacted:…]`** — fałszywie dodatnie trafienia (np. `phone` na kwocie, `card` na UUID); sprawdź `redaction.masked`, a opcje
+  wyłączenia `email`/`phone` pojawią się z E4-D4.
 - **Metryka `available:false`** — `reason` mówi dlaczego: `unsupported-browser` (np. CLS w Firefoksie), `no-interaction` (INP bez kliknięć), `hidden-at-start`, `no-data`.
 - **e2e na WSL: chromium nie startuje** — linuksowy Chromium z Playwrighta wymaga bibliotek `libnss3`, `libnspr4`, `libasound2`. Bez nich uruchom e2e Node'em z Windows (`node_modules` są natywne dla jednego systemu).
 - **Chrome: ikona niewidoczna** — jest pod „puzzlem”; przypnij ją.
@@ -255,10 +317,6 @@ Test `tests/unit/icons-script.test.js` pilnuje, by `src/icons/*.png` były ident
 
 ## Znane ograniczenia
 
-- **Dane nie są redagowane** (do E3): w pliku są jawnie ciasteczka, storage, nagłówki i treść żądań sieciowych, wartości pól formularzy
-  (poza `password`/`hidden` — te są maskowane w `dom.forms` i w `dom.html.outerHTML`) oraz reszta `dom.html.outerHTML`. Popup mówi to wprost przed „Nagrywaj”.
-- **Zrzut ekranu nie jest maskowany** (do E3): pokazuje wszystko, co widać na karcie w chwili zapisu, także dane wpisane w pola
-  (np. e-mail, numer karty); hasła są ukryte, bo przeglądarka pokazuje je jako kropki. Popup ostrzega o tym w liście „Do pliku trafią”.
 - `xhr.constructor === XMLHttpRequest` daje `false` (hook to `Proxy`, a `prototype.constructor` wskazuje oryginał); `instanceof`
   i stałe statyczne działają. Instancje XHR mają własne, nieenumerowalne `open`/`send`/`setRequestHeader`.
 - `fetch.toString()` na stronie w trakcie nagrywania daje `function () { [native code] }` (bez nazwy); po zapisie wraca `function fetch() { [native code] }`.
@@ -272,8 +330,32 @@ Test `tests/unit/icons-script.test.js` pilnuje, by `src/icons/*.png` były ident
   szerszych uprawnień).
 - **Podglądy odpowiedzi** tylko dla statusu ≥ 400 i treści tekstowej; limity 4096 znaków na wpis i 256 KB łącznie (przy przekroczeniu
   zostają najnowsze). Podgląd odczytywany jest do 2 s po odpowiedzi — jeśli strona zostanie opuszczona albo nagranie zatrzymane wcześniej,
-  tego podglądu nie będzie. Maskowanie tokenów jest regułowe (nie łapie np. `klucz: wartość`, `sessid`, `Basic <b64>`) — do E3.
+  tego podglądu nie będzie. Podgląd jest redagowany regułami tak jak reszta paczki (patrz „Redakcja”).
 - Zasoby jeszcze ładowane w chwili zapisu nie mają wpisu; iframe'y z innego originu są niewidoczne.
 - Metryki bieżącego dokumentu (LCP, CLS, INP) bywają niefinalne w chwili zapisu (`finalized: false` + notatka). Nie sprawdzano Firefoksa 128–157
   ani Chrome 121–122 na żywo (long tasks tylko unit).
 - Firefox: bez automatycznego e2e (ręczne QA).
+
+### Prywatność i redakcja (E3)
+
+Redakcja jest regułowa, więc nie jest wyczerpująca. Znane luki i fałszywe trafienia (część w backlogu E4, patrz `docs/BACKLOG.md`):
+
+- **Zrzut a ramki innych serwisów (decyzja PB-1 B):** pola formularzy tej strony i ramek tego samego originu są zamalowane (margines 8 px zakrywa
+  dolną część etykiet nad polami), ale **ramki cross-origin (płatność, logowanie SSO) nie są zakrywane** — numer karty wpisany w osadzony formularz może być
+  widoczny na `screenshot.jpg`. Ujawnienie w popupie mówi to wprost. Gdy na stronie jest widoczna taka ramka, przełącznik „Dołącz zrzut ekranu” startuje wyłączony
+  (zgłaszający może go włączyć); to samo przy nieudanym sprawdzeniu ramek (fail-closed). Przy ręcznym włączeniu ryzyko zostaje. Liczba ramek nie trafia do paczki.
+- **Notatka „turned off by the reporter”** jest nieprecyzyjna: pojawia się także, gdy zrzut wyłączył popup (ramki cross-origin, nieudane sprawdzenie).
+- **N7:** fałszywe trafienia w prozie (`auth: "Invalid credentials"`) oraz przeciek, gdy klucz stoi na początku stringu JSON (`{"log":"password: x"}`).
+- **N8:** iterator tablic strony (`Array.prototype[Symbol.iterator]`) jest nadal używany w MAIN; wroga strona może wyłączyć redakcję u źródła (tło redaguje ponownie, do pliku nie trafia).
+- **N12:** `code`/`ticket` bez maskowania w adresach względnych (`/cb?code=…`) i w tekście poza adresami bezwzględnymi (`&code=`, fragment `#code=`).
+- **N15:** podgląd konsoli (`{ truncated, preview }`) po maskowaniu par w tablicy bywa zniekształcony, a `redaction.masked` zawyżone; bez przecieku.
+- **Pary argumentów konsoli:** `console.log('Your password is', pw)` (klucz w zdaniu, bez `:`/`=`) nie jest maskowane; `console.log('password:', { v: pw })`
+  — kontener w parze nie jest wymuszany (decydują jego własne klucze). Pojedyncze słowa-klucze w argumentach są maskowane (fail-closed, część to FP: `('token', 1, 2, 3)`).
+- **Kodowania:** `&amp;quot;` (podwójne encje), podwójne kodowanie procentowe i base64 krótsze niż 32 znaki nie są maskowane.
+- **AWS `AKIA…`** to sam identyfikator klucza i nie jest maskowany; sekret (40 znaków) łapie reguła `long-secret`.
+- **Skrót ciasteczka bez soli:** `valueHash` wartości o małej liczbie możliwości (`consent=yes`, krótki PIN) da się odgadnąć. Długie wartości sesji nie.
+- **Fałszywie dodatnie:** np. „123 456 789 zł” jako `phone`; `card` na ciągu cyfr o poprawnej sumie Luhna w nietypowym kontekście.
+- **Pełny HTML** nie jest osiągalny dla zgłaszającego; tylko opcja developerska (bez źródła w E3).
+- Fallback konsolowy działa w realmie strony — patrz „Chrome i Firefox”.
+- Sekcje `dom` (`meta`, `scripts`, `iframes`, `rootMarkers`) czytają żywe gettery strony; wroga strona może je sfałszować lub wyzerować (bez przecieku, redaguje tło).
+- Strony z `Object.prototype.toJSON` (Prototype.js) wpływają na serializację argumentów konsoli.

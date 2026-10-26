@@ -81,10 +81,23 @@ async function startPage({ reply, order = 'isolated-first', perf = false, visibi
   return { win, chrome, sent, original };
 }
 
-function collect(chrome) {
+function collect(chrome, extra = {}) {
   let response;
-  const results = chrome.runtime.onMessage.dispatch({ type: 'collect' }, FROM_BACKGROUND, (r) => { response = r; });
+  const results = chrome.runtime.onMessage.dispatch({ type: 'collect', ...extra }, FROM_BACKGROUND, (r) => { response = r; });
   return { keepOpen: results.includes(true), response };
+}
+
+function fieldRects(chrome, sender = FROM_BACKGROUND) {
+  let response;
+  const results = chrome.runtime.onMessage.dispatch({ type: 'fieldRects' }, sender, (r) => { response = r; });
+  return { results, response };
+}
+
+// jsdom has no layout: every element of `selector` gets the same box.
+function stubRect(win, selector, box) {
+  for (const el of win.document.querySelectorAll(selector)) {
+    el.getBoundingClientRect = () => ({ left: box.x, top: box.y, width: box.w, height: box.h, right: box.x + box.w, bottom: box.y + box.h, x: box.x, y: box.y });
+  }
 }
 
 describe('MAIN + ISOLATED entries', () => {
@@ -256,12 +269,12 @@ describe('MAIN + ISOLATED entries', () => {
     expect(JSON.parse(collect(chrome).response).vitals.CLS.finalized).toBe(true);
   });
 
-  it('collect result has protocol 2, steps, vitals, documentStatus', async () => {
+  it('collect result has protocol 3, steps, vitals, documentStatus', async () => {
     const { win, chrome } = await startPage({ perf: true });
     win.history.pushState({}, '', '/page/next');
     const result = JSON.parse(collect(chrome).response);
-    expect(PROTOCOL).toBe(2);
-    expect(result.protocol).toBe(2);
+    expect(PROTOCOL).toBe(3);
+    expect(result.protocol).toBe(3);
     // The document's own load is the first step, the pushState the second.
     expect(result.steps).toEqual([
       expect.objectContaining({ type: 'navigate', doc: 1, via: 'navigate' }),
@@ -271,6 +284,94 @@ describe('MAIN + ISOLATED entries', () => {
     expect(result.vitals).toEqual(expect.objectContaining({ TTFB: expect.any(Object), CLS: expect.any(Object), INP: expect.any(Object) }));
     expect(result).toHaveProperty('documentStatus');
     expect(result.truncated).toHaveProperty('responseBodies', false);
+  });
+
+  // ---- E3-T8: fieldRects (D6), collect options, protocol 3 ----
+
+  it('fieldRects from background answered by ISOLATED without MAIN; from a tab sender ignored (D6)', async () => {
+    const win = makePage();
+    win.document.body.insertAdjacentHTML('beforeend', '<input id="mail" type="email"><button id="b">OK</button>');
+    stubRect(win, '#mail, #b', { x: 10, y: 20, w: 200, h: 30 });
+    const { chrome } = attachChrome(win);
+    win.eval(ISOLATED); // no MAIN world at all
+    await settle();
+    const fromTab = fieldRects(chrome, { id: EXT_ID, tab: { id: 1 } });
+    expect(fromTab.results).toEqual([false]);
+    expect(fromTab.response).toBeUndefined();
+    const { response } = fieldRects(chrome);
+    expect(response).toMatchObject({
+      ok: true,
+      viewport: { innerWidth: win.innerWidth, innerHeight: win.innerHeight, scrollX: 0, scrollY: 0, dpr: 1, vvScale: 1 },
+      frames: { sameOrigin: 0, crossOrigin: 0 },
+      overflow: false,
+    });
+    expect(response.rects).toEqual([{ x: 10, y: 20, w: 200, h: 30 }]);
+  });
+
+  it('fieldRects reaches a closed shadow root through chrome.dom.openOrClosedShadowRoot (S0)', async () => {
+    const win = makePage();
+    const host = win.document.createElement('div');
+    win.document.body.append(host);
+    const shadow = host.attachShadow({ mode: 'closed' });
+    shadow.innerHTML = '<textarea></textarea>';
+    shadow.querySelector('textarea').getBoundingClientRect = () => ({ left: 5, top: 6, width: 50, height: 40, right: 55, bottom: 46, x: 5, y: 6 });
+    const { chrome } = attachChrome(win);
+    const seen = [];
+    chrome.dom = { openOrClosedShadowRoot: (el) => { seen.push(el); return el === host ? shadow : null; } };
+    win.eval(ISOLATED);
+    await settle();
+    const { response } = fieldRects(chrome);
+    expect(seen).toContain(host);
+    expect(response.ok).toBe(true);
+    expect(response.rects).toEqual([{ x: 5, y: 6, w: 50, h: 40 }]);
+  });
+
+  it('collect with fullHtml option reaches collector; without → fullHtml null', async () => {
+    const { chrome } = await startPage();
+    expect(JSON.parse(collect(chrome).response).dom.fullHtml).toBeNull();
+    expect(JSON.parse(collect(chrome, { options: { fullHtml: 'yes' } }).response).dom.fullHtml).toBeNull();
+    const full = JSON.parse(collect(chrome, { options: { fullHtml: true } }).response).dom.fullHtml;
+    expect(typeof full).toBe('string');
+    expect(full).toContain('<p id="x">hi</p>');
+  });
+
+  it('collect result protocol 3 has dom.structure and no outerHTML; console element as structure (D5)', async () => {
+    const { win, chrome } = await startPage();
+    win.document.body.insertAdjacentHTML('beforeend', '<form id="f"><input name="mail" type="email"><input name="up" type="file"></form>');
+    win.document.querySelector('[name="mail"]').value = 'jan.kowalski@example.com';
+    win.console.log(win.document.getElementById('x'));
+    const raw = collect(chrome).response;
+    const result = JSON.parse(raw);
+    expect(result.protocol).toBe(3);
+    expect(result.dom.structure).toContain('<p id="x"></p>');
+    expect(result.dom.html).not.toHaveProperty('outerHTML');
+    expect(raw).not.toContain('outerHTML');
+    expect(raw).not.toContain('jan.kowalski@example.com');
+    const fields = Object.fromEntries(result.dom.forms[0].elements.map((e) => [e.name, e]));
+    expect(fields.mail.valueLength).toBe('jan.kowalski@example.com'.length);
+    expect(fields.up).toMatchObject({ fileCount: 0 });
+    expect(fields.up).not.toHaveProperty('valueLength');
+    expect(result.consoleLogs[0].args[0]).toEqual({ tagName: 'P', id: 'x', className: '', structure: '<p id="x"></p>' });
+  });
+
+  it('page-forged collect with wrong nonce ignored (E1 D3)', async () => {
+    const { win, chrome } = await startPage();
+    let reads = 0;
+    Object.defineProperty(win.navigator, 'userAgent', { configurable: true, get: () => { reads++; return 'UA'; } });
+    const m2i = [];
+    win.document.addEventListener('pds:m2i', (e) => m2i.push(e.detail), true);
+    for (const n of [null, 'zgadniety-nonce']) {
+      const forged = JSON.stringify({ n, v: 1, id: 'c1', type: 'collect', payload: { options: { fullHtml: true } } });
+      for (const target of [win.document, win, win.document.documentElement]) {
+        target.dispatchEvent(new win.CustomEvent('pds:i2m', { detail: forged, bubbles: true }));
+      }
+    }
+    await settle();
+    expect(reads).toBe(0);
+    expect(m2i).toEqual([]);
+    // Control: the same read happens on a real collect from the background.
+    collect(chrome);
+    expect(reads).toBeGreaterThan(0);
   });
 
   it('second evaluation of main bundle in the same window is a no-op (AC-5.5)', async () => {

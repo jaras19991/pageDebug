@@ -17,7 +17,11 @@ function serializeIsPlainObject(value) {
 // Deep copy of a value taken from a merge source: plain objects and arrays are
 // rebuilt, so the result never shares references with the source (AC-6.5).
 function serializeCloneSourceValue(value) {
-  if (Array.isArray(value)) return value.map(serializeCloneSourceValue);
+  if (Array.isArray(value)) {
+    const out = [];
+    for (const item of value) out.push(serializeCloneSourceValue(item));
+    return out;
+  }
   if (serializeIsPlainObject(value)) return deepMerge({}, value);
   return value;
 }
@@ -45,32 +49,53 @@ function safeSlice(value, max) {
   return value.length > max ? value.slice(0, max) + `... [truncated ${value.length - max} chars]` : value;
 }
 
+// Intrinsics captured when the module loads (bundle on document_start, E3-T0a, AC-3.6): a page that later swaps
+// JSON, Object.keys or a prototype method (polyfills, hostile pages) does not change what we serialize.
+const serializeJson = JSON;
+const serializeStringify = JSON.stringify;
+const serializeKeys = Object.keys;
+const serializeIsArray = Array.isArray;
+const serializeApply = Reflect.apply;
+const serializeDefine = Object.defineProperty;
+const serializeObjectToString = Object.prototype.toString;
+const serializeStringSlice = String.prototype.slice;
+
 // Stack limits for Error values (AC-4.8): the error itself keeps up to 16 000 chars, each cause up to 4000.
 // Causes are followed up to SERIALIZE_CAUSE_DEPTH levels; a deeper one becomes a marker.
 const SERIALIZE_STACK_MAX = 16000;
 const SERIALIZE_CAUSE_STACK_MAX = 4000;
 const SERIALIZE_CAUSE_DEPTH = 5;
+// Element summaries get a structure of at most this many chars (E3-T3a provides the function).
+const SERIALIZE_STRUCTURE_MAX = 2000;
+// Returned by the walker for values JSON drops from objects (undefined, symbols).
+const SERIALIZE_OMIT = {};
+
+function serializeSlice(str, from, to) {
+  return serializeApply(serializeStringSlice, str, [from, to]);
+}
+
+function serializeToJson(value) {
+  return serializeApply(serializeStringify, serializeJson, [value]);
+}
 
 // Errors of same-origin frames come from another realm and fail `instanceof Error`; the built-in brand
 // (`[object Error]`, captured at load) recognises them too (E2-D6).
-const serializeObjectToString = Object.prototype.toString;
-
 function serializeIsError(value) {
   if (value instanceof Error) return true;
   if (value === null || typeof value !== 'object') return false;
   try {
-    return Reflect.apply(serializeObjectToString, value, []) === '[object Error]';
+    return serializeApply(serializeObjectToString, value, []) === '[object Error]';
   } catch {
     return false;
   }
 }
 
 function serializeCapStack(stack, max) {
-  return typeof stack === 'string' && stack.length > max ? stack.slice(0, max) : stack;
+  return typeof stack === 'string' && stack.length > max ? serializeSlice(stack, 0, max) : stack;
 }
 
 // { name, message, stack, cause? } of an Error. Error causes are expanded here (depth and cycles
-// tracked on `chain`); a non-Error cause stays a value and goes through the replacer like any other.
+// tracked on `chain`); a non-Error cause stays a value and goes through the walker like any other.
 function serializeError(err, depth, chain) {
   const out = { name: err.name, message: err.message, stack: undefined };
   out.stack = serializeCapStack(err.stack, depth === 0 ? SERIALIZE_STACK_MAX : SERIALIZE_CAUSE_STACK_MAX);
@@ -94,46 +119,146 @@ function serializeError(err, depth, chain) {
   return out;
 }
 
-// JSON.stringify with a replacer that summarises functions, errors and DOM nodes.
-// Cycles are detected on the ancestor stack: the replacer's `this` is the holder,
-// so everything above it on the stack is a finished sibling subtree and is popped.
-// A shared reference that is not its own ancestor is serialized every time (D13).
-// Returns the JSON string, or throws (BigInt and friends) like JSON.stringify.
-function serializeToJsonString(value, outerHtmlMax) {
+function serializeElement(el, elementStructure) {
+  let structure = null;
+  if (typeof elementStructure === 'function') {
+    try {
+      structure = elementStructure(el, SERIALIZE_STRUCTURE_MAX);
+    } catch {
+      structure = null;
+    }
+  }
+  return { tagName: el.tagName, id: el.id, className: el.className, structure };
+}
+
+// Bounded walker (D9): builds a copy made of plain objects and arrays with JSON semantics (toJSON,
+// undefined/symbols dropped or null, non-finite numbers → null, BigInt throws) plus the summaries of
+// functions, errors and DOM nodes. `chars` is a lower bound of the JSON length of the copy (escapes are
+// not counted); once it passes `maxChars` nothing more is read, and a long string is sliced before it
+// is copied. Cycles are detected on the ancestor path; a shared reference that is not its own ancestor
+// is copied every time (D13).
+function serializeWalk(value, maxChars, elementStructure) {
   const ancestors = [];
   const ElementCtor = globalThis.Element;
   const NodeCtor = globalThis.Node;
+  let chars = 0;
+  let exhausted = false;
 
-  const replacer = function (_key, val) {
-    let out = val;
+  const charge = (n) => {
+    chars += n;
+    if (chars > maxChars) exhausted = true;
+  };
 
-    if (typeof val === 'function') {
-      return `[Function: ${val.name || 'anonymous'}]`;
+  const copyString = (str) => {
+    // Chars left after the opening quote; a cut string runs one char past the budget, so the first
+    // `maxChars` chars of the copy's JSON match the full JSON.
+    const room = maxChars - chars - 1;
+    if (str.length + 1 > room) {
+      const cut = serializeSlice(str, 0, room > 0 ? room + 1 : 1);
+      charge(cut.length + 2);
+      exhausted = true;
+      return cut;
     }
+    charge(str.length + 2);
+    return str;
+  };
 
-    if (serializeIsError(val)) {
-      out = serializeError(val, 0, [val]);
-    } else if (typeof ElementCtor === 'function' && val instanceof ElementCtor) {
-      out = {
-        tagName: val.tagName,
-        id: val.id,
-        className: val.className,
-        outerHTML: safeSlice(val.outerHTML, outerHtmlMax),
-      };
-    } else if (typeof NodeCtor === 'function' && val instanceof NodeCtor) {
-      return `[Node: ${val.nodeName}]`;
+  const copyObject = (val, source) => {
+    const out = {};
+    charge(2);
+    const keys = serializeKeys(source);
+    let count = 0;
+    for (let i = 0; i < keys.length && !exhausted; i++) {
+      const key = keys[i];
+      const item = walk(source[key], key);
+      if (item === SERIALIZE_OMIT) continue;
+      charge(key.length + 3 + (count > 0 ? 1 : 0));
+      count++;
+      if (key === '__proto__') {
+        serializeDefine(out, key, { value: item, enumerable: true, writable: true, configurable: true });
+      } else {
+        out[key] = item;
+      }
     }
-
-    if (typeof out === 'object' && out !== null) {
-      while (ancestors.length > 0 && ancestors[ancestors.length - 1] !== this) ancestors.pop();
-      if (ancestors.includes(out)) return '[Circular]';
-      ancestors.push(out);
-    }
-
     return out;
   };
 
-  return JSON.stringify(value, replacer);
+  const copyArray = (val) => {
+    const out = [];
+    charge(2);
+    const length = val.length;
+    for (let i = 0; i < length && !exhausted; i++) {
+      if (i > 0) charge(1);
+      const item = walk(val[i], '' + i);
+      if (item === SERIALIZE_OMIT) {
+        charge(4);
+        out.push(null);
+      } else {
+        out.push(item);
+      }
+    }
+    return out;
+  };
+
+  function walk(input, key) {
+    let val = input;
+    if (val !== null && (typeof val === 'object' || typeof val === 'bigint')) {
+      const toJSON = val.toJSON;
+      if (typeof toJSON === 'function') val = serializeApply(toJSON, val, [key]);
+    }
+
+    switch (typeof val) {
+      case 'string':
+        return copyString(val);
+      case 'number':
+        if (val !== val || val === Infinity || val === -Infinity) {
+          charge(4);
+          return null;
+        }
+        charge(('' + val).length);
+        return val;
+      case 'boolean':
+        charge(val ? 4 : 5);
+        return val;
+      case 'undefined':
+      case 'symbol':
+        return SERIALIZE_OMIT;
+      case 'bigint':
+        throw new TypeError('Do not know how to serialize a BigInt');
+      case 'function':
+        return copyString(`[Function: ${val.name || 'anonymous'}]`);
+      default:
+        break;
+    }
+    if (val === null) {
+      charge(4);
+      return null;
+    }
+
+    if (ancestors.includes(val)) return copyString('[Circular]');
+    let source = val;
+    if (serializeIsError(val)) {
+      source = serializeError(val, 0, [val]);
+    } else if (typeof ElementCtor === 'function' && val instanceof ElementCtor) {
+      source = serializeElement(val, elementStructure);
+    } else if (typeof NodeCtor === 'function' && val instanceof NodeCtor) {
+      return copyString(`[Node: ${val.nodeName}]`);
+    }
+
+    ancestors.push(val);
+    try {
+      return source === val && serializeIsArray(val) ? copyArray(val) : copyObject(val, source);
+    } finally {
+      ancestors.pop();
+    }
+  }
+
+  let copy = walk(value, '');
+  if (copy === SERIALIZE_OMIT) {
+    copy = null;
+    charge(4);
+  }
+  return { value: copy, exhausted };
 }
 
 function serializeFailure(value, err) {
@@ -141,7 +266,7 @@ function serializeFailure(value, err) {
   try {
     fallback = String(value);
   } catch {
-    fallback = Object.prototype.toString.call(value);
+    fallback = serializeApply(serializeObjectToString, value, []);
   }
   return {
     serializationError: err?.message || 'Unknown serialization error',
@@ -149,37 +274,1026 @@ function serializeFailure(value, err) {
   };
 }
 
-function safeJson(value, { outerHtmlMax = 2000 } = {}) {
+// Plain copy of `value` under the safeJson rules, read only up to about `maxChars` JSON chars.
+// Returns `{ value, exhausted }`; `exhausted` means the JSON of `value` is longer than `maxChars`
+// and the copy is partial. Throws like JSON.stringify (BigInt).
+function toPlain(value, { maxChars = Infinity, elementStructure = null } = {}) {
+  return serializeWalk(value, maxChars, elementStructure);
+}
+
+function safeJson(value, { elementStructure = null } = {}) {
   try {
-    return JSON.parse(serializeToJsonString(value, outerHtmlMax));
+    return serializeWalk(value, Infinity, elementStructure).value;
   } catch (err) {
     return serializeFailure(value, err);
   }
 }
 
 // Serializes `value` (safeJson rules) for a buffer entry. Within `maxChars`
-// the parsed value is returned; above it, `{ truncated: true, preview }` with the
-// first `maxChars` characters of the JSON. `chars` is the JSON length of `value`.
-function serializeCapped(value, maxChars, { outerHtmlMax = 2000 } = {}) {
-  let json;
+// the plain copy is returned; above it, `{ truncated: true, preview }` with the
+// first `maxChars` characters of the JSON. `chars` is the JSON length of `value`
+// (of the capped object when truncated). The cost depends on `maxChars`, not on
+// the size of `value` (D9, AC-6.5).
+function serializeCapped(value, maxChars, { elementStructure = null } = {}) {
+  let copy;
+  let exhausted = false;
   try {
-    json = serializeToJsonString(value, outerHtmlMax);
+    ({ value: copy, exhausted } = serializeWalk(value, maxChars, elementStructure));
   } catch (err) {
-    json = JSON.stringify(serializeFailure(value, err));
+    copy = serializeFailure(value, err);
   }
-  if (json === undefined) json = 'null';
+  const json = serializeToJson(copy);
 
-  if (json.length <= maxChars) {
-    return { value: JSON.parse(json), chars: json.length, truncated: false };
+  if (!exhausted && json.length <= maxChars) {
+    return { value: copy, chars: json.length, truncated: false };
   }
-  const capped = { truncated: true, preview: json.slice(0, maxChars) };
-  return { value: capped, chars: JSON.stringify(capped).length, truncated: true };
+  const capped = { truncated: true, preview: serializeSlice(json, 0, maxChars) };
+  return { value: capped, chars: serializeToJson(capped).length, truncated: true };
 }
-return Object.freeze({ deepMerge: deepMerge, safeSlice: safeSlice, safeJson: safeJson, serializeCapped: serializeCapped });
+return Object.freeze({ deepMerge: deepMerge, safeSlice: safeSlice, toPlain: toPlain, safeJson: safeJson, serializeCapped: serializeCapped });
+})();
+
+// module: lib/redact-rules.js
+const __pds_m1 = (function () {
+// Redaction rules, `rulesVersion: 1` (E3 D3; skill privacy-redaction). Text-level functions used by redact.js in the
+// background, by the console fallback and, through mask-secrets.js, by the hooks in MAIN. Pure, synchronous,
+// idempotent, no DOM and no imports. Every regex is created once at module load (a redactRegExp pair) and is linear: no nested
+// quantifiers over overlapping classes, and runs start only at a run boundary (look-behind on the run class).
+// A masked value becomes `[redacted:<rule>]`; values that already are a marker are skipped, so a second pass
+// changes nothing and reports `applied: 0`.
+
+const RULES_VERSION = 1;
+
+// Intrinsics captured at module load (AC-3.6): in MAIN the bundle loads on document_start, before page scripts,
+// and a page may later replace String.prototype.replace/split or RegExp.prototype members. Regexes are used only
+// through redactReplace/redactSplit/redactTest/redactExec, which call the captured RegExp functions, never
+// String.prototype. Every regex is a pair: the plain one keeps V8's fast path while RegExp.prototype is untouched
+// (those functions look up `exec` and the flag getters on it); after a change the twin is used, a RedactRegExp whose
+// prototype pins the original members (its @@split builds the splitter through the species constructor, so the
+// splitter is a RedactRegExp too). The twin is about 2x slower, so it is kept for patched pages only.
+const REDACT_APPLY = Reflect.apply;
+const REDACT_PROTO = RegExp.prototype;
+const REDACT_SYMBOL_REPLACE = Symbol.replace;
+const REDACT_SYMBOL_SPLIT = Symbol.split;
+const REDACT_EXEC = REDACT_PROTO.exec;
+const REDACT_TEST = REDACT_PROTO.test;
+const REDACT_REPLACE = REDACT_PROTO[REDACT_SYMBOL_REPLACE];
+const REDACT_SPLIT = REDACT_PROTO[REDACT_SYMBOL_SPLIT];
+// String methods a page may replace too (review E3 F9): key names and cuts go through these.
+const REDACT_STRING_SLICE = String.prototype.slice;
+const REDACT_STRING_LOWER = String.prototype.toLowerCase;
+const REDACT_STRING_LAST_INDEX = String.prototype.lastIndexOf;
+
+class RedactRegExp extends RegExp {
+  static get [Symbol.species]() {
+    return RedactRegExp;
+  }
+}
+for (const key of Reflect.ownKeys(REDACT_PROTO)) {
+  if (key !== 'constructor') Object.defineProperty(RedactRegExp.prototype, key, Object.getOwnPropertyDescriptor(REDACT_PROTO, key));
+}
+
+function redactPick(pair) {
+  const p = REDACT_PROTO;
+  return p.exec === REDACT_EXEC && p.test === REDACT_TEST && p[REDACT_SYMBOL_REPLACE] === REDACT_REPLACE
+    && p[REDACT_SYMBOL_SPLIT] === REDACT_SPLIT ? pair.plain : pair.twin;
+}
+
+/** Regex pair for the redact* helpers (same source and flags); create it at module load. */
+function redactRegExp(re) {
+  return Object.freeze({ plain: re, twin: new RedactRegExp(re) });
+}
+
+/** `text.replace(re, replacement)` for a redactRegExp pair, safe from page-replaced built-ins. */
+function redactReplace(text, pair, replacement) {
+  return REDACT_APPLY(REDACT_REPLACE, redactPick(pair), [text, replacement]);
+}
+
+/** `text.split(re)` for a redactRegExp pair. */
+function redactSplit(text, pair) {
+  return REDACT_APPLY(REDACT_SPLIT, redactPick(pair), [text]);
+}
+
+/** `re.test(text)` for a redactRegExp pair (non-global). */
+function redactTest(pair, text) {
+  return REDACT_APPLY(REDACT_TEST, redactPick(pair), [text]);
+}
+
+/** `re.exec(text)` for a redactRegExp pair (non-global). */
+function redactExec(pair, text) {
+  return REDACT_APPLY(REDACT_EXEC, redactPick(pair), [text]);
+}
+
+// `re.exec(text)` from `from` for a global or sticky pair: the next match at or after `from`, or null.
+function redactExecAt(pair, text, from) {
+  const re = redactPick(pair);
+  re.lastIndex = from;
+  return REDACT_APPLY(REDACT_EXEC, re, [text]);
+}
+
+/** `text.slice(start, end)` with the String.prototype.slice captured at load. */
+function redactSlice(text, start, end) {
+  return REDACT_APPLY(REDACT_STRING_SLICE, text, end === undefined ? [start] : [start, end]);
+}
+
+function redactLastIndex(text, search, from) {
+  return REDACT_APPLY(REDACT_STRING_LAST_INDEX, text, from === undefined ? [search] : [search, from]);
+}
+
+/** `text.toLowerCase()` with the method captured at load. */
+function redactLower(text) {
+  return REDACT_APPLY(REDACT_STRING_LOWER, text, []);
+}
+
+// Rules the developer cannot turn off; `key-*` stands for every `key-<token>` rule.
+const ALWAYS_RULES = Object.freeze([
+  'key-*', 'jwt', 'bearer', 'basic', 'card', 'iban', 'pesel', 'long-secret', 'url-credentials', 'url-fragment', 'form-value',
+]);
+// Rules a developer option may turn off (never the reporter). `html-structure` off means `dom.fullHtml` (D5).
+const DEFAULT_RULES = Object.freeze(['email', 'phone', 'html-structure']);
+
+const MASK_LIMITS = Object.freeze({
+  // maskSecrets (MAIN previews) cuts longer input before masking: an unmasked tail must never pass through.
+  inputChars: 65536,
+  keyChars: 256,
+});
+
+// Skill privacy-redaction, "Klucze". The first token found in a key names the rule: `access_token` → key-token.
+const SECRET_KEYS = Object.freeze([
+  'token', 'access_token', 'refresh_token', 'id_token', 'auth', 'authorization', 'session', 'sessionid', 'sid', 'jwt',
+  'secret', 'api_key', 'apikey', 'key', 'password', 'passwd', 'pwd', 'csrf', 'xsrf', 'cookie', 'set-cookie', 'bearer',
+  'credential', 'private', 'signature', 'sig', 'otp', 'pin', 'cvv', 'cvc', 'pass',
+]);
+// Too short to be a word of a longer key: only the whole name counts (`pw`, not `new_pw`).
+const WHOLE_KEYS = Object.freeze(['pw']);
+// Sensitive only as a query or fragment parameter of a URL (OAuth authorization code, CAS ticket); in text and JSON
+// they are ordinary words (`{"code":"PL"}`).
+const URL_KEYS = Object.freeze(['code', 'ticket']);
+
+// Word boundaries in a key: start/end, `_`, `-`, `.`, white space or brackets (`user[password]`).
+const KEY_EDGE = '[_\\-.\\s\\[\\]]';
+const KEY_ESCAPE = redactRegExp(/[.-]/g);
+const CAMEL_CASE = redactRegExp(/([a-z0-9])([A-Z])/g);
+const KEY_MATCHERS = SECRET_KEYS.map((token) => ({
+  token,
+  re: redactRegExp(new RegExp(`(?:^|${KEY_EDGE})${redactReplace(token, KEY_ESCAPE, '\\$&')}(?:$|${KEY_EDGE})`)),
+}));
+// Session cookies named by servers without a word boundary: JSESSIONID, PHPSESSID.
+const SESSION_SUFFIX = redactRegExp(/(?:sessid|sessionid)$/);
+
+const MARKER = redactRegExp(/^\[redacted:[a-z0-9_*-]+\]$/);
+const MARKER_START = redactRegExp(/^\[redacted:[a-z0-9_*-]+\]/);
+
+/**
+ * Rule for a key/parameter/header/attribute name: `key-<token>` when the name contains a token from the skill
+ * list as a word (camelCase counts as words), `key-session` for a `sessid`/`sessionid` suffix, otherwise null.
+ */
+function secretKeyRule(name) {
+  if (typeof name !== 'string' || name === '' || name.length > MASK_LIMITS.keyChars) return null;
+  const key = redactLower(redactReplace(name, CAMEL_CASE, '$1_$2'));
+  for (const { token, re } of KEY_MATCHERS) if (redactTest(re, key)) return `key-${token}`;
+  const lower = redactLower(name);
+  if (redactTest(SESSION_SUFFIX, lower)) return 'key-session';
+  for (const token of WHOLE_KEYS) if (lower === token) return `key-${token}`;
+  return null;
+}
+
+/** secretKeyRule for a query or fragment parameter of a URL: also `code` and `ticket` as the whole name. */
+function urlKeyRule(name) {
+  const rule = secretKeyRule(name);
+  if (rule !== null || typeof name !== 'string') return rule;
+  const lower = redactLower(name);
+  for (const token of URL_KEYS) if (lower === token) return `key-${token}`;
+  return null;
+}
+
+// ---- validators -------------------------------------------------------------------------------------------------
+
+/** Luhn checksum of a digit string. */
+function luhn(digits) {
+  let sum = 0;
+  let double = false;
+  for (let i = digits.length - 1; i >= 0; i--) {
+    let d = digits.charCodeAt(i) - 48;
+    if (d < 0 || d > 9) return false;
+    if (double) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    sum += d;
+    double = !double;
+  }
+  return digits.length > 0 && sum % 10 === 0;
+}
+
+// Card issuer prefixes (IIN): Visa 4, Mastercard 51-55 and 22-27, Amex 34/37, Discover/UnionPay/Maestro 6.
+const CARD_IIN = redactRegExp(/^(?:4|5[1-5]|2[2-7]|3[47]|6)/);
+
+const PESEL_DIGITS = redactRegExp(/^\d{11}$/);
+const SPACES = redactRegExp(/ /g);
+const IBAN_SHAPE = redactRegExp(/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/);
+const PESEL_WEIGHTS = [1, 3, 7, 9, 1, 3, 7, 9, 1, 3];
+/** PESEL: 11 digits, checksum and a month valid for one of the century codes (+0, +20, +40, +60, +80). */
+function peselValid(digits) {
+  if (!redactTest(PESEL_DIGITS, digits)) return false;
+  let sum = 0;
+  for (let i = 0; i < 10; i++) sum += PESEL_WEIGHTS[i] * (digits.charCodeAt(i) - 48);
+  if ((10 - (sum % 10)) % 10 !== digits.charCodeAt(10) - 48) return false;
+  const month = Number(redactSlice(digits, 2, 4)) % 20;
+  const day = Number(redactSlice(digits, 4, 6));
+  return month >= 1 && month <= 12 && day >= 1 && day <= 31;
+}
+
+/** IBAN mod-97 (spaces allowed). */
+function ibanValid(iban) {
+  const s = redactReplace(String(iban), SPACES, '');
+  if (!redactTest(IBAN_SHAPE, s)) return false;
+  const moved = redactSlice(s, 4) + redactSlice(s, 0, 4);
+  let rest = 0;
+  for (const ch of moved) {
+    const code = ch.charCodeAt(0);
+    const value = code >= 65 ? String(code - 55) : ch;
+    for (const digit of value) rest = (rest * 10 + (digit.charCodeAt(0) - 48)) % 97;
+  }
+  return rest === 1;
+}
+
+/** Shannon entropy in bits per character. */
+function shannon(text) {
+  const counts = new Map();
+  for (const ch of text) counts.set(ch, (counts.get(ch) || 0) + 1);
+  let bits = 0;
+  for (const n of counts.values()) {
+    const p = n / text.length;
+    bits -= p * Math.log2(p);
+  }
+  return bits;
+}
+
+// ---- key/value forms ----------------------------------------------------------------------------------------------
+
+// `"key":` at any level of escaping (review E3 F1): JSON in a JSON string repeats the quote with backslashes
+// (`\"k\":\"v\"`, `\\\"k\\\":…`), an HTML attribute encodes it (`&quot;k&quot;`, `&#34;`, `&#x22;`). The key quote is
+// captured and the value must open with the same one; the value itself is scanned by maskQuotedValue (not a regex), so
+// it may also be unclosed (a cut, F2). The value of a key that is not sensitive is scanned for nested pairs.
+const QUOTE = '(?:"|&quot;|&#0*34;|&#[xX]0*22;)';
+const QUOTED_KEY = redactRegExp(new RegExp(`(?<!\\\\)(\\\\*)(${QUOTE})([^"\\\\\\n&]{1,256})\\1\\2(\\s*:\\s*)`, 'g'));
+// `key: "value"` and `'key': "value"` (F3: JS objects, YAML), at any level of escaping of the value quote.
+const BARE_KEY = redactRegExp(new RegExp(`(?<![\\w.\\-[\\]"'])('?)([A-Za-z_][\\w.\\-[\\]]{0,255})\\1[ \\t]*:[ \\t]*(?=\\\\*${QUOTE})`, 'g'));
+const QUOTE_AT = redactRegExp(new RegExp(QUOTE, 'y'));
+const BACKSLASHES_AT = redactRegExp(/\\*/y);
+// `"key": 123` / `true` / `false` (E3-IN2), also cut at the end of the text; null stays (nothing there).
+const SCALAR_AT = redactRegExp(/(?:-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false)(?=\s*(?:[,}\]\\&]|$))/y);
+// The note a MAIN cut appends (`safeSlice`, network bodies): pairs are matched before it, so a value cut there is unclosed.
+const TRUNCATED_TAIL = redactRegExp(/\.\.\. \[truncated \d+ chars\]$/);
+// `<key attr…>value</key>`, optional namespace prefix; the closing tag must match.
+const XML_ELEMENT = redactRegExp(/<((?:[A-Za-z_][\w.-]{0,63}:)?([A-Za-z_][\w.-]{0,255}))(\s[^<>]{0,2048})?>([^<]+)<\/\1>/g);
+// `key="value"`, `key='value'` and JSON-escaped `key=\"value\"` (attributes in HTML and DOM structure).
+const ATTRIBUTE = redactRegExp(/(?<![\w.:[\]-])([A-Za-z_][\w.:[\]-]{0,255})=(?:"([^"\\\n]*)"|'([^'\\\n]*)'|\\"([^"\\\n]*)\\")/g);
+// The same, and an XML element, cut at the end of the text (F2): the value runs to the end.
+const ATTRIBUTE_OPEN_END = redactRegExp(/(?<![\w.:[\]-])([A-Za-z_][\w.:[\]-]{0,255})=(\\?["'])([^"'\n]+)$/);
+const XML_OPEN_END = redactRegExp(/<((?:[A-Za-z_][\w.-]{0,63}:)?([A-Za-z_][\w.-]{0,255}))(\s[^<>]{0,2048})?>([^<]+)(<\/?[\w.:-]*)?$/);
+// The same element with `<` (and `>`) as entities (review E3 N4): XML in an attribute or a text node of dom.structure
+// (`&lt;password>x&lt;/password>`), also cut at the end of the text. The value ends at the next `<` or `&lt;`.
+const XML_LT = '(?:&lt;|&#0*60;)';
+const XML_GT = '(?:>|&gt;|&#0*62;)';
+const XML_ENTITY_VALUE = '((?:[^<&]|&(?!lt;|#0*60;))+)';
+const XML_ENTITY_TAG = '((?:[A-Za-z_][\\w.-]{0,63}:)?([A-Za-z_][\\w.-]{0,255}))(\\s[^<>&]{0,2048})?';
+const XML_ENTITY_ELEMENT = redactRegExp(new RegExp(`(${XML_LT})${XML_ENTITY_TAG}(${XML_GT})${XML_ENTITY_VALUE}${XML_LT}\\/\\2${XML_GT}`, 'g'));
+const XML_ENTITY_OPEN_END = redactRegExp(new RegExp(`(${XML_LT})${XML_ENTITY_TAG}(${XML_GT})${XML_ENTITY_VALUE}(${XML_LT}\\/?[\\w.:-]*)?$`));
+// `key=value` in forms, query strings, fragments and plain text; the value ends at `&`, `#`, white space,
+// a quote, a backslash (escaped quote inside a JSON string), `;`, `,`, `<` or `>`.
+const FORM_PAIR = redactRegExp(/(?<![A-Za-z0-9_.\-[\];])([A-Za-z0-9_.\-[\]]{1,256})=([^&#\s"'\\;,<>]+)/g);
+// `;key=value` (a path parameter like `;jsessionid=`, or a cookie list without spaces): the value also ends at `?` (F8).
+const PATH_PAIR = redactRegExp(/(?<=;)([A-Za-z0-9_.\-[\]]{1,256})=([^&#\s"'\\;,<>?]+)/g);
+// `key: value` (E3-IN2): unquoted or single-quoted key; the value ends at the line end, `,`, `;` or `}`.
+const COLON_PAIR = redactRegExp(/(?<![\w.\-[\]"'])('?)([A-Za-z_][\w.\-[\]]{0,255})\1[ \t]*:[ \t]*(?!\/\/)([^\s"\\,;}][^\n\r"\\,;}]*)/g);
+// `Cookie: a=1; b=2` and `Set-Cookie: …`: a cookie list has `;` inside, so the value runs to the line end.
+const COOKIE_LINE = redactRegExp(/(?<![\w.\-[\]"'])('?)([\w.\-[\]]{0,200}cookie)\1[ \t]*:[ \t]*([^\s"\\][^\n\r"\\]*)/gi);
+const TRAILING_BLANKS = redactRegExp(/[ \t]+$/);
+
+// Length of the quote token (`"`, `&quot;`, `&#34;`, `&#x22;`) at `i`, 0 when there is none.
+function quoteLengthAt(text, i) {
+  const ch = text[i];
+  if (ch === '"') return 1;
+  if (ch !== '&') return 0;
+  const m = redactExecAt(QUOTE_AT, text, i);
+  return m === null ? 0 : m[0].length;
+}
+
+// End of a quoted value opened by `level` backslashes and `quote` at `start` (the first character of the value):
+// `{ end, closeLength }`. A quote preceded by exactly `level` backslashes closes it; more backslashes are an escape at
+// a deeper level; fewer, a raw `"` inside an entity-quoted value, a line break or the end of `text` end an unclosed value
+// (`closeLength` 0).
+function quotedValueEnd(text, start, level, quote) {
+  const n = text.length;
+  for (let j = start; j < n;) {
+    const ch = text[j];
+    if (ch === '\n' || ch === '\r') return { end: j, closeLength: 0 };
+    let run = 0;
+    let k = j;
+    if (ch === '\\') {
+      k = j + redactExecAt(BACKSLASHES_AT, text, j)[0].length;
+      run = k - j;
+    }
+    const q = quoteLengthAt(text, k);
+    if (q === 0) {
+      j = run > 0 ? k : j + 1;
+      continue;
+    }
+    const token = redactSlice(text, k, k + q);
+    if (run === level && token === quote) return { end: j, closeLength: run + q };
+    if (run < level || (token === '"' && quote !== '"')) return { end: j, closeLength: 0 };
+    j = k + q;
+  }
+  return { end: n, closeLength: 0 };
+}
+
+// Pairs whose key the regex `pair` finds (QUOTED_KEY or BARE_KEY); the value is read by quotedValueEnd, or as a JSON
+// scalar after a quoted key. A sensitive value becomes the marker in the same quotes (an unclosed one stays unclosed).
+function maskQuotedPairs(text, pair, bare, opts, count) {
+  let out = '';
+  let last = 0;
+  let from = 0;
+  for (let m = redactExecAt(pair, text, from); m !== null; m = redactExecAt(pair, text, from)) {
+    from = m.index + m[0].length;
+    const rule = secretKeyRule(bare ? m[2] : m[3]);
+    if (rule === null) continue;
+    const at = from;
+    // A quoted key gives the quote the value must open with; after a bare key the value quote is read here.
+    const level = bare ? redactExecAt(BACKSLASHES_AT, text, at)[0].length : m[1].length;
+    const quote = bare ? redactExecAt(QUOTE_AT, text, at + level)[0] : m[2];
+    const escapes = redactSlice(text, at, at + level);
+    const opened = (bare || escapes === m[1]) && redactSlice(text, at + level, at + level + quote.length) === quote;
+    if (opened) {
+      const start = at + level + quote.length;
+      const { end, closeLength } = quotedValueEnd(text, start, level, quote);
+      const value = redactSlice(text, start, end);
+      from = end + closeLength;
+      if (value === '' || redactTest(MARKER, value)) continue;
+      count.n++;
+      out += `${redactSlice(text, last, start)}[redacted:${rule}]`;
+      last = end;
+      continue;
+    }
+    if (bare || !opts.jsonScalars) continue;
+    const scalar = redactExecAt(SCALAR_AT, text, at);
+    if (scalar === null) continue;
+    const q = `${m[1]}${quote}`;
+    count.n++;
+    out += `${redactSlice(text, last, at)}${q}[redacted:${rule}]${q}`;
+    last = at + scalar[0].length;
+    from = last;
+  }
+  return last === 0 ? text : out + redactSlice(text, last);
+}
+
+function maskPairs(whole, opts, count) {
+  // A value cut by a MAIN limit ends right before the truncation note: the pairs are matched in the text before it.
+  const tail = redactExec(TRUNCATED_TAIL, whole);
+  const text = tail === null ? whole : redactSlice(whole, 0, tail.index);
+  let out = maskQuotedPairs(text, QUOTED_KEY, false, opts, count);
+  if (opts.colonPairs) out = maskQuotedPairs(out, BARE_KEY, true, opts, count);
+
+  // Forms cut at the end of the text: only the end can hold them, so the anchored regexes get only the last part — from
+  // the last but one `<` (the opening tag; a cut closing tag has the last one), and from the last quote less the room
+  // of a key (≤ 256 characters, `=` and a backslash).
+  const lt = redactLastIndex(out, '<');
+  if (lt >= 0) {
+    const from = Math.max(0, redactLastIndex(out, '<', lt - 1));
+    out = redactSlice(out, 0, from) + redactReplace(redactSlice(out, from), XML_OPEN_END, (all, tag, local, attrs = '', value, close = '') => {
+      const rule = secretKeyRule(local);
+      if (rule === null || redactTest(MARKER, value) || value.trim() === '') return all;
+      count.n++;
+      return `<${tag}${attrs}>[redacted:${rule}]${close}`;
+    });
+  }
+  const ltEntity = Math.max(redactLastIndex(out, '&lt;'), redactLastIndex(out, '&#'));
+  if (ltEntity >= 0) {
+    const from = Math.max(0, redactLastIndex(out, '&lt;', ltEntity - 1), redactLastIndex(out, '&#', ltEntity - 1));
+    out = redactSlice(out, 0, from) + redactReplace(redactSlice(out, from), XML_ENTITY_OPEN_END, (all, lt, tag, local, attrs = '', gt, value, close = '') => {
+      const rule = secretKeyRule(local);
+      if (rule === null || redactTest(MARKER, value) || value.trim() === '') return all;
+      count.n++;
+      return `${lt}${tag}${attrs}${gt}[redacted:${rule}]${close}`;
+    });
+  }
+  const quoteAt = Math.max(redactLastIndex(out, '"'), redactLastIndex(out, "'"));
+  if (quoteAt > 0) {
+    const from = Math.max(0, quoteAt - 258);
+    out = redactSlice(out, 0, from) + redactReplace(redactSlice(out, from), ATTRIBUTE_OPEN_END, (all, key, quote, value) => {
+      const rule = secretKeyRule(key);
+      if (rule === null || redactTest(MARKER, value)) return all;
+      count.n++;
+      return `${key}=${quote}[redacted:${rule}]`;
+    });
+  }
+
+  out = redactReplace(out, XML_ELEMENT, (all, tag, local, attrs = '', value) => {
+    if (redactTest(MARKER, value.trim()) || value.trim() === '') return all;
+    const rule = secretKeyRule(local);
+    if (rule === null) return all;
+    count.n++;
+    return `<${tag}${attrs}>[redacted:${rule}]</${tag}>`;
+  });
+
+  out = redactReplace(out, XML_ENTITY_ELEMENT, (all, lt, tag, local, attrs = '', gt, value) => {
+    if (redactTest(MARKER, value.trim()) || value.trim() === '') return all;
+    const rule = secretKeyRule(local);
+    if (rule === null) return all;
+    count.n++;
+    const start = lt.length + tag.length + attrs.length + gt.length;
+    return `${redactSlice(all, 0, start)}[redacted:${rule}]${redactSlice(all, start + value.length)}`;
+  });
+
+  out = redactReplace(out, ATTRIBUTE, (all, key, dq, sq, esc) => {
+    const value = dq ?? sq ?? esc;
+    if (value === '' || redactTest(MARKER, value)) return all;
+    const rule = secretKeyRule(key);
+    if (rule === null) return all;
+    count.n++;
+    if (dq !== undefined) return `${key}="[redacted:${rule}]"`;
+    if (sq !== undefined) return `${key}='[redacted:${rule}]'`;
+    return `${key}=\\"[redacted:${rule}]\\"`;
+  });
+
+  // A value starting with a marker was masked already (a URL in text keeps a `:line:col` suffix after it).
+  const formPair = (all, key, value) => {
+    if (redactTest(MARKER_START, value)) return all;
+    let rule = secretKeyRule(key);
+    // A percent-encoded value (`payload=%7B%22password%22…`, review E3 N2) is checked decoded; a hit masks the whole value.
+    if (rule === null && value.includes('%')) rule = encodedValueRule(value, opts);
+    if (rule === null) return all;
+    count.n++;
+    return `${key}=[redacted:${rule}]`;
+  };
+  out = redactReplace(redactReplace(out, FORM_PAIR, formPair), PATH_PAIR, formPair);
+
+  if (opts.colonPairs) {
+    const colon = (all, _quote, key, value, offset, whole) => {
+      // `[redacted:key-code]:44:15` (a marker before a stack position) is not a `key: value` pair.
+      if (redactSlice(whole, Math.max(0, offset - 10), offset) === '[redacted:') return all;
+      const rule = secretKeyRule(key);
+      if (rule === null || redactTest(MARKER_START, value)) return all;
+      const secret = redactReplace(value, TRAILING_BLANKS, '');
+      if (secret === '' || redactTest(MARKER, secret)) return all;
+      count.n++;
+      return `${redactSlice(all, 0, all.length - value.length)}[redacted:${rule}]${redactSlice(value, secret.length)}`;
+    };
+    out = redactReplace(redactReplace(out, COOKIE_LINE, colon), COLON_PAIR, colon);
+  }
+  return tail === null ? out : out + tail[0];
+}
+
+// ---- value patterns -----------------------------------------------------------------------------------------------
+
+const URL_CREDENTIALS = redactRegExp(/\b([A-Za-z][A-Za-z0-9+.-]{0,20}:\/\/)([^\s/?#@"'<>\\]+)@/g);
+const BASIC = redactRegExp(/\b(Basic\s+)([A-Za-z0-9+/]{8,}={0,2})(?![A-Za-z0-9+/=])/g);
+const BEARER = redactRegExp(/\b(Bearer\s+)([A-Za-z0-9._~+/=-]{16,})/gi);
+const JWT = redactRegExp(/(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}(?![A-Za-z0-9_-])/g);
+// IBAN, plain or in groups of four separated by single spaces; validated by mod-97.
+const IBAN = redactRegExp(/(?<![A-Za-z0-9])[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,4})?(?![A-Za-z0-9])/g);
+// 13–19 digits with optional single spaces or dashes between them; validated by IIN and Luhn. Not inside a word (no
+// letter or digit before or after) nor inside a UUID (QA F-3; checked in maskCards). `order-id-<PAN>` is a card (N1).
+const CARD = redactRegExp(/(?<![\dA-Za-z])(?:\d[ -]?){12,18}\d(?![\dA-Za-z])/g);
+const UUID = redactRegExp(/(?<![\dA-Fa-f])[\dA-Fa-f]{8}-[\dA-Fa-f]{4}-[\dA-Fa-f]{4}-[\dA-Fa-f]{4}-[\dA-Fa-f]{12}(?![\dA-Fa-f])/g);
+
+// True when [start, end) of `text` lies inside a UUID (looked for only in the 36 characters around it).
+function insideUuid(text, start, end) {
+  const from = Math.max(0, start - 36);
+  const near = redactSlice(text, from, end + 36);
+  for (let m = redactExecAt(UUID, near, 0); m !== null; m = redactExecAt(UUID, near, m.index + m[0].length)) {
+    if (from + m.index <= start && from + m.index + m[0].length >= end) return true;
+  }
+  return false;
+}
+const PESEL = redactRegExp(/(?<!\d)\d{11}(?!\d)/g);
+// Runs of ≥ 32 characters of the token alphabet; judged in the callback (entropy, letters and digits).
+const LONG_RUN = redactRegExp(/(?<![A-Za-z0-9+/=_-])[A-Za-z0-9+/=_-]{32,}/g);
+// A path segment: a word, optionally capitalised, of lower-case letters, digits, `_` and `-` (base64 mixes case).
+const PATH_SEGMENT = redactRegExp(/^[A-Za-z]?[a-z0-9_-]*$/);
+const FILE_EXTENSION = redactRegExp(/^\.[A-Za-z][A-Za-z0-9]{0,7}(?![A-Za-z0-9])/);
+// E-mail, also URL-encoded (`%40`); the domain ends with a letter-only TLD, so `react@18.2.0` is kept.
+const EMAIL = redactRegExp(/(?<![\w.+%-])[\w.+-]+(?:@|%40)(?:[\w-]{1,63}\.){1,8}[A-Za-z]{2,24}(?![\w-])/g);
+// PL phone: +48/0048 and 9 digits, 3-3-3 groups, or a bare 9-digit mobile number ([4-8]…).
+const PHONE = redactRegExp(/(?<![\d+])(?<!\d[ -])(?:(?:\+48|0048)[ -]?\d{3}[ -]?\d{3}[ -]?\d{3}|\d{3}[ -]\d{3}[ -]\d{3}|[4-8]\d{8})(?!\d)(?![ -]\d)/g);
+const DIGIT = redactRegExp(/\d/);
+const LETTER = redactRegExp(/[A-Za-z]/);
+const LOWER = redactRegExp(/[a-z]/);
+const UPPER = redactRegExp(/[A-Z]/);
+const WORD_SEPARATORS = redactRegExp(/[_\-/]/);
+const SLASH = redactRegExp(/\//);
+const SLASH_KEPT = redactRegExp(/(\/)/);
+const INNER_EQUALS = redactRegExp(/(=+(?!=*$))/);
+const CARD_SEPARATORS = redactRegExp(/[ -]/g);
+const CARD_SEPARATOR = redactRegExp(/[ -]/);
+
+function looksLikeSecret(run) {
+  if (run.length < 32 || !redactTest(DIGIT, run) || !redactTest(LETTER, run)) return false;
+  if (shannon(run) <= 4) return false;
+  // Identifiers and words joined by `_`/`-` (snake_case, slugs) reach 4 bits too: a secret has mixed case
+  // or a long separator-free piece.
+  if (redactTest(LOWER, run) && redactTest(UPPER, run)) return true;
+  return redactSplit(run, WORD_SEPARATORS).some((piece) => piece.length >= 20);
+}
+
+function maskLongSecret(text, count) {
+  return redactReplace(text, LONG_RUN, (run, offset, whole) => {
+    if (redactSlice(whole, Math.max(0, offset - 7), offset) === 'base64,') return run;
+    // A path segment that ends with a file extension (`/static/abc….js`) is a file name.
+    const after = redactSlice(whole, offset + run.length, offset + run.length + 10);
+    // A path (`/a/b/c`, `com/org/repo/…` after a host) is judged segment by segment; other runs (base64 with `/`)
+    // as a whole. Interior `=` splits too (`utm_campaign=…`); padding at the end stays with the run.
+    const path = run.includes('/') && (run.startsWith('/') || redactSplit(run, SLASH).every((s) => redactTest(PATH_SEGMENT, s)));
+    const parts = redactSplit(run, path ? SLASH_KEPT : INNER_EQUALS);
+    let changed = false;
+    const last = parts.length - 1;
+    for (let i = 0; i < parts.length; i++) {
+      if (i === last && redactTest(FILE_EXTENSION, after)) continue;
+      if (looksLikeSecret(parts[i])) {
+        parts[i] = '[redacted:long-secret]';
+        changed = true;
+        count.n++;
+      }
+    }
+    return changed ? parts.join('') : run;
+  });
+}
+
+function maskCards(text, count) {
+  return redactReplace(text, CARD, (match, offset, whole) => {
+    if (insideUuid(whole, offset, offset + match.length)) return match;
+    // Try the whole run, then shorter prefixes ending at a group boundary (`4111 1111 1111 1111 22`).
+    const positions = [];
+    for (let i = 0; i < match.length; i++) if (match[i] >= '0' && match[i] <= '9') positions.push(i);
+    const digits = redactReplace(match, CARD_SEPARATORS, '');
+    if (!redactTest(CARD_IIN, digits)) return match;
+    for (let n = positions.length; n >= 13; n--) {
+      const endIndex = positions[n - 1] + 1;
+      if (n < positions.length && !redactTest(CARD_SEPARATOR, match[endIndex])) continue;
+      if (luhn(redactSlice(digits, 0, n))) {
+        count.n++;
+        return `[redacted:card]${redactSlice(match, endIndex)}`;
+      }
+    }
+    return match;
+  });
+}
+
+function maskPatterns(text, opts, count) {
+  let out = redactReplace(text, URL_CREDENTIALS, (all, scheme, userinfo) => {
+    if (redactTest(MARKER, userinfo)) return all;
+    count.n++;
+    return `${scheme}[redacted:url-credentials]@`;
+  });
+  out = redactReplace(out, BASIC, (_all, prefix) => {
+    count.n++;
+    return `${prefix}[redacted:basic]`;
+  });
+  out = redactReplace(out, BEARER, (_all, prefix) => {
+    count.n++;
+    return `${prefix}[redacted:bearer]`;
+  });
+  out = redactReplace(out, JWT, () => {
+    count.n++;
+    return '[redacted:jwt]';
+  });
+  // IBAN before card: a spaced IBAN contains a digit run that may pass Luhn.
+  out = redactReplace(out, IBAN, (match) => {
+    // The last group may be a following word (`… 2874 OK`): drop trailing groups until mod-97 holds.
+    for (let candidate = match; redactReplace(candidate, SPACES, '').length >= 15;) {
+      if (ibanValid(candidate)) {
+        count.n++;
+        return `[redacted:iban]${redactSlice(match, candidate.length)}`;
+      }
+      const space = candidate.lastIndexOf(' ');
+      if (space < 0) break;
+      candidate = redactSlice(candidate, 0, space);
+    }
+    return match;
+  });
+  out = maskCards(out, count);
+  out = redactReplace(out, PESEL, (match) => {
+    if (!peselValid(match)) return match;
+    count.n++;
+    return '[redacted:pesel]';
+  });
+  if (opts.longSecret) out = maskLongSecret(out, count);
+  if (opts.email) {
+    out = redactReplace(out, EMAIL, () => {
+      count.n++;
+      return '[redacted:email]';
+    });
+  }
+  if (opts.phone) {
+    out = redactReplace(out, PHONE, () => {
+      count.n++;
+      return '[redacted:phone]';
+    });
+  }
+  return out;
+}
+
+// ---- URLs in text -------------------------------------------------------------------------------------------------
+
+// An address in free text (stack frames, messages): scheme `://` up to white space, `)`, a quote or a separator. The
+// `code`/`ticket` query keys (urlKeyRule) are sensitive only in a URL, so the query of each such address goes through
+// maskQuery (E3-PD2). A stack position `:line:col` at its end is kept apart, so it is neither masked nor lost.
+const TEXT_URL = redactRegExp(/(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]{0,20}:\/\/[^\s()"'<>\\`,;{}|^]+/g);
+const URL_POSITION = redactRegExp(/(?::\d+){1,2}$/);
+
+function maskTextUrls(text, opts, count) {
+  if (redactLastIndex(text, '://') < 0) return text;
+  return redactReplace(text, TEXT_URL, (url) => {
+    const q = url.indexOf('?');
+    if (q < 0) return url;
+    const position = redactExec(URL_POSITION, url);
+    const address = position === null ? url : redactSlice(url, 0, position.index);
+    const hash = address.indexOf('#', q);
+    const query = redactSlice(address, q, hash < 0 ? address.length : hash);
+    const masked = maskQuery(query, opts, count);
+    if (masked === query) return url;
+    return redactSlice(address, 0, q) + masked + redactSlice(url, q + query.length);
+  });
+}
+
+// Rule for a percent-encoded value (a form or query value): the first marker the decoded value gets, or null.
+function encodedValueRule(value, opts) {
+  const nested = decodeKey(value);
+  if (nested === value) return null;
+  const masked = maskText(nested.includes('?') ? maskUrl(nested, opts).text : nested, opts).text;
+  return masked === nested ? null : redactExec(FIRST_MARKER, masked)?.[1] ?? null;
+}
+
+// Fast path (D2): short strings and strings without any trigger character cannot hold a match.
+const TRIGGER = redactRegExp(/[@=:<.\d%]|&lt;|B(?:asic|earer)\s|[A-Za-z0-9+/=_-]{32}/i);
+
+function normalize(opts) {
+  return {
+    email: opts?.email === true,
+    phone: opts?.phone === true,
+    longSecret: opts?.longSecret !== false,
+    jsonScalars: opts?.jsonScalars !== false,
+    colonPairs: opts?.colonPairs !== false,
+  };
+}
+
+/**
+ * Masks secrets in free text: key/value forms (JSON strings, numbers and booleans, XML elements, attributes,
+ * `k=v`, `k: v`), then `url-credentials`, `basic`, `bearer`, `jwt`, `iban`, `card`, `pesel`, `long-secret`
+ * and, when enabled, `email` and `phone`.
+ * @param {string} text non-strings give `{ text: '', applied: 0 }`
+ * @param {{ email?: boolean, phone?: boolean, longSecret?: boolean, jsonScalars?: boolean, colonPairs?: boolean }} [opts]
+ *   `email`/`phone` default off; `longSecret` off for selectors; `jsonScalars`/`colonPairs` off only for the E2 contract.
+ * @returns {{ text: string, applied: number }} `applied` = number of replaced values
+ */
+function maskText(text, opts) {
+  if (typeof text !== 'string') return { text: '', applied: 0 };
+  if (text.length < 6 || !redactTest(TRIGGER, text)) return { text, applied: 0 };
+  const o = normalize(opts);
+  const count = { n: 0 };
+  const out = maskPatterns(maskPairs(maskTextUrls(text, o, count), o, count), o, count);
+  return { text: out, applied: count.n };
+}
+
+// ---- URL fields ---------------------------------------------------------------------------------------------------
+
+// Split by a regex (no URL parser), so the address is never normalised.
+const URL_PARTS = redactRegExp(/^([^?#]*)(\?[^#]*)?(#.*)?$/s);
+const PATH_PARAM = redactRegExp(/;([^;/?#=]{1,256})=([^;/?#]*)/g);
+const PLUS = redactRegExp(/\+/g);
+const QUERY_PAIR = redactRegExp(/([^?&=]+)=([^&]*)/g);
+const FRAGMENT_SEPARATORS = redactRegExp(/[&;?/#]/);
+const FRAGMENT_MARKER = '#[redacted:url-fragment]';
+
+function decodeKey(key) {
+  try {
+    return decodeURIComponent(redactReplace(key, PLUS, ' '));
+  } catch {
+    return key;
+  }
+}
+
+const FIRST_MARKER = redactRegExp(/\[redacted:([a-z0-9_*-]+)\]/);
+
+function maskQuery(query, opts, count) {
+  return redactReplace(query, QUERY_PAIR, (all, key, value) => {
+    if (value === '' || redactTest(MARKER, value)) return all;
+    let rule = urlKeyRule(decodeKey(key));
+    // An encoded value (`redirect=https%3A%2F%2F…%3Ftoken%3D…`) is checked decoded; a hit masks the whole value.
+    if (rule === null && value.includes('%')) rule = encodedValueRule(value, opts);
+    if (rule === null) return all;
+    count.n++;
+    return `${key}=[redacted:${rule}]`;
+  });
+}
+
+function fragmentIsSensitive(fragment, opts) {
+  for (const pair of redactSplit(redactSlice(fragment, 1), FRAGMENT_SEPARATORS)) {
+    const eq = pair.indexOf('=');
+    if (eq > 0 && pair.length > eq + 1 && urlKeyRule(decodeKey(redactSlice(pair, 0, eq))) !== null) return true;
+  }
+  return maskText(redactSlice(fragment, 1), { email: opts.email, longSecret: opts.longSecret }).applied > 0;
+}
+
+/**
+ * Masks a URL field (AC-3.3): `user:pass@` → `url-credentials`, `;jsessionid=` path parameters and query
+ * parameters by key, a fragment holding a secret → the whole fragment `#[redacted:url-fragment]` (OAuth implicit),
+ * then the value patterns on the whole address. `phone` is never applied to URLs.
+ * @param {string} url
+ * @param {{ email?: boolean, longSecret?: boolean }} [opts]
+ * @returns {{ text: string, applied: number }}
+ */
+function maskUrl(url, opts) {
+  if (typeof url !== 'string') return { text: '', applied: 0 };
+  if (url === '') return { text: url, applied: 0 };
+  const o = { ...normalize(opts), phone: false };
+  const count = { n: 0 };
+  const [, base = '', query = '', fragment = ''] = redactExec(URL_PARTS, url) || [];
+  let path = redactReplace(base, PATH_PARAM, (all, key, value) => {
+    if (value === '' || redactTest(MARKER, value)) return all;
+    const rule = secretKeyRule(key);
+    if (rule === null) return all;
+    count.n++;
+    return `;${key}=[redacted:${rule}]`;
+  });
+  path = maskPatterns(path, o, count);
+  const q = query ? maskPatterns(maskQuery(query, o, count), o, count) : '';
+  let f = fragment;
+  if (f && f !== FRAGMENT_MARKER && fragmentIsSensitive(f, o)) {
+    f = FRAGMENT_MARKER;
+    count.n++;
+  }
+  return { text: path + q + f, applied: count.n };
+}
+
+// ---- E2 contract --------------------------------------------------------------------------------------------------
+
+/**
+ * E2 API for MAIN (response previews, step URLs): the Always rules on text cut to `MASK_LIMITS.inputChars`,
+ * without `email`/`phone`, without the E3-IN2 JSON-scalar and `k: v` forms (the background pass adds them).
+ * @returns {{ text: string, masked: number }}
+ */
+function maskSecrets(text) {
+  if (typeof text !== 'string') return { text: '', masked: 0 };
+  const cut = text.length > MASK_LIMITS.inputChars ? redactSlice(text, 0, MASK_LIMITS.inputChars) : text;
+  const { text: out, applied } = maskText(cut, { jsonScalars: false, colonPairs: false });
+  return { text: out, masked: applied };
+}
+return Object.freeze({ RULES_VERSION: RULES_VERSION, redactRegExp: redactRegExp, redactReplace: redactReplace, redactSplit: redactSplit, redactTest: redactTest, redactExec: redactExec, redactSlice: redactSlice, redactLower: redactLower, ALWAYS_RULES: ALWAYS_RULES, DEFAULT_RULES: DEFAULT_RULES, MASK_LIMITS: MASK_LIMITS, secretKeyRule: secretKeyRule, urlKeyRule: urlKeyRule, luhn: luhn, peselValid: peselValid, ibanValid: ibanValid, shannon: shannon, maskText: maskText, maskUrl: maskUrl, maskSecrets: maskSecrets });
+})();
+
+// module: page/dom-structure.js
+const __pds_m2 = (function () {
+const { redactRegExp, redactReplace, redactTest } = __pds_m1;
+// DOM structure without texts for the package (design D5, E3-T3a, AC-5.2, AC-5.3).
+// A walker over elements in document order that never materializes outerHTML: it emits tags, a whitelist of
+// attributes (id, class, role, data-*, aria-* except those that can carry user text, `type` on input/button) and no
+// text, comments, script/style/template/noscript content or field values. Every DOM read goes through getters
+// captured at document_start, so later page patches (getAttribute, attributes, tagName, …) cannot change the result;
+// a page can at most fake the structure, never leak through it (tag names are checked against [a-z][a-z0-9-]*).
+// Output stops before `maxChars` with all open tags closed, so it always parses (`truncated`, `omittedElements`).
+// `full` mode (developer option `html-structure` off) adds text nodes and all attributes except input `value`.
+// Shadow DOM and iframe documents are not walked (host/tag only). Top-level helpers carry the `dom` prefix (D6).
+
+
+const DOM_STRUCTURE_MAX_CHARS = 300000;
+const DOM_FULL_MAX_CHARS = 8000000;
+const DOM_ELEMENT_STRUCTURE_MAX_CHARS = 2000;
+
+// One attribute value (escaped size grows on top) and one attribute name.
+const DOM_ATTR_VALUE_MAX_CHARS = 2000;
+const DOM_ATTR_NAME_MAX_CHARS = 256;
+// Safety stop for the walk that counts omitted elements after a cut.
+const DOM_COUNT_MAX_NODES = 2000000;
+
+// Regexes are used through the redact* helpers, safe from page-replaced String/RegExp built-ins (AC-3.6).
+const DOM_TAG_RE = redactRegExp(/^[a-z][a-z0-9-]*$/);
+const DOM_DATA_ATTR_RE = redactRegExp(/^data-[a-z0-9_.:-]+$/);
+const DOM_ARIA_ATTR_RE = redactRegExp(/^aria-[a-z]+$/);
+// Any attribute name that serializes safely (full mode): no whitespace, quotes, `<>/=` or control characters.
+const DOM_ANY_ATTR_RE = redactRegExp(/^[^\s"'<>/=\p{Cc}]+$/u);
+const DOM_ATTR_ESCAPES = redactRegExp(/[&"<]/g);
+const DOM_TEXT_ESCAPES = redactRegExp(/[&<>]/g);
+const DOM_RAW_END = redactRegExp(/<\//g);
+const DOM_ENTITIES = { '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;' };
+const domEntity = (ch) => DOM_ENTITIES[ch];
+const DOM_ARIA_TEXT = ['aria-label', 'aria-valuetext', 'aria-description', 'aria-placeholder'];
+const DOM_TYPE_TAGS = ['input', 'button'];
+const DOM_VOID = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr'];
+// Structure mode: the tag stays (nth-of-type keeps matching), the content does not.
+const DOM_NO_CONTENT = ['script', 'style', 'template', 'noscript'];
+// Full mode: raw text elements, their text goes out unescaped (only `</` is broken so the element cannot end early).
+const DOM_RAW_TEXT = ['script', 'style'];
+
+const ELEMENT_NODE = 1;
+const TEXT_NODE = 3;
+const DOCUMENT_NODE = 9;
+
+function domGetter(ctor, name) {
+  try {
+    const desc = Object.getOwnPropertyDescriptor(ctor.prototype, name);
+    return desc && typeof desc.get === 'function' ? desc.get : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Getters the walker uses, captured before page scripts run (D5).
+function captureDomIntrinsics(win) {
+  return {
+    apply: Reflect.apply,
+    getLocalName: domGetter(win.Element, 'localName'),
+    getAttributes: domGetter(win.Element, 'attributes'),
+    getFirstElementChild: domGetter(win.Element, 'firstElementChild'),
+    getNextElementSibling: domGetter(win.Element, 'nextElementSibling'),
+    getFirstChild: domGetter(win.Node, 'firstChild'),
+    getNextSibling: domGetter(win.Node, 'nextSibling'),
+    getNodeType: domGetter(win.Node, 'nodeType'),
+    getData: domGetter(win.CharacterData, 'data'),
+    getDocumentElement: domGetter(win.Document, 'documentElement'),
+    getMapLength: domGetter(win.NamedNodeMap, 'length'),
+    mapItem: win.NamedNodeMap.prototype.item,
+    getAttrName: domGetter(win.Attr, 'name'),
+    getAttrValue: domGetter(win.Attr, 'value'),
+  };
+}
+
+function domEscapeAttr(value) {
+  return redactReplace(value, DOM_ATTR_ESCAPES, domEntity);
+}
+
+function domEscapeText(value) {
+  return redactReplace(value, DOM_TEXT_ESCAPES, domEntity);
+}
+
+function domEmpty(truncated) {
+  return { html: '', truncated, omittedElements: 0, elements: 0 };
+}
+
+// { html, truncated, omittedElements, elements } of `root` (an element, or a document → its documentElement).
+// Never throws: a failing DOM read gives an empty result with `truncated: true`.
+function serializeDom(root, { mode = 'structure', maxChars = DOM_STRUCTURE_MAX_CHARS, intrinsics } = {}) {
+  if (!root || typeof root !== 'object') return domEmpty(false);
+  try {
+    const I = intrinsics || captureDomIntrinsics(root.ownerDocument ? root.ownerDocument.defaultView : root.defaultView);
+    return domWalk(root, mode === 'full', Math.max(0, Number(maxChars) || 0), I);
+  } catch {
+    return domEmpty(true);
+  }
+}
+
+function domWalk(root, full, maxChars, I) {
+  const call = (fn, self) => I.apply(fn, self, []);
+  const nodeType = (node) => call(I.getNodeType, node);
+  let start = root;
+  if (nodeType(start) === DOCUMENT_NODE) start = call(I.getDocumentElement, start);
+  if (!start || nodeType(start) !== ELEMENT_NODE) return domEmpty(false);
+
+  const first = full ? (node) => call(I.getFirstChild, node) : (node) => call(I.getFirstElementChild, node);
+  const next = full ? (node) => call(I.getNextSibling, node) : (node) => call(I.getNextElementSibling, node);
+  // Lower-cased local name, or null when it is not a plain tag name.
+  const tagOf = (el) => {
+    const name = String(call(I.getLocalName, el)).toLowerCase();
+    return name.length <= DOM_ATTR_NAME_MAX_CHARS && redactTest(DOM_TAG_RE, name) ? name : null;
+  };
+
+  function keepAttr(tag, name) {
+    if (full) return redactTest(DOM_ANY_ATTR_RE, name) && !(name === 'value' && tag === 'input');
+    if (name === 'id' || name === 'class' || name === 'role') return true;
+    if (name === 'type') return DOM_TYPE_TAGS.includes(tag);
+    if (redactTest(DOM_DATA_ATTR_RE, name)) return true;
+    return redactTest(DOM_ARIA_ATTR_RE, name) && !DOM_ARIA_TEXT.includes(name);
+  }
+
+  function openTag(el, tag) {
+    let out = '<' + tag;
+    const attrs = call(I.getAttributes, el);
+    const count = attrs ? call(I.getMapLength, attrs) : 0;
+    for (let i = 0; i < count; i++) {
+      const attr = I.apply(I.mapItem, attrs, [i]);
+      if (!attr) continue;
+      const name = String(call(I.getAttrName, attr)).toLowerCase();
+      if (name.length > DOM_ATTR_NAME_MAX_CHARS || !keepAttr(tag, name)) continue;
+      const value = String(call(I.getAttrValue, attr)).slice(0, DOM_ATTR_VALUE_MAX_CHARS);
+      out += ' ' + name + '="' + domEscapeAttr(value) + '"';
+    }
+    return out + '>';
+  }
+
+  // Text of a raw text element (full mode), with `</` broken up.
+  function rawText(el) {
+    let text = '';
+    for (let child = call(I.getFirstChild, el); child; child = call(I.getNextSibling, child)) {
+      if (nodeType(child) === TEXT_NODE) text += String(call(I.getData, child));
+      if (text.length > maxChars) break;
+    }
+    return redactReplace(text, DOM_RAW_END, '<\\/');
+  }
+
+  const parts = [];
+  // Length of everything emitted, and of the closing tags still owed to the open elements.
+  let length = 0;
+  let closing = 0;
+  let elements = 0;
+  let truncated = false;
+  const stack = [];
+  const fits = (extra) => length + extra + closing <= maxChars;
+  const emit = (text) => {
+    parts.push(text);
+    length += text.length;
+  };
+
+  // Next node after `node` in document order; closes the elements it leaves. null after the root.
+  function advance(node) {
+    let current = node;
+    while (current !== start) {
+      const sibling = next(current);
+      if (sibling) return sibling;
+      const frame = stack.pop();
+      closing -= frame.close.length;
+      emit(frame.close);
+      current = frame.el;
+    }
+    return null;
+  }
+
+  let node = start;
+  while (node) {
+    const type = nodeType(node);
+    if (type === TEXT_NODE) {
+      const text = domEscapeText(String(call(I.getData, node)).slice(0, maxChars + 1));
+      if (!fits(text.length)) {
+        truncated = true;
+        break;
+      }
+      emit(text);
+      node = advance(node);
+      continue;
+    }
+    const tag = type === ELEMENT_NODE ? tagOf(node) : null;
+    if (!tag) {
+      // Comments, processing instructions, odd tag names (with their subtree).
+      node = advance(node);
+      continue;
+    }
+    const open = openTag(node, tag);
+    const isVoid = DOM_VOID.includes(tag);
+    const close = isVoid ? '' : '</' + tag + '>';
+    let inner = '';
+    if (!isVoid && full && DOM_RAW_TEXT.includes(tag)) inner = rawText(node);
+    if (!fits(open.length + inner.length + close.length)) {
+      truncated = true;
+      break;
+    }
+    emit(open);
+    elements++;
+    const childless = isVoid || (full ? DOM_RAW_TEXT.includes(tag) : DOM_NO_CONTENT.includes(tag));
+    const child = childless ? null : first(node);
+    if (!child) {
+      emit(inner + close);
+      node = node === start ? null : advance(node);
+      continue;
+    }
+    stack.push({ el: node, close });
+    closing += close.length;
+    node = child;
+  }
+
+  while (stack.length > 0) emit(stack.pop().close);
+  const omittedElements = truncated ? Math.max(0, domCountElements(start, full, I, tagOf) - elements) : 0;
+  return { html: parts.join(''), truncated, omittedElements, elements };
+}
+
+// Elements the walker would emit without a limit (same skip rules), for `omittedElements` after a cut.
+function domCountElements(start, full, I, tagOf) {
+  const call = (fn, self) => I.apply(fn, self, []);
+  const skipContent = full ? DOM_RAW_TEXT : DOM_NO_CONTENT;
+  let count = 0;
+  let visited = 0;
+  const stack = [start];
+  while (stack.length > 0 && visited < DOM_COUNT_MAX_NODES) {
+    const el = stack.pop();
+    visited++;
+    const tag = tagOf(el);
+    if (!tag) continue;
+    count++;
+    if (DOM_VOID.includes(tag) || skipContent.includes(tag)) continue;
+    for (let child = call(I.getFirstElementChild, el); child; child = call(I.getNextElementSibling, child)) stack.push(child);
+  }
+  return count;
+}
+
+// Structure of one element (console arguments, D5): same walker, ≤ maxChars, '' for non-elements.
+function elementStructure(el, maxChars = DOM_ELEMENT_STRUCTURE_MAX_CHARS, intrinsics) {
+  const result = serializeDom(el, { mode: 'structure', maxChars, intrinsics });
+  return result.html;
+}
+return Object.freeze({ DOM_STRUCTURE_MAX_CHARS: DOM_STRUCTURE_MAX_CHARS, DOM_FULL_MAX_CHARS: DOM_FULL_MAX_CHARS, DOM_ELEMENT_STRUCTURE_MAX_CHARS: DOM_ELEMENT_STRUCTURE_MAX_CHARS, captureDomIntrinsics: captureDomIntrinsics, serializeDom: serializeDom, elementStructure: elementStructure });
 })();
 
 // module: page/buffer.js
-const __pds_m1 = (function () {
+const __pds_m3 = (function () {
 // Bounded FIFO buffer for recorder entries (ES module, D6). Evicts the oldest
 // entries until both limits hold: `maxItems` entries and `maxChars` total chars
 // (as reported by the caller per entry). `truncated` turns true on the first
@@ -240,95 +1354,21 @@ return Object.freeze({ createBuffer: createBuffer });
 })();
 
 // module: lib/mask-secrets.js
-const __pds_m2 = (function () {
-// Masking of secrets in text at the source (E2 D3a): response body previews are masked in MAIN before they
-// reach a buffer, and again in the background when the package is assembled (the page may have patched
-// String/RegExp in MAIN). Pure, idempotent, no DOM and no imports, so it is bundled into MAIN as well.
-// Rules (skill privacy-redaction, rulesVersion 1): key list in JSON and `key=value` form, Bearer, JWT.
-// Every regex is linear: no nested quantifiers over overlapping classes; runs start only at a run boundary.
-// E3 grows this into the full redact.js.
+const __pds_m4 = (function () {
+// Masking of secrets in text at the source (E2 D3a): response body previews and step URLs are masked in MAIN
+// before they reach a buffer, and the background redacts the whole package again (E3 D1). Since E3 the rules
+// live in redact-rules.js (rulesVersion 1); this module keeps the E2 API (`maskSecrets`, `MASK_LIMITS`) for the
+// hooks and package.js and adds `cutPreview`. Pure, no DOM, bundled into MAIN as well.
 
-const MASK_LIMITS = Object.freeze({
-  // Longer input is cut before masking: an unmasked tail must never pass through.
-  inputChars: 65536,
-  keyChars: 256,
-});
 
-// Skill privacy-redaction, "Klucze". The first token found in a key names the rule: `access_token` → key-token.
-const SECRET_KEYS = Object.freeze([
-  'token', 'access_token', 'refresh_token', 'id_token', 'auth', 'authorization', 'session', 'sessionid', 'sid', 'jwt',
-  'secret', 'api_key', 'apikey', 'key', 'password', 'passwd', 'pwd', 'csrf', 'xsrf', 'cookie', 'set-cookie', 'bearer',
-  'credential', 'private', 'signature', 'sig', 'otp', 'pin',
-]);
+// Characters of a "word" (`[A-Za-z0-9._~+/=-]`) that a cut may leave half-kept (D3): a token fragment must not stay
+// at the end. Checked by char code, not by a regex, so page-replaced String/RegExp built-ins do not matter (AC-3.6).
+const WORD_PUNCTUATION = '._~+/=-';
 
-// Word boundaries in a key: start/end, `_`, `-`, `.`, white space or brackets (`user[password]`).
-const KEY_EDGE = '[_\\-.\\s\\[\\]]';
-const KEY_MATCHERS = SECRET_KEYS.map((token) => ({
-  token,
-  re: new RegExp(`(?:^|${KEY_EDGE})${token.replace(/[.-]/g, '\\$&')}(?:$|${KEY_EDGE})`),
-}));
-
-// `"key" : "value"` with JSON escapes. Non-string values (numbers, booleans, null, objects) are kept.
-const JSON_PAIR = /"((?:[^"\\\n]|\\.){1,256})"(\s*:\s*)"((?:[^"\\]|\\.)*)"/g;
-// `key=value` in forms, query strings, fragments and plain text; the value ends at `&`, `#`, white space,
-// a quote, a backslash (escaped quote inside a JSON string), `;`, `,`, `<` or `>`.
-const FORM_PAIR = /(?<![A-Za-z0-9_.\-[\]])([A-Za-z0-9_.\-[\]]{1,256})=([^&#\s"'\\;,<>]+)/g;
-const BEARER = /\b(Bearer\s+)([A-Za-z0-9._~+/=-]{16,})/gi;
-const JWT = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}(?![A-Za-z0-9_-])/g;
-
-const MARKER = /^\[redacted:[a-z0-9_-]+\]$/;
-
-// Trailing "word" that a cut may leave half-kept (D3): a token fragment must not stay at the end.
-const WORD_CHAR = /[A-Za-z0-9._~+/=-]/;
-const TRAILING_WORD = /[A-Za-z0-9._~+/=-]+$/;
-
-function secretKeyToken(rawKey) {
-  if (rawKey.length > MASK_LIMITS.keyChars) return null;
-  // camelCase → snake_case, so `accessToken` matches `token` as a word.
-  const key = rawKey.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
-  for (const { token, re } of KEY_MATCHERS) if (re.test(key)) return token;
-  return null;
-}
-
-/**
- * Replaces secret values in `text` with `[redacted:<rule>]` (rules `key-<token>`, `bearer`, `jwt`).
- * JSON stays valid: string values are replaced inside their quotes. Values that are already markers are
- * left alone, so `maskSecrets(maskSecrets(x).text)` changes nothing and reports `masked: 0`.
- * @param {string} text non-strings give `{ text: '', masked: 0 }`
- * @returns {{ text: string, masked: number }} `masked` = number of replaced values
- */
-function maskSecrets(text) {
-  if (typeof text !== 'string') return { text: '', masked: 0 };
-  let masked = 0;
-  let out = text.length > MASK_LIMITS.inputChars ? text.slice(0, MASK_LIMITS.inputChars) : text;
-
-  out = out.replace(JSON_PAIR, (all, key, colon, value) => {
-    if (value === '' || MARKER.test(value)) return all;
-    const token = secretKeyToken(key);
-    if (token === null) return all;
-    masked++;
-    return `"${key}"${colon}"[redacted:key-${token}]"`;
-  });
-
-  out = out.replace(FORM_PAIR, (all, key, value) => {
-    if (MARKER.test(value)) return all;
-    const token = secretKeyToken(key);
-    if (token === null) return all;
-    masked++;
-    return `${key}=[redacted:key-${token}]`;
-  });
-
-  out = out.replace(BEARER, (_all, prefix) => {
-    masked++;
-    return `${prefix}[redacted:bearer]`;
-  });
-
-  out = out.replace(JWT, () => {
-    masked++;
-    return '[redacted:jwt]';
-  });
-
-  return { text: out, masked };
+function isWordChar(ch) {
+  if (typeof ch !== 'string' || ch.length !== 1) return false;
+  const c = ch.charCodeAt(0);
+  return (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || WORD_PUNCTUATION.indexOf(ch) >= 0;
 }
 
 /**
@@ -341,17 +1381,21 @@ function cutPreview(text, max) {
   const limit = Number.isFinite(max) && max > 0 ? Math.floor(max) : 0;
   if (s.length <= limit) return { preview: s, truncated: false };
   let preview = s.slice(0, limit);
-  if (WORD_CHAR.test(s[limit])) preview = preview.replace(TRAILING_WORD, '');
+  if (isWordChar(s[limit])) {
+    let end = preview.length;
+    while (end > 0 && isWordChar(preview[end - 1])) end--;
+    preview = preview.slice(0, end);
+  }
   const last = preview.charCodeAt(preview.length - 1);
   if (last >= 0xd800 && last <= 0xdbff) preview = preview.slice(0, -1);
   return { preview, truncated: true };
 }
-return Object.freeze({ MASK_LIMITS: MASK_LIMITS, maskSecrets: maskSecrets, cutPreview: cutPreview });
+return Object.freeze({ RULES_VERSION: __pds_m1.RULES_VERSION, redactRegExp: __pds_m1.redactRegExp, redactReplace: __pds_m1.redactReplace, redactSplit: __pds_m1.redactSplit, redactTest: __pds_m1.redactTest, redactExec: __pds_m1.redactExec, redactSlice: __pds_m1.redactSlice, redactLower: __pds_m1.redactLower, ALWAYS_RULES: __pds_m1.ALWAYS_RULES, DEFAULT_RULES: __pds_m1.DEFAULT_RULES, MASK_LIMITS: __pds_m1.MASK_LIMITS, secretKeyRule: __pds_m1.secretKeyRule, urlKeyRule: __pds_m1.urlKeyRule, luhn: __pds_m1.luhn, peselValid: __pds_m1.peselValid, ibanValid: __pds_m1.ibanValid, shannon: __pds_m1.shannon, maskText: __pds_m1.maskText, maskUrl: __pds_m1.maskUrl, maskSecrets: __pds_m1.maskSecrets, cutPreview: cutPreview });
 })();
 
 // module: page/hooks-network.js
-const __pds_m3 = (function () {
-const { maskSecrets, cutPreview } = __pds_m2;
+const __pds_m5 = (function () {
+const { maskSecrets, cutPreview, maskUrl, secretKeyRule, MASK_LIMITS, redactRegExp, redactReplace, redactSplit, redactSlice } = __pds_m4;
 // Network hooks of the recorder (E1 D5): `fetch` through Proxy `apply`, `XMLHttpRequest` through
 // Proxy `construct` returning the native instance. `XMLHttpRequest.prototype` is never touched, so
 // `instanceof`, static constants and later page patches on the prototype keep working.
@@ -360,6 +1404,9 @@ const { maskSecrets, cutPreview } = __pds_m2;
 // previewed (E2 D3): fetch through `clone()` + a bounded stream reader (8192 chars or 2 s, then `cancel()`),
 // XHR from `responseText`/`response` of text/json types only. The preview is masked (maskSecrets) before it is cut
 // and reaches the recorder asynchronously through `ctx.attach(entry, fields, chars)`; without `attach` nothing is read.
+// Redaction at the source (E3 D1, defence in depth; the background pass decides): values of request headers with a
+// sensitive name become `[redacted:key-<token>]` and the URL goes through the Always rules for URL fields, both
+// before anything reaches the buffer. The call of the page always gets its own, unchanged arguments.
 
 
 const NETWORK_LIMITS = Object.freeze({
@@ -375,7 +1422,9 @@ const NETWORK_LIMITS = Object.freeze({
 });
 
 // Trailing "word" left by a read stopped at the char limit: dropped so a half token never stays (D3).
-const READ_TRAILING_WORD = /[A-Za-z0-9._~+/=-]+$/;
+const READ_TRAILING_WORD = redactRegExp(/[A-Za-z0-9._~+/=-]+$/);
+// XHR response header lines (page-replaced split/replace must not change them, AC-3.6).
+const LINE_BREAKS = redactRegExp(/[\r\n]+/);
 
 /**
  * Content types whose error bodies are previewed (D3): `text/*`, `application/json`, `*+json`, `*xml`,
@@ -424,8 +1473,9 @@ function defaultIntrinsics() {
   };
 }
 
+// String.prototype.slice captured at load (review E3 F9): URL fields and header values are cut with it.
 function slice(value, max) {
-  return value.length > max ? value.slice(0, max) + `... [truncated ${value.length - max} chars]` : value;
+  return value.length > max ? redactSlice(value, 0, max) + `... [truncated ${value.length - max} chars]` : value;
 }
 
 function toStr(value, max) {
@@ -453,20 +1503,33 @@ function makeTools(ctx) {
   const emit = (entry) => safe(() => ctx.record('network', entry));
   const json = (value) => safe(() => ctx.json(value), safe(() => toStr(value, 200), '[unserializable]'));
 
+  // URL field of an entry: masked whole (Always rules, AC-3.3), then cut, so a cut never leaves half a token.
+  // A masking failure keeps no address at all rather than an unmasked one.
+  const urlField = (str) => {
+    const capped = str.length > MASK_LIMITS.inputChars ? redactSlice(str, 0, MASK_LIMITS.inputChars) : str;
+    return slice(safe(() => maskUrl(capped).text, '[redacted:url]'), NETWORK_LIMITS.urlChars);
+  };
+
   const resolveUrl = (raw) => {
     const str = String(raw);
     const base = safe(() => win.document.baseURI, undefined) || safe(() => win.location.href, undefined);
-    return slice(safe(() => new I.URL(str, base).href, str), NETWORK_LIMITS.urlChars);
+    return urlField(safe(() => new I.URL(str, base).href, str));
   };
 
-  const headersToObject = (headers) => {
+  // Request header value as stored: a sensitive name (`Authorization`, `Cookie`, `X-Api-Key`…) gives the marker.
+  const requestHeaderValue = (name, value) => {
+    const rule = secretKeyRule(name);
+    return rule === null ? toStr(value, NETWORK_LIMITS.headerChars) : `[redacted:${rule}]`;
+  };
+
+  const headersToObject = (headers, mask) => {
     const out = {};
     let count = 0;
     const add = (key, value) => {
       if (count >= NETWORK_LIMITS.headers) return;
       const k = toStr(key, NETWORK_LIMITS.headerChars);
       if (!Object.prototype.hasOwnProperty.call(out, k)) count++;
-      out[k] = toStr(value, NETWORK_LIMITS.headerChars);
+      out[k] = mask ? requestHeaderValue(k, value) : toStr(value, NETWORK_LIMITS.headerChars);
     };
     if (headers == null || typeof headers !== 'object') return out;
     if (Array.isArray(headers)) {
@@ -505,7 +1568,7 @@ function makeTools(ctx) {
 
   // Preview fields from read text: mask first, then cut (D3). `readCut` = the read stopped at the char limit.
   const previewFields = (raw, readCut) => {
-    const text = readCut ? raw.replace(READ_TRAILING_WORD, '') : raw;
+    const text = readCut ? redactReplace(raw, READ_TRAILING_WORD, '') : raw;
     const masked = maskSecrets(text).text;
     const { preview, truncated } = cutPreview(masked, NETWORK_LIMITS.responseBodyChars);
     return { responseBodyPreview: preview, responseBodyTruncated: truncated || readCut };
@@ -523,7 +1586,7 @@ function makeTools(ctx) {
     && status >= 400 && isTextual(contentTypeOf(headers)) && canAttach();
 
   return {
-    I, win, safe, isOn, now, emit, json, resolveUrl, headersToObject, bodyPreview, later, cancelLater, then,
+    I, win, safe, isOn, now, emit, json, urlField, resolveUrl, requestHeaderValue, headersToObject, bodyPreview, later, cancelLater, then,
     attach, wantsBody,
   };
 }
@@ -584,7 +1647,8 @@ function readLimited(tools, stream, done) {
 // unexplained 0 is `unknown`. `statusUnavailable` is placed right after `status` (key order of the package schema).
 function markStatusUnavailable(entry, reason) {
   const keys = Object.keys(entry);
-  const tail = keys.slice(keys.indexOf('status') + 1).map((key) => [key, entry[key]]);
+  const tail = [];
+  for (const key of keys.slice(keys.indexOf('status') + 1)) tail.push([key, entry[key]]);
   for (const [key] of tail) delete entry[key];
   entry.status = null;
   entry.statusUnavailable = reason;
@@ -615,14 +1679,14 @@ function installFetchHook(ctx) {
       t: now(),
       type: 'fetch',
       method: toStr(rawMethod, NETWORK_LIMITS.methodChars).toUpperCase(),
-      url: req ? slice(req.url, NETWORK_LIMITS.urlChars) : tools.resolveUrl(input),
+      url: req ? tools.urlField(req.url) : tools.resolveUrl(input),
       status: null,
       statusText: null,
       ok: null,
       redirected: null,
       durationMs: null,
       sizeBytes: null,
-      requestHeaders: safe(() => tools.headersToObject(hasInit && init.headers != null ? init.headers : req && req.headers), {}),
+      requestHeaders: safe(() => tools.headersToObject(hasInit && init.headers != null ? init.headers : req && req.headers, true), {}),
       responseHeaders: {},
       requestBody: hasInit && init.body !== undefined ? safe(() => tools.bodyPreview(init.body), null) : null,
       error: null,
@@ -701,7 +1765,7 @@ function installFetchHook(ctx) {
 function parseResponseHeaders(raw, toObject) {
   if (typeof raw !== 'string' || !raw) return {};
   const pairs = [];
-  for (const line of raw.trim().split(/[\r\n]+/)) {
+  for (const line of redactSplit(raw.trim(), LINE_BREAKS)) {
     const i = line.indexOf(':');
     if (i > 0) pairs.push([line.slice(0, i).trim(), line.slice(i + 1).trim()]);
     if (pairs.length >= NETWORK_LIMITS.headers) break;
@@ -748,7 +1812,7 @@ function installXhrHook(ctx) {
             const known = Object.prototype.hasOwnProperty.call(state.headers, k);
             if (!known && state.headerCount >= NETWORK_LIMITS.headers) return;
             if (!known) state.headerCount++;
-            state.headers[k] = toStr(value, NETWORK_LIMITS.headerChars);
+            state.headers[k] = tools.requestHeaderValue(k, value);
           });
         }
         return result;
@@ -801,7 +1865,7 @@ function installXhrHook(ctx) {
           status,
           statusText: toStr(xhr.statusText, NETWORK_LIMITS.statusTextChars),
           ok: status >= 200 && status < 300,
-          redirected: safe(() => !!xhr.responseURL && xhr.responseURL !== state.url, false),
+          redirected: safe(() => !!xhr.responseURL && tools.urlField(xhr.responseURL) !== state.url, false),
           durationMs: end != null && t != null ? round2(end - t) : null,
           sizeBytes: null,
           requestHeaders: state.headers,
@@ -837,7 +1901,7 @@ return Object.freeze({ NETWORK_LIMITS: NETWORK_LIMITS, isTextual: isTextual, ins
 })();
 
 // module: page/hooks-console.js
-const __pds_m4 = (function () {
+const __pds_m6 = (function () {
 // console.* hooks for the MAIN-world recorder (design D5, E1-T5).
 // Each level gets a wrapper that records { t, level, args, stack? } and then calls the original exactly once
 // via Reflect.apply with the page's arguments. Recorder failures are swallowed; page exceptions propagate.
@@ -946,7 +2010,7 @@ return Object.freeze({ STACK_MAX_CHARS: STACK_MAX_CHARS, parseStack: parseStack,
 })();
 
 // module: page/hooks-errors.js
-const __pds_m5 = (function () {
+const __pds_m7 = (function () {
 // window `error` / `unhandledrejection` listeners for the MAIN-world recorder (design D5, E1-T5).
 // Bubble-phase listeners on window (resource load errors are out of scope, E2). Handler references are kept
 // so restore() removes exactly what was added. Recorder failures are swallowed.
@@ -1060,7 +2124,7 @@ return Object.freeze({ TEXT_MAX_CHARS: TEXT_MAX_CHARS, STACK_MAX_CHARS: STACK_MA
 })();
 
 // module: page/selector.js
-const __pds_m6 = (function () {
+const __pds_m8 = (function () {
 // CSS selector of an element for steps and vitals attribution (design D4, E2-T5a, AC-3.2).
 // Order: `#id` if unique → `tag[data-testid|data-test|data-test-id|data-qa|data-cy="…"]` if unique →
 // path of `tag:nth-of-type(k)` segments joined with ` > ` from the nearest ancestor with a unique id (or `html`).
@@ -1225,13 +2289,15 @@ return Object.freeze({ SELECTOR_MAX_CHARS: SELECTOR_MAX_CHARS, SELECTOR_DATA_MAX
 })();
 
 // module: page/hooks-steps.js
-const __pds_m7 = (function () {
-const { maskSecrets } = __pds_m2;
+const __pds_m9 = (function () {
+const { maskSecrets, redactRegExp, redactReplace } = __pds_m4;
 // User steps recorder for the MAIN-world recorder (design D4, E2-T5b, AC-3.1, AC-3.3–3.5, AC-3.7).
 // Capture-phase, passive listeners on window (added at document_start, so they run before page handlers and
 // never change propagation or defaultPrevented); a Proxy `apply` on History.prototype.pushState/replaceState.
 // Privacy at the source: no field value is ever read into a record — only `inputType`, `valueLength`, `checked`,
 // a whitelisted `key` and a short label of clicked buttons/links. Only trusted events are recorded.
+// File inputs (E3-IN4, AC-3.4): their `value` (`C:\fakepath\…`) is never read; `input` adds no step and `change`
+// records only `fileCount`.
 // Navigate URLs are masked (maskSecrets) before they reach a record; consecutive replaceState calls with no
 // other step in between are one step (search-as-you-type, AC-3.3).
 // Top-level helpers carry the `steps` prefix (D6: all page modules end up in one IIFE).
@@ -1244,6 +2310,8 @@ const STEP_URL_MAX_CHARS = 4000;
 const STEPS_NAVIGATE_DEDUP_MS = 50;
 // textContent read before whitespace normalization (labels of huge elements).
 const STEPS_TEXT_SCAN_CHARS = 2000;
+// Whitespace runs of a label; replaced through the captured RegExp functions (page patches, AC-3.6).
+const STEPS_WHITESPACE = redactRegExp(/\s+/g);
 
 const STEPS_CLICKABLE = 'a, button, [role=button], input, select, textarea, label, summary, [onclick]';
 const STEPS_LABELLED_INPUTS = ['submit', 'button', 'reset'];
@@ -1341,7 +2409,7 @@ function installStepsHook({ win, doc: _doc, now, record, selectorOf, intrinsics 
 
   function normalizedText(value) {
     if (typeof value !== 'string') return '';
-    const text = value.slice(0, STEPS_TEXT_SCAN_CHARS).replace(/\s+/g, ' ').trim();
+    const text = redactReplace(value.slice(0, STEPS_TEXT_SCAN_CHARS), STEPS_WHITESPACE, ' ').trim();
     return text.length > STEP_TEXT_MAX_CHARS ? text.slice(0, STEP_TEXT_MAX_CHARS) : text;
   }
 
@@ -1370,6 +2438,8 @@ function installStepsHook({ win, doc: _doc, now, record, selectorOf, intrinsics 
     if (is(target, I.HTMLInputElement)) {
       const inputType = String(read(I.getInputType, target, 'type'));
       if (inputType === 'password') return { el: target, inputType };
+      // File: the change step carries `fileCount`; the value (a path) is never read (E3-IN4).
+      if (inputType === 'file') return null;
       // Checkbox/radio: `value` is a fixed token ("on"), its length means nothing; the change step carries `checked` (QA F-5).
       if (inputType === 'checkbox' || inputType === 'radio') return null;
       return { el: target, inputType, valueLength: String(read(I.getInputValue, target, 'value')).length };
@@ -1422,7 +2492,8 @@ function installStepsHook({ win, doc: _doc, now, record, selectorOf, intrinsics 
       entry.inputType = inputType;
       if (inputType === 'file') {
         const files = read(I.getFiles, target, 'files');
-        entry.valueLength = files && typeof files.length === 'number' ? files.length : 0;
+        const count = files ? files.length : 0;
+        entry.fileCount = typeof count === 'number' && count >= 0 ? count : 0;
       } else {
         entry.checked = read(I.getChecked, target, 'checked') === true;
       }
@@ -1539,7 +2610,7 @@ return Object.freeze({ STEP_TEXT_MAX_CHARS: STEP_TEXT_MAX_CHARS, STEP_URL_MAX_CH
 })();
 
 // module: page/network-merge.js
-const __pds_m8 = (function () {
+const __pds_m10 = (function () {
 // Resource records, kinds and size correlation for `network[]` (E2 D2). Pure functions, no imports,
 // no DOM: the recorder feeds them Resource/Navigation Timing entries and its own hook records.
 // Status of fetch/XHR always comes from the hook; Resource Timing only adds `sizeBytes` to it, so a wrong
@@ -1580,6 +2651,13 @@ function intrinsicsOf(intrinsics) {
 function str(value, max) {
   const s = typeof value === 'string' ? value : value == null ? '' : String(value);
   return s.length > max ? s.slice(0, max) + `... [truncated ${s.length - max} chars]` : s;
+}
+
+// `items.map(fn)` as a loop: Array.prototype.map belongs to the page, which may replace it (AC-3.6).
+function mergeMap(items, fn) {
+  const out = [];
+  for (let i = 0; i < items.length; i++) out.push(fn(items[i], i));
+  return out;
 }
 
 function num(value) {
@@ -1709,8 +2787,7 @@ function correlateSizes(hookEntries, rtEntries, { docOrigin, intrinsics } = {}) 
     .sort((a, b) => a.startTime - b.startTime);
   const used = new I.Set();
   const sizes = new I.Map();
-  const order = records
-    .map((entry, index) => ({ entry, index }))
+  const order = mergeMap(records, (entry, index) => ({ entry, index }))
     .filter(({ entry }) => entry && (entry.type === 'fetch' || entry.type === 'xhr'))
     .sort((a, b) => (num(a.entry.t) ?? Infinity) - (num(b.entry.t) ?? Infinity));
   for (const { entry, index } of order) {
@@ -1727,7 +2804,7 @@ function correlateSizes(hookEntries, rtEntries, { docOrigin, intrinsics } = {}) 
       break;
     }
   }
-  return records.map((entry, index) => {
+  return mergeMap(records, (entry, index) => {
     if (!entry || (entry.type !== 'fetch' && entry.type !== 'xhr')) return entry && { ...entry };
     return withSize(entry, sizes.has(index) ? sizes.get(index) : entry.sizeBytes ?? null);
   });
@@ -1742,7 +2819,7 @@ function correlateSizes(hookEntries, rtEntries, { docOrigin, intrinsics } = {}) 
  * @param {{ t: number, url: string, kind: string }[]} loadErrors
  */
 function mergeLoadErrors(records, loadErrors) {
-  const out = (Array.isArray(records) ? records : []).map((e) => e && { ...e });
+  const out = mergeMap(Array.isArray(records) ? records : [], (e) => e && { ...e });
   const errors = (Array.isArray(loadErrors) ? loadErrors : []).filter((e) => e && typeof e.url === 'string');
   const added = [];
   for (const err of errors) {
@@ -1767,11 +2844,9 @@ function mergeLoadErrors(records, loadErrors) {
     });
   }
   if (added.length === 0) return out;
-  return out
-    .concat(added)
-    .map((entry, index) => ({ entry, index }))
-    .sort((a, b) => (num(a.entry && a.entry.t) ?? Infinity) - (num(b.entry && b.entry.t) ?? Infinity) || a.index - b.index)
-    .map(({ entry }) => entry);
+  const sorted = mergeMap(out.concat(added), (entry, index) => ({ entry, index }))
+    .sort((a, b) => (num(a.entry && a.entry.t) ?? Infinity) - (num(b.entry && b.entry.t) ?? Infinity) || a.index - b.index);
+  return mergeMap(sorted, ({ entry }) => entry);
 }
 
 /**
@@ -1787,8 +2862,8 @@ return Object.freeze({ MERGE_LIMITS: MERGE_LIMITS, resourceKind: resourceKind, r
 })();
 
 // module: page/hooks-resources.js
-const __pds_m9 = (function () {
-const { resourceRecord, resourceKind, correlateSizes, mergeLoadErrors, documentStatus: navStatus } = __pds_m8;
+const __pds_m11 = (function () {
+const { resourceRecord, resourceKind, correlateSizes, mergeLoadErrors, documentStatus: navStatus } = __pds_m10;
 // Resource observer of the recorder (E2 D2, E2-T3b): Resource Timing entries become `network[]` records
 // (img/script/css/font/other); RT entries of fetch/XHR only feed `sizeBytes` of the hook records; `error`
 // events of elements (capture phase on window, they do not bubble) mark failed loads. Document status comes
@@ -1839,7 +2914,10 @@ function resourcePlain(entry) {
 }
 
 function resourceCopies(items) {
-  return (Array.isArray(items) ? items : []).map((e) => (e && typeof e === 'object' ? { ...e } : e));
+  const out = [];
+  // A loop, not Array.prototype.map, which the page may replace (AC-3.6).
+  for (const e of Array.isArray(items) ? items : []) out.push(e && typeof e === 'object' ? { ...e } : e);
+  return out;
 }
 
 function resourceString(value) {
@@ -1977,9 +3055,9 @@ return Object.freeze({ RESOURCE_LIMITS: RESOURCE_LIMITS, installResourceHooks: i
 })();
 
 // module: page/hooks-frames.js
-const __pds_m10 = (function () {
-const { installConsoleHook } = __pds_m4;
-const { installErrorHooks } = __pds_m5;
+const __pds_m12 = (function () {
+const { installConsoleHook } = __pds_m6;
+const { installErrorHooks } = __pds_m7;
 // Same-origin iframe hooks for the MAIN-world recorder (design E2-D6, E2-T8).
 // From the top document: existing <iframe> elements + a MutationObserver for new ones. Every accessible same-origin
 // frame window gets console.error and window error/unhandledrejection hooks; records go to the caller's `record`
@@ -2135,7 +3213,7 @@ return Object.freeze({ FRAME_LIMITS: FRAME_LIMITS, installFrameHooks: installFra
 })();
 
 // module: page/vitals-math.js
-const __pds_m11 = (function () {
+const __pds_m13 = (function () {
 // Pure metric math for Core Web Vitals (design D1, E2-T1a): ratings, CLS session windows, INP percentile,
 // INP phases and the top long animation frames. No DOM and no observers here (those live in vitals.js),
 // so every rule is checked with plain entry vectors. Definitions follow web.dev (as of E2); review them
@@ -2162,6 +3240,13 @@ const VITALS_INP_PER_SKIP = 50;
 const VITALS_SCRIPTS_MAX = 10;
 const VITALS_URL_MAX = 4000;
 const VITALS_NAME_MAX = 500;
+
+/** `items.map(fn)` as a loop: Array.prototype.map belongs to the page, which may replace it (AC-3.6). */
+function vitalsMap(items, fn) {
+  const out = [];
+  for (let i = 0; i < items.length; i++) out.push(fn(items[i], i));
+  return out;
+}
 
 function rate(name, value) {
   const bounds = Object.prototype.hasOwnProperty.call(THRESHOLDS, name) ? THRESHOLDS[name] : null;
@@ -2238,29 +3323,29 @@ function vitalsCap(value, max) {
 
 // The `max` long animation frames with the highest blockingDuration, with script attribution.
 function topLongTasks(loafs, max = LONG_TASKS_MAX) {
-  return (loafs || [])
+  const top = (loafs || [])
     .filter(Boolean)
     .slice()
     .sort((a, b) => b.blockingDuration - a.blockingDuration)
-    .slice(0, max)
-    .map((loaf) => ({
-      t: loaf.startTime,
-      duration: loaf.duration,
-      blockingDuration: loaf.blockingDuration,
-      scripts: [...(loaf.scripts || [])].slice(0, VITALS_SCRIPTS_MAX).map((script) => ({
-        url: vitalsCap(script.sourceURL, VITALS_URL_MAX),
-        function: vitalsCap(script.sourceFunctionName, VITALS_NAME_MAX),
-        invoker: vitalsCap(script.invoker, VITALS_NAME_MAX),
-        duration: script.duration,
-      })),
-    }));
+    .slice(0, max);
+  return vitalsMap(top, (loaf) => ({
+    t: loaf.startTime,
+    duration: loaf.duration,
+    blockingDuration: loaf.blockingDuration,
+    scripts: vitalsMap([...(loaf.scripts || [])].slice(0, VITALS_SCRIPTS_MAX), (script) => ({
+      url: vitalsCap(script.sourceURL, VITALS_URL_MAX),
+      function: vitalsCap(script.sourceFunctionName, VITALS_NAME_MAX),
+      invoker: vitalsCap(script.invoker, VITALS_NAME_MAX),
+      duration: script.duration,
+    })),
+  }));
 }
-return Object.freeze({ THRESHOLDS: THRESHOLDS, LONG_TASKS_MAX: LONG_TASKS_MAX, rate: rate, unavailable: unavailable, clsFromShifts: clsFromShifts, inpFromEvents: inpFromEvents, inpPhases: inpPhases, topLongTasks: topLongTasks });
+return Object.freeze({ THRESHOLDS: THRESHOLDS, LONG_TASKS_MAX: LONG_TASKS_MAX, vitalsMap: vitalsMap, rate: rate, unavailable: unavailable, clsFromShifts: clsFromShifts, inpFromEvents: inpFromEvents, inpPhases: inpPhases, topLongTasks: topLongTasks });
 })();
 
 // module: page/vitals.js
-const __pds_m12 = (function () {
-const { rate, unavailable, clsFromShifts, inpFromEvents, inpPhases, topLongTasks, LONG_TASKS_MAX } = __pds_m11;
+const __pds_m14 = (function () {
+const { rate, unavailable, clsFromShifts, inpFromEvents, inpPhases, topLongTasks, vitalsMap, LONG_TASKS_MAX } = __pds_m13;
 // Core Web Vitals observers for the MAIN-world recorder (design D1, E2-T1b, AC-5.1–5.6, AC-5.8).
 // PerformanceObserver with `buffered: true` on paint, largest-contentful-paint, layout-shift, event (+first-input) and
 // long-animation-frame; TTFB from Navigation Timing. Attribution (DOM nodes) is turned into selectors in the
@@ -2420,7 +3505,7 @@ function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, opt
       startTime: entry.startTime,
       duration: entry.duration,
       blockingDuration: entry.blockingDuration,
-      scripts: [...(entry.scripts || [])].slice(0, 10).map((s) => ({
+      scripts: vitalsMap([...(entry.scripts || [])].slice(0, 10), (s) => ({
         sourceURL: s.sourceURL,
         sourceFunctionName: s.sourceFunctionName,
         invoker: s.invoker,
@@ -2570,15 +3655,16 @@ return Object.freeze({ VITALS_CLS_SOURCES_MAX: VITALS_CLS_SOURCES_MAX, captureVi
 })();
 
 // module: page/constants.js
-const __pds_m13 = (function () {
+const __pds_m15 = (function () {
 // Shared constants of the page recorder (E1 D5/D6). RECORDER_VERSION must equal `version` in
 // src/manifest.base.json (guarded by tests/unit/recorder.test.js), so a release has to run `npm run gen`.
 
-const RECORDER_VERSION = '0.4.0';
+const RECORDER_VERSION = '0.5.0';
 
 // Version of the MAIN <-> ISOLATED message protocol; 2 = `collect` result with steps, vitals, documentStatus
-// (E2 D8). Mirrored by RESULT_PROTOCOL in src/lib/save.js.
-const PROTOCOL = 2;
+// (E2 D8); 3 = dom.structure instead of outerHTML, forms `valueLength`/`fileCount`, console elements with
+// `structure` (E3). Mirrored by RESULT_PROTOCOL in src/lib/save.js.
+const PROTOCOL = 3;
 
 // Per-document buffer limits (D5): entries per section, chars per serialized value, chars of all entries.
 // `responseBodyChars`/`stackChars`/`longTasks` mirror the limits enforced in hooks-network, serialize and
@@ -2607,18 +3693,19 @@ return Object.freeze({ RECORDER_VERSION: RECORDER_VERSION, PROTOCOL: PROTOCOL, L
 })();
 
 // module: page/recorder.js
-const __pds_m14 = (function () {
+const __pds_m16 = (function () {
 const { serializeCapped } = __pds_m0;
-const { createBuffer } = __pds_m1;
-const { installFetchHook, installXhrHook } = __pds_m3;
-const { installConsoleHook } = __pds_m4;
-const { installErrorHooks } = __pds_m5;
-const { captureSelectorIntrinsics, createSelectorOf } = __pds_m6;
-const { installStepsHook } = __pds_m7;
-const { installResourceHooks } = __pds_m9;
-const { installFrameHooks } = __pds_m10;
-const { installVitals } = __pds_m12;
-const { RECORDER_VERSION, PROTOCOL, LIMITS, MARKER_KEY, CONFIG_TIMEOUT_MS, CONSOLE_LEVELS } = __pds_m13;
+const { captureDomIntrinsics, elementStructure } = __pds_m2;
+const { createBuffer } = __pds_m3;
+const { installFetchHook, installXhrHook } = __pds_m5;
+const { installConsoleHook } = __pds_m6;
+const { installErrorHooks } = __pds_m7;
+const { captureSelectorIntrinsics, createSelectorOf } = __pds_m8;
+const { installStepsHook } = __pds_m9;
+const { installResourceHooks } = __pds_m11;
+const { installFrameHooks } = __pds_m12;
+const { installVitals } = __pds_m14;
+const { RECORDER_VERSION, PROTOCOL, LIMITS, MARKER_KEY, CONFIG_TIMEOUT_MS, CONSOLE_LEVELS } = __pds_m15;
 // MAIN-world recorder (E1 D5, D10; E2 D2–D4, D6, D8): composes the console/error/network hooks, the user
 // steps, the resource observer, same-origin frames and the Web Vitals observers over bounded buffers,
 // guards the window with an install marker, stops on the time limit (also checked at every recorded event
@@ -2640,6 +3727,13 @@ function recorderTry(fn, fallback) {
   } catch {
     return fallback;
   }
+}
+
+// Copies of entries with `doc`; a loop, not Array.prototype.map, which the page may replace (AC-3.6).
+function recorderWithDoc(items, docId) {
+  const out = [];
+  for (let i = 0; i < items.length; i++) out.push({ ...items[i], doc: docId });
+  return out;
 }
 
 function recorderFinite(value) {
@@ -2694,6 +3788,10 @@ function createRecorder({ win, options = {} }) {
     MutationObserver: recorderTry(() => win.MutationObserver, undefined),
   };
   const selectorIntrinsics = recorderTry(() => captureSelectorIntrinsics(win), null);
+  // DOM getters for elements in console arguments (D5): `structure` instead of outerHTML, read through getters
+  // the page cannot patch later; without them (no DOM realm) elements get `structure: null`.
+  const domIntrinsics = recorderTry(() => captureDomIntrinsics(win), null);
+  const structureOf = domIntrinsics ? (el, maxChars) => elementStructure(el, maxChars, domIntrinsics) : null;
   const defineProperty = Object.defineProperty;
   const freeze = Object.freeze;
   const markerSymbol = Symbol.for(MARKER_KEY);
@@ -2741,7 +3839,7 @@ function createRecorder({ win, options = {} }) {
 
   // `json` for the hooks: capped serialization; the size goes into the next recorded entry.
   const json = (value) => {
-    const res = serializeCapped(value, limits.entryChars);
+    const res = serializeCapped(value, limits.entryChars, { elementStructure: structureOf });
     pendingChars += res.chars;
     return res.value;
   };
@@ -2938,7 +4036,7 @@ function createRecorder({ win, options = {} }) {
   function exportBuffers() {
     const out = { truncated: {}, counts: {} };
     for (const section of RECORDER_SECTIONS) {
-      out[section] = buffers[section].items().map((entry) => ({ ...entry, doc: docId }));
+      out[section] = recorderWithDoc(buffers[section].items(), docId);
       out.truncated[section] = buffers[section].truncated;
       out.counts[section] = counts[section];
     }
@@ -2948,11 +4046,11 @@ function createRecorder({ win, options = {} }) {
 
   // Network items with `sizeBytes` from Resource Timing and element load errors merged (copies, D2).
   function adjustedNetwork() {
-    if (frozenNetwork) return frozenNetwork.map((entry) => ({ ...entry, doc: docId }));
+    if (frozenNetwork) return recorderWithDoc(frozenNetwork, docId);
     const items = buffers.network.items();
     const current = resources;
     const adjusted = state === 'recording' && current ? recorderTry(() => current.adjust(items), null) : null;
-    return (Array.isArray(adjusted) ? adjusted : items).map((entry) => ({ ...entry, doc: docId }));
+    return recorderWithDoc(Array.isArray(adjusted) ? adjusted : items, docId);
   }
 
   // Current-document part of the `collect`/`flush` result (flat, as assemblePackage reads it); the entry point
@@ -3006,7 +4104,7 @@ return Object.freeze({ isInstalled: isInstalled, createRecorder: createRecorder 
 })();
 
 // module: page/channel.js
-const __pds_m15 = (function () {
+const __pds_m17 = (function () {
 // Private MAIN <-> ISOLATED channel (design D3), not window messaging: the two worlds bind
 // synchronously at document_start on a detached DOM node handed over in
 // MouseEvent.relatedTarget, then talk only through CustomEvents on that node. The page has no
@@ -3269,18 +4367,33 @@ return Object.freeze({ CHANNEL_PROTOCOL: CHANNEL_PROTOCOL, CHANNEL_EVENTS: CHANN
 })();
 
 // module: page/collector.js
-const __pds_m16 = (function () {
+const __pds_m18 = (function () {
+const { captureDomIntrinsics, serializeDom, DOM_STRUCTURE_MAX_CHARS, DOM_FULL_MAX_CHARS } = __pds_m2;
 // Page state collector (environment / DOM / performance / storage) for the MAIN world.
-// Logic moved 1:1 from E0 page-debug-snapshot.js; v2 keeps these sections "bez zmian treści".
+// Logic moved 1:1 from E0 page-debug-snapshot.js; v4 changes only `dom` (E3-T3b, design D5): no outerHTML,
+// `structure` without texts, form values as `valueLength`, `fullHtml` only on the developer's request.
 // Every function takes (win, doc, deps); deps.safeSlice is injected (src/page/serialize.js in the recorder).
 // No chrome.* here: this module runs in the page's MAIN world.
 
+
 const COLLECTOR_LIMITS = Object.freeze({
-  html: 2000000, // v1 config.maxHtmlLength
+  html: DOM_STRUCTURE_MAX_CHARS, // dom.structure (limits.html in the package)
+  fullHtml: DOM_FULL_MAX_CHARS, // dom.fullHtml, developer option only
   storageValue: 5000,
-  formValue: 500,
   text: 300,
 });
+
+// DOM getters captured when the module loads (document_start in MAIN), so page patches made later
+// cannot change dom.structure (D5). Outside a DOM realm serializeDom captures them on its own.
+function collectorCaptureIntrinsics() {
+  try {
+    return typeof globalThis.Element === 'function' ? captureDomIntrinsics(globalThis) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const COLLECTOR_DOM_INTRINSICS = collectorCaptureIntrinsics();
 
 function collectorLimits(deps) {
   return { ...COLLECTOR_LIMITS, ...(deps && deps.limits) };
@@ -3367,34 +4480,23 @@ function collectEnvironment(win, doc, _deps) {
   };
 }
 
-// The disclosure promises "bez haseł i pól ukrytych" (QA F-3): their value attribute must not
-// reach outerHTML either. Template contents are serialized too, so they are searched as well.
-const SECRET_INPUTS = 'input[type="password" i], input[type="hidden" i]';
-const REDACTED = '[redacted]';
-
-function redactSecretInputs(root) {
-  for (const el of root.querySelectorAll(SECRET_INPUTS)) {
-    if (el.hasAttribute('value')) el.setAttribute('value', REDACTED);
+// Form field value as its length only (AC-3.2); a password value is never read. A file input gives only the
+// file count; its value (a fake path with the file name) is never read (IN4).
+function collectorFieldValue(el) {
+  if (el.type === 'password') return {};
+  if (el.type === 'file') {
+    const files = el.files;
+    const count = files ? Number(files.length) : NaN;
+    return Number.isFinite(count) ? { fileCount: count } : {};
   }
-  for (const tpl of root.querySelectorAll('template')) {
-    if (tpl.content) redactSecretInputs(tpl.content);
-  }
-}
-
-// Page markup without secret input values; the page itself is never touched. The copy lives in
-// an inert document: no browsing context, so images do not load and custom elements do not upgrade.
-function redactedOuterHTML(doc) {
-  const root = doc.documentElement;
-  if (!doc.querySelector(`${SECRET_INPUTS}, template`)) return root.outerHTML;
-  const inert = doc.implementation.createHTMLDocument('');
-  const copy = inert.importNode(root, true);
-  redactSecretInputs(copy);
-  return copy.outerHTML;
+  const value = el.value;
+  return typeof value === 'string' ? { valueLength: value.length } : {};
 }
 
 function collectDomSnapshot(win, doc, deps) {
-  const { safeSlice } = deps;
   const limits = collectorLimits(deps);
+  const intrinsics = deps.intrinsics || COLLECTOR_DOM_INTRINSICS;
+  const structure = serializeDom(doc, { mode: 'structure', maxChars: limits.html, intrinsics });
   const allElements = Array.from(doc.querySelectorAll('*'));
 
   return {
@@ -3418,7 +4520,6 @@ function collectDomSnapshot(win, doc, deps) {
       lang: doc.documentElement.lang || null,
       charset: doc.characterSet,
       compatMode: doc.compatMode,
-      outerHTML: safeSlice(redactedOuterHTML(doc), limits.html),
     },
     meta: Array.from(doc.querySelectorAll('meta')).map((el) => getElementSummary(el, deps)),
     canonical: doc.querySelector('link[rel="canonical"]')?.href || null,
@@ -3450,15 +4551,20 @@ function collectDomSnapshot(win, doc, deps) {
       width: img.width,
       height: img.height,
       loading: img.loading || null,
-      alt: img.alt || null,
+      // Review F7: alt and title texts may name a person ("Avatar Jana Kowalskiego"); only their lengths are kept.
+      altLength: (img.alt || '').length,
     })),
-    iframes: Array.from(doc.querySelectorAll('iframe')).map((el) => ({
-      src: el.src || null,
-      id: el.id || null,
-      name: el.name || null,
-      title: el.title || null,
-      attributes: getAttributes(el),
-    })),
+    iframes: Array.from(doc.querySelectorAll('iframe')).map((el) => {
+      const attributes = getAttributes(el);
+      delete attributes.title;
+      return {
+        src: el.src || null,
+        id: el.id || null,
+        name: el.name || null,
+        titleLength: (el.title || '').length,
+        attributes,
+      };
+    }),
     forms: Array.from(doc.forms).map((form) => ({
       id: form.id || null,
       name: form.name || null,
@@ -3470,7 +4576,7 @@ function collectDomSnapshot(win, doc, deps) {
         type: el.type || null,
         name: el.name || null,
         id: el.id || null,
-        value: ['password', 'hidden'].includes(el.type) ? '[redacted]' : safeSlice(el.value, limits.formValue),
+        ...collectorFieldValue(el),
         checked: typeof el.checked === 'boolean' ? el.checked : undefined,
       })),
     })),
@@ -3480,6 +4586,13 @@ function collectDomSnapshot(win, doc, deps) {
       dataAttributesOnHtml: getAttributes(doc.documentElement),
       dataAttributesOnBody: doc.body ? getAttributes(doc.body) : {},
     },
+    // Last keys of dom (schema v4).
+    structure: structure.html,
+    structureTruncated: structure.truncated,
+    omittedElements: structure.omittedElements,
+    fullHtml: deps.fullHtml
+      ? serializeDom(doc, { mode: 'full', maxChars: limits.fullHtml, intrinsics }).html
+      : null,
   };
 }
 
@@ -3570,8 +4683,9 @@ const COLLECTOR_SECTIONS = [
 ];
 
 // Collects all four sections; a throwing section becomes null plus { section, error: error.name }.
-function collectPageState({ win, doc, safeSlice, limits }) {
-  const deps = { safeSlice, limits };
+// `fullHtml: true` (developer option, D12) adds dom.fullHtml; otherwise it is null.
+function collectPageState({ win, doc, safeSlice, limits, fullHtml = false, intrinsics }) {
+  const deps = { safeSlice, limits, fullHtml: fullHtml === true, intrinsics };
   const result = { environment: null, dom: null, performance: null, storage: null, errors: [] };
   for (const [section, collect] of COLLECTOR_SECTIONS) {
     try {
@@ -3587,14 +4701,15 @@ return Object.freeze({ COLLECTOR_LIMITS: COLLECTOR_LIMITS, getAttributes: getAtt
 
 // module: page/main-entry.js
 (function () {
-const { isInstalled, createRecorder } = __pds_m14;
-const { connectMain } = __pds_m15;
-const { collectPageState } = __pds_m16;
+const { isInstalled, createRecorder } = __pds_m16;
+const { connectMain } = __pds_m17;
+const { collectPageState } = __pds_m18;
 const { safeSlice } = __pds_m0;
-const { RECORDER_VERSION } = __pds_m13;
+const { RECORDER_VERSION } = __pds_m15;
 // MAIN-world entry point (E1 D1, D3, D4), bundled into src/content/main-world.js by `npm run gen`.
 // Installs the recorder at document_start, binds the private channel to the ISOLATED bridge and
-// answers its messages: `config` (per-document gate), `collect` (current document as a JSON string),
+// answers its messages: `config` (per-document gate), `collect` (current document as a JSON string; `fullHtml`
+// only when the payload asks for it, E3 D12),
 // `stop` (time limit from the background; hooks go, buffers stay), `destroy`. At `beforeunload` and `pagehide`
 // it hands the buffers over (`flush`, vitals final) so a reload or a jump
 // to another site keeps them. F-2: Firefox drops the pagehide copy of a document left for another site,
@@ -3693,12 +4808,13 @@ function bootMain({ win, doc }) {
     }
   }
 
-  function onCollect(id) {
+  function onCollect(id, payload) {
+    const fullHtml = mainTry(() => payload.options.fullHtml === true, false);
     let raw;
     try {
       // A hidden page cannot grow its metrics until it is shown again, so they count as final (AC-5.6).
       const hidden = getVisibility ? mainTry(() => apply(getVisibility, doc, []) === 'hidden', false) : false;
-      const result = { ...collectPageState({ win, doc, safeSlice }), ...rec.snapshot({ final: hidden }) };
+      const result = { ...collectPageState({ win, doc, safeSlice, fullHtml }), ...rec.snapshot({ final: hidden }) };
       if (result.docId === null || result.docId === undefined) result.docId = docId;
       raw = apply(stringify, win.JSON, [result]);
     } catch {
@@ -3714,7 +4830,7 @@ function bootMain({ win, doc }) {
     onMessage: ({ type, payload, id }) => {
       if (closed) return;
       if (type === 'config') onConfig(payload);
-      else if (type === 'collect') onCollect(id);
+      else if (type === 'collect') onCollect(id, payload);
       else if (type === 'stop') rec.stop(payload && payload.reason === 'time-limit' ? 'time-limit' : 'user');
       else if (type === 'destroy') teardown();
     },

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
-import { collectReachable } from '../../scripts/lib/reachability.mjs';
+import { blankJsComments, collectReachable } from '../../scripts/lib/reachability.mjs';
 import { mergeManifest } from '../../scripts/lib/manifest.mjs';
 
 let dir;
@@ -320,6 +320,64 @@ describe('collectReachable', () => {
       'lib.js': '',
     });
     await expect(collectReachable(dir)).rejects.toThrow(/Unresolvable reference in bg\.js: importScripts\(/);
+  });
+
+  it('ignores url(, getURL(, files:, import( and imports inside JS comments (review F11)', async () => {
+    writeTree({
+      'manifest.json': { manifest_version: 3, background: { service_worker: 'bg.js', type: 'module' } },
+      'bg.js': [
+        '// The mask is drawn with url( nowhere; chrome.runtime.getURL(name) is not used; files: one per doc.',
+        "/* import('./gone.js'); importScripts('x.js'); js: list; import { a } from './gone.js'; */",
+        "import { b } from './lib.js'; // trailing comment: url(${x}) files: list",
+        'const re = /\\/\\/ not a comment/; const half = 4 / 2; // files: list',
+        "const s = '// not a comment either'; const t = `/* text ${half /* inner: files: x */} */`;",
+        '/** JSDoc: runtime.getURL(path) builds files: [a, b] */',
+        'export const tail = 1; /* unterminated: url(',
+      ].join('\n'),
+      'lib.js': '',
+    });
+    expect(await collectReachable(dir)).toEqual(['bg.js', 'lib.js']);
+  });
+
+  it('blankJsComments keeps length and line breaks, blanks only comments', () => {
+    const src = "a(); // x url(\nb('//', /\\/\\//); /* y\n z */ c(`${d /* e */}`);";
+    const out = blankJsComments(src);
+    expect(out).toHaveLength(src.length);
+    expect(out.split('\n')).toHaveLength(src.split('\n').length);
+    const spaces = (text) => text.replace(/[^\n]/g, ' ');
+    let expected = src;
+    for (const comment of ['// x url(', '/* y\n z */', '/* e */']) expected = expected.replace(comment, spaces(comment));
+    expect(out).toBe(expected);
+  });
+
+  it('comments do not hide real code after them: strings with // and regexes with /* are not comments', async () => {
+    writeTree({
+      'manifest.json': { manifest_version: 3, background: { service_worker: 'bg.js', type: 'module' } },
+      'bg.js': "const u = 'http://x'; const r = /a\\/*b/; chrome.runtime.getURL('page/x.js');",
+      'page/x.js': '',
+    });
+    expect(await collectReachable(dir)).toEqual(['bg.js', 'page/x.js']);
+
+    writeTree({ 'bg.js': "const u = 'http://x'; executeScript({ files: list });" });
+    await expect(collectReachable(dir)).rejects.toThrow(/Unresolvable reference in bg\.js: files: list/);
+
+    writeTree({ 'bg.js': "const t = `a ${'//'} b`; chrome.runtime.getURL(name);" });
+    await expect(collectReachable(dir)).rejects.toThrow(/Unresolvable reference in bg\.js: runtime\.getURL\(name/);
+  });
+
+  it('method calls named url( or getURL( on other objects are not references; runtime.getURL( still is (review F11)', async () => {
+    writeTree({
+      'manifest.json': { manifest_version: 3, background: { service_worker: 'bg.js' } },
+      'bg.js': 'const a = ctx.url(entry); const b = router.getURL(name); const c = obj?.url(x); const d = new URL(href);',
+    });
+    expect(await collectReachable(dir)).toEqual(['bg.js']);
+
+    writeTree({ 'bg.js': 'const u = browser.runtime.getURL(name);' });
+    await expect(collectReachable(dir)).rejects.toThrow(/Unresolvable reference in bg\.js: runtime\.getURL\(name/);
+    writeTree({ 'bg.js': 'const u = api.runtime.getURL(name);' });
+    await expect(collectReachable(dir)).rejects.toThrow(/Unresolvable reference in bg\.js: runtime\.getURL\(name/);
+    writeTree({ 'bg.js': "el.style.mask = 'url(' + x + ')';" });
+    await expect(collectReachable(dir)).rejects.toThrow(/Unresolvable reference in bg\.js: url\(/);
   });
 
   it('existing src/ still builds', async () => {

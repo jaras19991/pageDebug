@@ -1,0 +1,298 @@
+{
+ "comment": "E3-T1 corpus (AC-5.1). Must stay unchanged with every rule enabled; at most 2 false positives, each documented in `falsePositive`. `via: \"url\"` items go through maskUrl.",
+ "items": [
+  {
+   "id": "ts-ms",
+   "text": "event at 1729936800123 handled"
+  },
+  {
+   "id": "ts-ms-json",
+   "text": "{\"t\":1729936800123,\"dur\":153.4}"
+  },
+  {
+   "id": "ts-s",
+   "text": "expires=1729936800"
+  },
+  {
+   "id": "ts-iso",
+   "text": "saved at 2024-10-26T12:34:56.789Z"
+  },
+  {
+   "id": "perf-entry",
+   "text": "{\"name\":\"https://cdn.example.com/a.js\",\"startTime\":1234.5,\"duration\":87.25,\"transferSize\":34567}"
+  },
+  {
+   "id": "uuid-url",
+   "text": "https://api.example.com/v2/orders/550e8400-e29b-41d4-a716-446655440000/items",
+   "via": "url"
+  },
+  {
+   "id": "uuid-nodash-url",
+   "text": "https://api.example.com/files/550e8400e29b41d4a716446655440000",
+   "via": "url"
+  },
+  {
+   "id": "commit-url",
+   "text": "https://github.com/org/repo/commit/9fceb02d0ae598e95dc970b74767f19372d61af8",
+   "via": "url"
+  },
+  {
+   "id": "commit-text",
+   "text": "deployed 9fceb02d0ae598e95dc970b74767f19372d61af8 to prod"
+  },
+  {
+   "id": "chunk-hex-url",
+   "text": "https://cdn.example.com/static/js/vendors~main.8f7e6d5c4b3a29181716151413121110.js",
+   "via": "url"
+  },
+  {
+   "id": "next-chunk-url",
+   "text": "https://shop.example.com/_next/static/chunks/pages/_app-Ab3dEf9hIjK2mNoPqRsTuVwXyZ01234.js",
+   "via": "url"
+  },
+  {
+   "id": "stack-frame",
+   "text": "TypeError: x is undefined\n    at Object.render (https://cdn.example.com/static/js/main.4f3a2b1c.chunk.js:2:31337)"
+  },
+  {
+   "id": "semver",
+   "text": "version v1.2.3, build 2024.10.26"
+  },
+  {
+   "id": "npm-spec",
+   "text": "loaded react@18.2.0 and lodash@4.17.21"
+  },
+  {
+   "id": "scoped-pkg",
+   "text": "peer @babel/core@7.24.0 missing"
+  },
+  {
+   "id": "base64-png",
+   "text": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+  },
+  {
+   "id": "base64-gif-attr",
+   "text": "<img src=\"data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7\" alt=\"\">"
+  },
+  {
+   "id": "order-id",
+   "text": "Zamówienie ZAM-2024-000123 przyjęte"
+  },
+  {
+   "id": "order-id-num",
+   "text": "{\"orderId\":100234,\"status\":\"paid\"}"
+  },
+  {
+   "id": "order-id-long",
+   "text": "order 4000123456789010 shipped"
+  },
+  {
+   "id": "http-404",
+   "text": "GET https://api.example.com/x 404 Not Found"
+  },
+  {
+   "id": "http-500",
+   "text": "{\"status\":500,\"error\":\"Internal Server Error\"}"
+  },
+  {
+   "id": "pl-text-digits",
+   "text": "Dostawa w ciągu 3-5 dni roboczych, koszt 19,99 zł, do 26.10.2024."
+  },
+  {
+   "id": "pl-text-postal",
+   "text": "Adres: ul. Czerska 8/10, 00-732 Warszawa"
+  },
+  {
+   "id": "pl-text-nip",
+   "text": "NIP 526-000-12-46, REGON 01234567"
+  },
+  {
+   "id": "pl-amount-grouped",
+   "text": "Przychód: 123 456 789 zł",
+   "falsePositive": "phone: three digit groups separated by spaces look exactly like a PL phone number (3-3-3); the rule runs only in console, errors, bodies and storage"
+  },
+  {
+   "id": "tokenizer-key",
+   "text": "{\"tokenizer\":\"bert-base\",\"keyboard\":\"qwerty\"}"
+  },
+  {
+   "id": "author-key",
+   "text": "{\"author\":\"Jan\",\"monkey\":\"Zuzia\",\"pinned\":false,\"sidebar\":\"open\"}"
+  },
+  {
+   "id": "form-benign",
+   "text": "page=2&sort=name&utm_source=newsletter&utm_campaign=spring_sale_2024"
+  },
+  {
+   "id": "query-benign-url",
+   "text": "https://shop.example.com/search?q=buty+zimowe&page=3&sort=price_asc",
+   "via": "url"
+  },
+  {
+   "id": "spa-hash-url",
+   "text": "https://app.example.com/#/dashboard/settings/42",
+   "via": "url"
+  },
+  {
+   "id": "anchor-url",
+   "text": "https://docs.example.com/guide.html#section-2",
+   "via": "url"
+  },
+  {
+   "id": "utm-url",
+   "text": "https://example.com/?utm_source=fb&utm_medium=cpc&utm_campaign=autumn_2024_PL_retargeting_v3",
+   "via": "url"
+  },
+  {
+   "id": "path-long-url",
+   "text": "https://api.example.com/api/v2/organizations/12345/projects/67890/issues?state=open",
+   "via": "url"
+  },
+  {
+   "id": "path-mixed-case-url",
+   "text": "https://shop.example.com/Products/Category/Item123/Details/Reviews",
+   "via": "url"
+  },
+  {
+   "id": "selector",
+   "text": "div.product-card:nth-child(3) > a.btn-primary[data-id=\"42\"]"
+  },
+  {
+   "id": "css-hex",
+   "text": "color: #ff00aa; margin: 0 4px"
+  },
+  {
+   "id": "ga-cookie-like",
+   "text": "GA1.2.1234567890.1729936800"
+  },
+  {
+   "id": "snake-identifier",
+   "text": "called get_user_profile_settings_by_account_id_v2 twice"
+  },
+  {
+   "id": "node-path",
+   "text": "Cannot find module node_modules/some-package/dist/esm/index2"
+  },
+  {
+   "id": "coords",
+   "text": "{\"x\":512,\"y\":384,\"width\":1920,\"height\":1080}"
+  },
+  {
+   "id": "lcp-text",
+   "text": "LCP 2534.7 ms, CLS 0.12, INP 180 ms"
+  },
+  {
+   "id": "ip-port",
+   "text": "connect ECONNREFUSED 127.0.0.1:8080"
+  },
+  {
+   "id": "ipv6",
+   "text": "listening on [::1]:3000"
+  },
+  {
+   "id": "date-ranges",
+   "text": "Promocja 01.11.2024-30.11.2024, kod JESIEN24"
+  },
+  {
+   "id": "phone-like-short",
+   "text": "Wybierz opcję 1, 2 lub 3; numer pokoju 204"
+  },
+  {
+   "id": "html-structure",
+   "text": "<div id=\"main\" class=\"container\" role=\"main\"><ul class=\"list\"><li data-index=\"3\"></li></ul></div>"
+  },
+  {
+   "id": "xml-benign",
+   "text": "<item><name>Buty</name><price>199.99</price><sku>BT-2024-77</sku></item>"
+  },
+  {
+   "id": "colon-benign",
+   "text": "Status: OK\nDuration: 153 ms\nRetry-After: 120"
+  },
+  {
+   "id": "email-like-image",
+   "text": "image nginx@sha256 pulled"
+  },
+  {
+   "id": "json-booleans",
+   "text": "{\"enabled\":true,\"count\":0,\"ratio\":0.5,\"tags\":[\"a\",\"b\"]}"
+  },
+  {
+   "id": "long-words",
+   "text": "Konstantynopolitańczykowianeczka and internationalization are long words"
+  },
+  {
+   "id": "hash-sha256-hex",
+   "text": "integrity sha256-9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+  },
+  {
+   "id": "error-message",
+   "text": "Uncaught (in promise) Error: Request failed with status code 503"
+  },
+  {
+   "id": "f1-escaped-json-benign",
+   "text": "{\"meta\":\"{\\\"title\\\":\\\"Hello\\\",\\\"lang\\\":\\\"pl\\\"}\"}"
+  },
+  {
+   "id": "f1-entity-benign",
+   "text": "<div data-props=\"{&quot;name&quot;:&quot;Jan&quot;,&quot;count&quot;:3}\"></div>"
+  },
+  {
+   "id": "f2-unclosed-benign",
+   "text": "{\"title\":\"Some long description that was cut"
+  },
+  {
+   "id": "f3-colon-quoted-benign",
+   "text": "label: \"Zapisz\", title: \"Konto\""
+  },
+  {
+   "id": "f5-code-in-text",
+   "text": "{\"code\":\"PL\",\"ticket\":\"T-1001\"} error code: 404"
+  },
+  {
+   "id": "f5-country-code-url",
+   "via": "url",
+   "text": "https://shop.example.test/checkout?country_code=PL&zip_code=00-950"
+  },
+  {
+   "id": "f6-pass-words",
+   "text": "{\"passenger\":\"Anna\",\"compass\":\"N\",\"bypass\":true,\"passport_country\":\"PL\"}"
+  },
+  {
+   "id": "f6-pass-query",
+   "text": "passengers=2&bypass_cache=1&pwa=1"
+  },
+  {
+   "id": "f8-path-param-benign",
+   "text": "at https://a.example.pl/app;v=2?x=1&y=2"
+  },
+  {
+   "id": "qa-f3-uuid-request-id",
+   "text": "x-ms-request-id: 4e457417-4723-411c-80a8-8318a1d04aa0"
+  },
+  {
+   "id": "qa-f3-uuid-text",
+   "text": "request 25daeac4-6434-4664-8787-c5574af969d3 / 19afa557-7871-4736-8251-83d29347ab54 failed"
+  },
+  {
+   "id": "f5-stack-benign",
+   "text": "Error: boom\n    at f (https://cdn.example.test/main.4f3a.js?v=3:2:31)\n    at http://127.0.0.1:5173/traps-e3.html?lang=pl&country_code=PL:44:15"
+  },
+  {
+   "id": "f5-text-url-benign",
+   "text": "see https://shop.example.test/x?promo=ticket&zip_code=00-950 (code: 404)"
+  },
+  {
+   "id": "n1-uuid-prefixed",
+   "text": "req-25daeac4-6434-4664-8787-c5574af969d3 done"
+  },
+  {
+   "id": "n2-form-encoded-benign",
+   "text": "next=%2Fcart%3Fpage%3D2&q=buty%20zimowe"
+  },
+  {
+   "id": "n4-xml-entity-benign",
+   "text": "<pre>&lt;title>Raport&lt;/title> &lt;b&gt;ok&lt;/b&gt;</pre>"
+  }
+ ]
+}

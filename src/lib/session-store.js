@@ -197,6 +197,13 @@ export function createStore(area, { docBudgetBytes = DEFAULT_DOC_BUDGET, totalBu
         if (keys.length) await area.remove(keys);
       }),
 
+    /** Removes the stored copies of the given documents (trimmed from `rec.docs`, AC-6.5); missing ones are skipped. */
+    removeDocs: (ids) =>
+      enqueue(async () => {
+        const keys = Array.isArray(ids) ? ids.map(docKey) : [];
+        if (keys.length) await area.remove(keys);
+      }),
+
     getPending: () => enqueue(() => read(KEYS.pending)),
     setPending: (pending) => enqueue(() => area.set({ [KEYS.pending]: pending })),
     clearPending: () => enqueue(() => area.remove(KEYS.pending)),

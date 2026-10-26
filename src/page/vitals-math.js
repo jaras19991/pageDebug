@@ -25,6 +25,13 @@ const VITALS_SCRIPTS_MAX = 10;
 const VITALS_URL_MAX = 4000;
 const VITALS_NAME_MAX = 500;
 
+/** `items.map(fn)` as a loop: Array.prototype.map belongs to the page, which may replace it (AC-3.6). */
+export function vitalsMap(items, fn) {
+  const out = [];
+  for (let i = 0; i < items.length; i++) out.push(fn(items[i], i));
+  return out;
+}
+
 export function rate(name, value) {
   const bounds = Object.prototype.hasOwnProperty.call(THRESHOLDS, name) ? THRESHOLDS[name] : null;
   if (!bounds || typeof value !== 'number' || !Number.isFinite(value)) return null;
@@ -100,20 +107,20 @@ function vitalsCap(value, max) {
 
 // The `max` long animation frames with the highest blockingDuration, with script attribution.
 export function topLongTasks(loafs, max = LONG_TASKS_MAX) {
-  return (loafs || [])
+  const top = (loafs || [])
     .filter(Boolean)
     .slice()
     .sort((a, b) => b.blockingDuration - a.blockingDuration)
-    .slice(0, max)
-    .map((loaf) => ({
-      t: loaf.startTime,
-      duration: loaf.duration,
-      blockingDuration: loaf.blockingDuration,
-      scripts: [...(loaf.scripts || [])].slice(0, VITALS_SCRIPTS_MAX).map((script) => ({
-        url: vitalsCap(script.sourceURL, VITALS_URL_MAX),
-        function: vitalsCap(script.sourceFunctionName, VITALS_NAME_MAX),
-        invoker: vitalsCap(script.invoker, VITALS_NAME_MAX),
-        duration: script.duration,
-      })),
-    }));
+    .slice(0, max);
+  return vitalsMap(top, (loaf) => ({
+    t: loaf.startTime,
+    duration: loaf.duration,
+    blockingDuration: loaf.blockingDuration,
+    scripts: vitalsMap([...(loaf.scripts || [])].slice(0, VITALS_SCRIPTS_MAX), (script) => ({
+      url: vitalsCap(script.sourceURL, VITALS_URL_MAX),
+      function: vitalsCap(script.sourceFunctionName, VITALS_NAME_MAX),
+      invoker: vitalsCap(script.invoker, VITALS_NAME_MAX),
+      duration: script.duration,
+    })),
+  }));
 }

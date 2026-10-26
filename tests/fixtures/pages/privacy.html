@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: privacy</title>
+  <style>
+    body { font: 16px sans-serif; margin: 16px; }
+    label { display: block; margin: 8px 0; }
+    .field { display: block; width: 320px; }
+    #frame { width: 360px; height: 120px; border: 4px solid #333; }
+  </style>
+</head>
+<body>
+  <!-- E3-IN1a (AC-2.2): every editable field type from spec question 2, pre-filled, plus fields that must stay visible
+       (buttons, checkbox, radio, range, color, image, hidden) and a same-origin iframe with its own field.
+       tests/unit/field-rects.test.js loads this file; the e2e masking tests (E3-TEST4) use it too. -->
+  <h1>Formularz testowy</h1>
+  <form id="profile" action="/api/profile" method="post">
+    <label>E-mail <input type="email" id="f-email" class="field mask" name="email" value="jan.kowalski@example.com"></label>
+    <label>Telefon <input type="tel" id="f-tel" class="field mask" name="phone" value="+48 600 700 800"></label>
+    <label>Imię <input type="text" id="f-text" class="field mask" name="name" value="Jan Kowalski"></label>
+    <label>Uwagi <textarea id="f-textarea" class="field mask" name="notes">Proszę zadzwonić po 18:00</textarea></label>
+    <label>Kraj
+      <select id="f-select" class="field mask" name="country">
+        <option value="de">Niemcy</option>
+        <option value="pl" selected>Polska</option>
+      </select>
+    </label>
+    <label>Numer karty <input type="text" id="f-card" class="field mask" name="card" inputmode="numeric" autocomplete="cc-number" value="4111 1111 1111 1111"></label>
+    <label>Hasło <input type="password" id="f-password" class="field mask" name="password" value="Sekret123!"></label>
+    <label>Szukaj <input id="f-default" class="field mask" name="q" value="bez atrybutu type"></label>
+    <div id="f-editable" class="field mask" contenteditable="true">Notatka w polu edytowalnym: ul. Prosta 1, Warszawa</div>
+
+    <label><input type="checkbox" id="k-checkbox" class="keep" name="terms" checked> Akceptuję regulamin</label>
+    <label><input type="radio" id="k-radio" class="keep" name="plan" value="basic" checked> Plan podstawowy</label>
+    <label>Głośność <input type="range" id="k-range" class="keep" name="volume" value="40"></label>
+    <label>Kolor <input type="color" id="k-color" class="keep" name="color" value="#ff8800"></label>
+    <input type="hidden" id="k-hidden" class="keep" name="csrf" value="hidden-csrf-value">
+    <input type="image" id="k-image" class="keep" alt="Wyślij obrazkiem" src="img/hero.png" width="32" height="32">
+    <input type="button" id="k-button" class="keep" value="Przycisk">
+    <input type="reset" id="k-reset" class="keep" value="Wyczyść">
+    <input type="submit" id="k-submit" class="keep" value="Zapisz">
+    <button type="submit" id="k-btn" class="keep">Wyślij</button>
+  </form>
+
+  <iframe id="frame" title="Ramka z polem" srcdoc="<!doctype html><meta charset='utf-8'><body style='margin:8px'><label>Kod rabatowy <input type='text' id='in-frame' value='RABAT-2026'></label></body>"></iframe>
+
+  <!-- E3-TEST3 (AC-3.4, AC-3.5): a file input and a login button below everything else, so the layout above stays as
+       E3-IN1a/E3-TEST4 expect. -->
+  <p><label>Załącznik <input type="file" id="t-file" name="attachment"></label></p>
+  <p><button type="button" id="t-login">Zaloguj</button> <span id="t-result"></span></p>
+
+  <script>
+    // E3-TEST3 (AC-3.5): secrets the package must never contain in plain form. Fresh on every load; e2e reads them
+    // from window.__pdsTraps and greps the unzipped package for each value.
+    //   - a JWT in localStorage, cookie `sid=<random>`, console.log({ token }) at load,
+    //   - on "Zaloguj": console.log({ token }) again and a POST to /api/login with the token in `?access_token=`,
+    //     `Authorization: Bearer <t2>` and the e-mail and password of the form as a JSON body (the server answers 401).
+    (() => {
+      const hex = (bytes) => Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (b) => b.toString(16).padStart(2, '0')).join('');
+      const b64url = (value) => btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      const traps = {
+        jwt: `${b64url({ alg: 'HS256', typ: 'JWT' })}.${b64url({ sub: `pds-trap-${hex(6)}`, exp: 1893456000 })}.${hex(24)}`,
+        sid: hex(16),
+        token: `tk${hex(14)}`,
+        bearer: `br${hex(16)}`,
+      };
+      window.__pdsTraps = traps;
+      localStorage.setItem('auth', traps.jwt);
+      document.cookie = `sid=${traps.sid}; path=/`;
+      console.log({ token: traps.token });
+
+      document.getElementById('t-login').addEventListener('click', async () => {
+        const email = document.getElementById('f-email').value;
+        const password = document.getElementById('f-password').value;
+        console.log({ token: traps.token });
+        const res = await fetch(`/api/login?access_token=${traps.token}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${traps.bearer}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        document.getElementById('t-result').textContent = `status ${res.status}`;
+      });
+    })();
+  </script>
+</body>
+</html>

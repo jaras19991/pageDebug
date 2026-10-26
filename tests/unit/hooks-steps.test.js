@@ -197,7 +197,79 @@ describe('installStepsHook', () => {
       { t: expect.any(Number), type: 'change', selector: 'input[data-testid="terms"]', inputType: 'checkbox', checked: true },
       { t: expect.any(Number), type: 'change', selector: '#r1', inputType: 'radio', checked: true },
       { t: expect.any(Number), type: 'change', selector: '#sel', inputType: 'select', valueLength: 10 },
-      { t: expect.any(Number), type: 'change', selector: '#file', inputType: 'file', valueLength: 0 },
+      { t: expect.any(Number), type: 'change', selector: '#file', inputType: 'file', fileCount: 0 },
+    ]);
+  });
+
+  it('file input event produces no step and never reads value (AC-3.4, E3-IN4)', () => {
+    const file = document.getElementById('file');
+    const reads = [];
+    const valueGetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').get;
+    install({
+      extra: {
+        getInputValue: function () {
+          reads.push(this);
+          return valueGetter.call(this);
+        },
+      },
+    });
+    fire(file, 'input', {}, window.InputEvent);
+    fire(file, 'input', {}, window.InputEvent);
+    expect(nonNavigate()).toEqual([]);
+    expect(reads).not.toContain(file);
+    // A text field typed right after still opens its own input step (coalescing untouched).
+    typeInto(document.getElementById('email'), 'ab');
+    expect(nonNavigate()).toEqual([
+      { t: expect.any(Number), type: 'input', selector: '#email', inputType: 'email', valueLength: 2 },
+    ]);
+    expect(reads).not.toContain(file);
+  });
+
+  it('file change records fileCount 2 and no valueLength, no names (AC-3.4, E3-IN4)', () => {
+    const file = document.getElementById('file');
+    const reads = [];
+    const fakeFiles = { length: 2, 0: { name: 'tajny-umowa.pdf' }, 1: { name: 'C:\\fakepath\\skan.png' } };
+    install({
+      extra: {
+        getFiles: function () {
+          return this === file ? fakeFiles : null;
+        },
+        getInputValue: function () {
+          reads.push(this);
+          return 'C:\\fakepath\\skan.png';
+        },
+      },
+    });
+    fire(file, 'change');
+    const changes = nonNavigate();
+    expect(changes).toEqual([{ t: expect.any(Number), type: 'change', selector: '#file', inputType: 'file', fileCount: 2 }]);
+    expect('valueLength' in changes[0]).toBe(false);
+    expect(reads).toEqual([]);
+    const json = JSON.stringify(records);
+    for (const trap of ['tajny', 'fakepath', 'skan', '.pdf']) expect(json).not.toContain(trap);
+  });
+
+  it('file change without a files list records fileCount 0', () => {
+    install({ extra: { getFiles: () => undefined } });
+    fire(document.getElementById('file'), 'change');
+    expect(nonNavigate()).toEqual([{ t: expect.any(Number), type: 'change', selector: '#file', inputType: 'file', fileCount: 0 }]);
+  });
+
+  it('other input types unchanged by the file rules (regression E3-IN4)', () => {
+    install();
+    typeInto(document.getElementById('email'), 'abc');
+    typeInto(document.getElementById('ta'), 'xy');
+    const box = document.querySelector('[data-testid="terms"]');
+    box.checked = true;
+    fire(box, 'change');
+    const sel = document.getElementById('sel');
+    sel.value = 'long-value';
+    fire(sel, 'change');
+    expect(nonNavigate()).toEqual([
+      { t: expect.any(Number), type: 'input', selector: '#email', inputType: 'email', valueLength: 3 },
+      { t: expect.any(Number), type: 'input', selector: '#ta', inputType: 'textarea', valueLength: 2 },
+      { t: expect.any(Number), type: 'change', selector: 'input[data-testid="terms"]', inputType: 'checkbox', checked: true },
+      { t: expect.any(Number), type: 'change', selector: '#sel', inputType: 'select', valueLength: 10 },
     ]);
   });
 
@@ -312,7 +384,7 @@ describe('installStepsHook', () => {
       expect(nav.url).not.toContain('SECRET123abc');
       expect(nav.url).not.toContain('s3cr3tSess');
       expect(nav.url).toContain('access_token=[redacted:key-token]');
-      expect(nav.url).toContain('code=1');
+      expect(nav.url).toContain('code=[redacted:key-code]'); // E3-PD2: code is sensitive in any URL, also in MAIN
     }
     history.replaceState(null, '', base);
   });
