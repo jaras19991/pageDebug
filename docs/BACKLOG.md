@@ -183,7 +183,7 @@ Wejście z E2 (release 0.4.0)
 - [x] E3-IN2 (LOW, review L3) `maskSecrets`: sufiksy `sessid`/`sessionid` (`JSESSIONID`, `PHPSESSID`), `Authorization: Basic <b64>`, pary XML `<token>…</token>`, forma `klucz: wartość`, liczbowe wartości JSON przy kluczach wrażliwych (`"pin":1234`).
 - [x] E3-IN3 (LOW, review) Pełna redakcja URL-i w paczce (network, documents, LCP, longTasks; `steps[].url` już przez maskSecrets).
 - [x] E3-IN4 (LOW, implementer) `input type=file` zapisuje w kroku długość „C:\fakepath\…” — pomijać (`change` ma liczbę plików).
-- [ ] E3-IN5 (INFO, tester) `npm audit`: 3 high w devDeps (web-ext → adbkit → node-forge); `--omit=dev` = 0; poprawka wymaga downgrade web-ext — obserwować nowe wersje web-ext.
+- [-] E3-IN5 (przeniesione do E4 „Wejście z E3”) (INFO, tester) `npm audit`: 3 high w devDeps (web-ext → adbkit → node-forge); `--omit=dev` = 0; poprawka wymaga downgrade web-ext — obserwować nowe wersje web-ext.
 
 Spec
 - [x] E3-S1 Polityka redakcji: co zawsze maskujemy, co maskujemy domyślnie z możliwością wyłączenia

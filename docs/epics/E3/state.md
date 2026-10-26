@@ -101,7 +101,9 @@ Pominięte / fazy: [-] E3-IN5 (obserwacja), [-] E3-T6-stare (E1); R1/Q1/DOC1 —
 - PASS z uwagami: 20 PASS, 0 FAIL, 2 BLOCKED (AC-1.2 Eksplorator/macOS, AC-2.3 mignięcie), Firefox smoke (Marionette). F-1 = S1 (grupa B), F-2 notatka cięcia logów, F-3 FP card na UUID (grupa A), F-4 margines maski zakrywa etykiety, F-5 popup bez powodu braku zrzutu (grupa B), F-6 zgoda vs „tokeny usuwane”. Ręczne QA dla użytkownika: qa-report.md.
 
 ## Retro
-- 
+- Heurystyki redakcji wolnego tekstu (konsola, body) dają nieskończony ogon wariantów: 4 iteracje review znajdowały kolejne formy (F1→N1–N4→N9→N13). Na przyszłość: w designie od razu korpus „form zapisu” (zagnieżdżony JSON, encje, ucięcia, pary argumentów) i z góry ustalone kryterium stopu z użytkownikiem.
+- Fala A z 6 równoległymi agentami działała dobrze; koszt to czerwone pełne `vitest` w trakcie (nieaktualne bundle) i przypadkowe kolizje (np. słowo `localStorage`, `url(` w komentarzu). Pomogło: zakaz `gen` poza falą D i regeneracja przez orkiestratora.
+- Środowisko: sandbox zostawia puste zaślepki w katalogu repo, które psują global-teardown e2e i `git status`; `.claude/skills` zablokowane do zapisu — zmiany skilli muszą iść przez użytkownika. Warto dodać zaślepki do `.git/info/exclude` i teardown je ignorujący.
 
 ## Release
 - 2026-10-26: wersja 0.5.0; zipy `dist/page-debug-snapshot-chrome-0.5.0.zip` (162 413 B), `dist/page-debug-snapshot-firefox-0.5.0.zip` (162 511 B); notatka `docs/releases/0.5.0.md`; commit `release: v0.5.0 (E3)`, tag `v0.5.0` (bez push).
