@@ -24,10 +24,13 @@ o drugą paczkę z poluzowaną konfiguracją; nie może cofnąć wysłanego toke
 ```
 token, access_token, refresh_token, id_token, auth, authorization, session, sessionid, sid, jwt,
 secret, api_key, apikey, key, password, passwd, pwd, csrf, xsrf, cookie, set-cookie, bearer,
-credential, private, signature, sig, otp, pin
+credential, private, signature, sig, otp, pin, cvv, cvc, pass
 ```
 Dopasowanie: klucz **zawiera** którykolwiek z tokenów jako wyraz (`user_token` tak, `tokenizer` — nie;
 użyj granic `[_\-.]|^|$`). Fałszywie dodatnie są akceptowalne, fałszywie ujemne nie.
+Wyjątki (E3): `pw` — tylko jako cała nazwa klucza (`new_pw`, `pwa` nietknięte; `passenger`, `passport`, `compass`, `bypass`
+też nie są kluczami). `code`, `ticket` — tylko jako cała nazwa parametru query lub fragmentu URL (kod OAuth, bilet CAS),
+w polach-URL i w adresach bezwzględnych w tekście; w JSON-ie i zwykłym tekście to zwykłe słowa (`{"code":"PL"}`, `country_code=PL`).
 
 ### Wzorce wartości (niezależnie od klucza)
 | Nazwa reguły | Regex (szkic — implementer dopracowuje i testuje) |
@@ -53,6 +56,14 @@ użyj granic `[_\-.]|^|$`). Fałszywie dodatnie są akceptowalne, fałszywie uje
 9. `dom.structure` — bez tekstów i `value`; `dom.forms[].elements[].value` → tylko `valueLength`.
 10. `environment.location.href/search/hash` — jak URL-e.
 11. `summary.md` — generowany **z już zredagowanego** snapshotu. Nigdy z surowego.
+
+Formy zapisu, w których pary klucz–wartość też muszą być rozpoznane (E3, każda w korpusie `tests/fixtures/redaction/`):
+JSON zagnieżdżony w stringu (dowolny poziom `\"`, np. redux-persist), encje HTML (`&quot;`, `&#34;`, `&lt;` w XML w `data-*`),
+wartości ucięte na granicy limitu (maskować do końca, nie ciąć przed redakcją), JSON kodowany procentowo w treści formularza,
+pary `{name|key, value}` i `[nazwa, wartość]`, sąsiednie argumenty konsoli (`console.log('password:', x)`,
+`('login','jan','password',x)`, łańcuch kluczy `('[Auth]','Token:',t)`) — nazwa klucza w argumencie to jedno słowo lub kończy się `:`/`=`.
+Znane luki (backlog E4): `('Your password is', pw)`, kontener jako wartość w parze, `&amp;quot;`, podwójne %-kodowanie,
+base64 < 32 znaków, AWS `AKIA…` (sam identyfikator).
 
 ## Ślad redakcji
 

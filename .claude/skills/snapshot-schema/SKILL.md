@@ -30,10 +30,14 @@ Każda zmiana struktury musi być jawna i wersjonowana, inaczej któryś z nich 
 
 ## Docelowa struktura (kierunek dla E1–E4; pola oznaczone epikiem, w którym się pojawiają)
 
-**Stan: aktualna wersja to 3 (E2, release 0.4.0).** Pola i kolejność kluczy: `docs/snapshot-schema.md`; walidator (unit i e2e):
-`tests/helpers/snapshot-validator.js`; fixture `tests/fixtures/snapshots/v3.json` (generowany z `assemblePackage`, `src/lib/package.js`).
-Poniższy szkic to kierunek: pola z oznaczeniem E3/E4 jeszcze nie istnieją; E1/E2 dodały m.in. `documents[]`, `recordingStoppedReason`,
-`overview`, `steps`, `vitals`, `screenshots`, `attachments`, których szkic nie pokazuje w pełni.
+**Stan: aktualna wersja to 4 (E3, release 0.5.0).** Pola i kolejność kluczy: `docs/snapshot-schema.md` (z migracją v3→v4);
+walidator (unit i e2e): `tests/helpers/snapshot-validator.js`; fixture `tests/fixtures/snapshots/v4.json` (generowany potokiem
+`exportPackage`, `src/lib/export.js`; `v3.json` zamrożony). Kontener: zip `snapshot-<host>-<YYYYMMDD-HHMMSS>.zip`
+(`snapshot.json`, `summary.md`, opcjonalnie `screenshot.jpg`). v4: `redaction` po `overview`; usunięte `attachments`
+i `dom.html.outerHTML`; `storage.cookies` = `[{name, sizeBytes, valueHash}]` + `cookiesTotalBytes`; `dom.structure`/`dom.fullHtml`;
+`altLength`/`titleLength`/`valueLength`/`fileCount`; `screenshots[].file` + `maskedFields`.
+Poniższy szkic to kierunek: pola z oznaczeniem E4 jeszcze nie istnieją; E1–E3 dodały m.in. `documents[]`, `recordingStoppedReason`,
+`overview`, `steps`, `vitals`, `screenshots`, `redaction`, których szkic nie pokazuje w pełni.
 
 ```jsonc
 {
