@@ -129,6 +129,8 @@ Uwaga: pełny `npm test` może być czerwony na teście gen-content w falach A�
 - 2026-10-27 docs → release (README, instrukcja zgłaszającego, JAK-CZYTAC-PACZKE.md, CHANGELOG [Unreleased], snapshot-schema, mcp/README) — czeka na bramkę
 
 ## Retro
-- …
+- Zaskoczenie: wyciek „Error: password: …” i puste nagranie pod podmienionym iteratorem wyszły dopiero w testach integracyjnych/e2e z korpusem pułapek (TEST3, TEST4c), nie w unitach — testy „trzech konsumentów” warto planować w fali A, nie E.
+- Środowisko: e2e/QA zależą od Chromium poza sandboksem i bibliotek w /tmp (znikają po `wsl --shutdown`); błąd I/O na /mnt/c/.claude zatrzymał trzy agenty naraz. Do poprawy: skrypt odtwarzający biblioteki + jawna zgoda na e2e poza sandboksem zapisana na starcie epiku.
+- Proces: release odpalał pełny vitest po samym bumpie wersji (~4 min na /mnt/c) — w release uruchamiać tylko check-release/build/size-budget/manifest-parity.
 
 - 2026-10-27 release: v0.6.0, dist/page-debug-snapshot-chrome-0.6.0.zip (188 773 B), firefox 188 641 B, viewer 117 949 B; commit + tag v0.6.0, bez push

@@ -229,51 +229,51 @@ Testy / Review / QA / Docs / Release
 albo lokalny viewer i widzi: błędy, nieudane zapytania, CWV, kroki. Agent AI odpytuje paczkę przez MCP.
 
 Wejście z E3 (release 0.5.0; z review, QA i store review — szczegóły w `docs/epics/E3/`)
-- [ ] E4-IN1 (LOW, review N7) Redakcja: fałszywe trafienia w prozie (`auth: "Invalid credentials"`) i przeciek, gdy klucz stoi na początku stringu JSON (`{"log":"password: x"}`). Poprawka: dopuścić `"` przed kluczem, jeśli nie jest to `"k":`.
-- [ ] E4-IN2 (LOW, review N8) `for…of` na iteratorze tablic strony w MAIN (`redact-rules.js`) — pętle indeksowe, żeby podmiana `Array.prototype[Symbol.iterator]` nie wyłączała redakcji u źródła.
-- [ ] E4-IN3 (LOW, review N12) `code`/`ticket` w adresach względnych (`/cb?code=`), w `&code=` i fragmencie `#code=` w tekście oraz w JSON-escaped `https:\/\/…`.
-- [ ] E4-IN4 (LOW, review N15) Podgląd konsoli po `maskPreviewPairs` (`["token=","x","more"]`): zniekształcony JSON i zawyżone `masked`.
-- [ ] E4-IN5 (LOW, review) `console.log('Your password is', pw)` (klucz w zdaniu bez `:`/`=`) oraz kontener w parze (`('password:', {v: pw})`, `[pw]`) — decyzja: wymuszać maskowanie kontenera / rozpoznawać zdania?
-- [ ] E4-IN6 (LOW, QA/wynik retestu) Notatka „Screenshot not included (turned off by the reporter).” jest nieprecyzyjna, gdy zrzut wyłączył popup (ramki cross-origin, fail-closed `frameCheck`) — osobna notatka z powodem.
-- [ ] E4-IN7 (LOW, QA F-4) Margines maski 8 px zakrywa dolną połowę etykiet nad polami — zmniejszyć margines albo go skorygować.
-- [ ] E4-IN8 (LOW, QA F-6) Zdanie zgody („Plik może zawierać Twoje dane osobowe i dane logowania…”) stoi pod zdaniem „hasła i tokeny są usuwane” — ujednolicić tekst (zmiana tekstu = decyzja użytkownika).
-- [ ] E4-IN9 (MEDIUM, store F6/E0#10) AMO: zip źródeł + notatka dla reviewera (`npm ci && npm run gen && npm run build`), `strict_min_version` 140 (dziś 128; ostrzeżenie `web-ext lint`). Decyzja przy E5.
-- [ ] E4-IN10 (INFO, = E3-IN5) `npm audit`: 3 high w devDeps (web-ext → adbkit → node-forge); `--omit=dev` = 0 — obserwować nowe wersje `web-ext`.
-- [ ] E4-IN11 (INFO, QA F-5/F-1) `summary.md` nie wymienia nieudanych zapytań (tylko liczbę) — E4-S1; liczba ramek cross-origin nie trafia do paczki (rozważyć pole albo notatkę).
+- [x] E4-IN1 (LOW, review N7) Redakcja: fałszywe trafienia w prozie (`auth: "Invalid credentials"`) i przeciek, gdy klucz stoi na początku stringu JSON (`{"log":"password: x"}`). Poprawka: dopuścić `"` przed kluczem, jeśli nie jest to `"k":`.
+- [x] E4-IN2 (LOW, review N8) `for…of` na iteratorze tablic strony w MAIN (`redact-rules.js`) — pętle indeksowe, żeby podmiana `Array.prototype[Symbol.iterator]` nie wyłączała redakcji u źródła.
+- [x] E4-IN3 (LOW, review N12) `code`/`ticket` w adresach względnych (`/cb?code=`), w `&code=` i fragmencie `#code=` w tekście oraz w JSON-escaped `https:\/\/…`.
+- [x] E4-IN4 (LOW, review N15) Podgląd konsoli po `maskPreviewPairs` (`["token=","x","more"]`): zniekształcony JSON i zawyżone `masked`.
+- [x] E4-IN5 (LOW, review) `console.log('Your password is', pw)` (klucz w zdaniu bez `:`/`=`) oraz kontener w parze (`('password:', {v: pw})`, `[pw]`) — decyzja: wymuszać maskowanie kontenera / rozpoznawać zdania?
+- [x] E4-IN6 (LOW, QA/wynik retestu) Notatka „Screenshot not included (turned off by the reporter).” jest nieprecyzyjna, gdy zrzut wyłączył popup (ramki cross-origin, fail-closed `frameCheck`) — osobna notatka z powodem.
+- [x] E4-IN7 (LOW, QA F-4) Margines maski 8 px zakrywa dolną połowę etykiet nad polami — zmniejszyć margines albo go skorygować.
+- [x] E4-IN8 (LOW, QA F-6) Zdanie zgody („Plik może zawierać Twoje dane osobowe i dane logowania…”) stoi pod zdaniem „hasła i tokeny są usuwane” — ujednolicić tekst (zmiana tekstu = decyzja użytkownika).
+- [-] E4-IN9 (przeniesione do E5 — decyzja strict_min_version i AMO source przy dystrybucji) (MEDIUM, store F6/E0#10) AMO: zip źródeł + notatka dla reviewera (`npm ci && npm run gen && npm run build`), `strict_min_version` 140 (dziś 128; ostrzeżenie `web-ext lint`). Decyzja przy E5.
+- [-] E4-IN10 (obserwacja; bez zmian w E4) (INFO, = E3-IN5) `npm audit`: 3 high w devDeps (web-ext → adbkit → node-forge); `--omit=dev` = 0 — obserwować nowe wersje `web-ext`.
+- [x] E4-IN11 (INFO, QA F-5/F-1) `summary.md` nie wymienia nieudanych zapytań (tylko liczbę) — E4-S1; liczba ramek cross-origin nie trafia do paczki (rozważyć pole albo notatkę).
 
 Spec
-- [ ] E4-S1 Zawartość `summary.md` (kolejność: środowisko → kroki → błędy → nieudane zapytania → CWV →
+- [x] E4-S1 Zawartość `summary.md` (kolejność: środowisko → kroki → błędy → nieudane zapytania → CWV →
       najwolniejsze zasoby → ciasteczka/rozmiar → raport redakcji).
-- [ ] E4-S2 Flow „Wyślij”: konfigurowalny przez developera adres/kanał (mailto, link do formularza, Jira
+- [-] E4-S2 (odrzucone przez użytkownika 2026-10-26 — zgłaszający wysyła plik sam, bez wysyłki z popupu) Flow „Wyślij”: konfigurowalny przez developera adres/kanał (mailto, link do formularza, Jira
       Service Desk URL) pokazany zgłaszającemu po zapisie. Bez własnego backendu w tym epiku.
       **Ograniczenie (store review E0):** wysyłkę wykonuje użytkownik (mailto/link), nigdy rozszerzenie — inaczej
       deklaracje AMO `data_collection_permissions: none` i CWS „no transfer” przestają być prawdziwe.
-- [ ] E4-S3 Viewer: pojedynczy `viewer.html` (offline, drag&drop zip) z zakładkami i filtrem.
-- [ ] E4-S4 MCP: narzędzia `list_snapshots`, `get_summary`, `get_errors`, `get_network(filter)`,
+- [x] E4-S3 Viewer: pojedynczy `viewer.html` (offline, drag&drop zip) z zakładkami i filtrem.
+- [x] E4-S4 MCP: narzędzia `list_snapshots`, `get_summary`, `get_errors`, `get_network(filter)`,
       `get_vitals`, `get_steps`, `diff_snapshots(a, b)`.
 
 Design
-- [ ] E4-D1 Generator `summary.md` w rozszerzeniu (ten sam kod użyty przez viewer i MCP) — moduł `summarize.js`.
-- [ ] E4-D2 `viewer.html`: vanilla JS, bez CDN (offline), czyta zip przez `DecompressionStream`.
-- [ ] E4-D3 Pakiet `page-debug-mcp` (Node, `@modelcontextprotocol/sdk`), czyta katalog ze snapshotami,
+- [x] E4-D1 Generator `summary.md` w rozszerzeniu (ten sam kod użyty przez viewer i MCP) — moduł `summarize.js`.
+- [x] E4-D2 `viewer.html`: vanilla JS, bez CDN (offline), czyta zip przez `DecompressionStream`.
+- [x] E4-D3 Pakiet `page-debug-mcp` (Node; zamiast SDK własny transport stdio — decyzja PB-1), czyta katalog ze snapshotami,
       zwraca małe odpowiedzi zamiast całego JSON-a.
-- [ ] E4-D4 Konfiguracja developerska (`chrome.storage.managed` lub plik w paczce rozszerzenia):
-      adres do wysyłki, czy pełny HTML, progi redakcji.
+- [x] E4-D4 Konfiguracja developerska (`chrome.storage.managed` lub plik w paczce rozszerzenia):
+      ~~adres do wysyłki~~ (odrzucone), czy pełny HTML, wyłączanie reguł email/phone/html-structure (build `--config` lub `storage.managed`).
 
 Implementacja
-- [ ] E4-T1 `summarize.js` + testy snapshotowe wyjścia.
-- [ ] E4-T2 Ekran „Zapisano” w popupie z instrukcją wysyłki i przyciskiem „Pokaż plik”.
-- [ ] E4-T3 `viewer.html` z zakładkami: Podsumowanie, Kroki, Błędy, Sieć, CWV, DOM, Storage.
-- [ ] E4-T4 `page-debug-mcp` z 7 narzędziami i README jak dodać do Claude Code / Cursor.
-- [ ] E4-T5 `diff_snapshots`: różnice w błędach, statusach, CWV, liczbie/rozmiarze ciasteczek.
+- [x] E4-T1 `summarize.js` + testy snapshotowe wyjścia.
+- [x] E4-T2 Ekran „Zapisano” w popupie z instrukcją wysyłki i przyciskiem „Pokaż plik”.
+- [x] E4-T3 `viewer.html` z zakładkami: Podsumowanie, Kroki, Błędy, Sieć, CWV, DOM, Storage.
+- [x] E4-T4 `page-debug-mcp` z 7 narzędziami i README jak dodać do Claude Code / Cursor.
+- [x] E4-T5 `diff_snapshots`: różnice w błędach, statusach, CWV, liczbie/rozmiarze ciasteczek.
 
-Testy / Review / QA / Docs / Release
-- [ ] E4-TEST1 Snapshot testy `summary.md` na 3 przykładowych paczkach.
-- [ ] E4-TEST2 E2E viewer: wczytaj zip, przełącz zakładki, filtr sieci po statusie.
-- [ ] E4-TEST3 MCP: testy integracyjne każdego narzędzia na przykładowym katalogu.
-- [ ] E4-R1 Review: viewer nie wykonuje niczego z paczki (XSS przez `outerHTML`/console args) — tylko tekst.
-- [ ] E4-Q1 QA: pełna ścieżka zgłaszający → plik → developer otwiera viewer → agent odpytuje MCP.
-- [ ] E4-DOC1 README developera: viewer, MCP, konfiguracja wysyłki.
+Testy / Review / QA / Docs / Release (release 0.6.0, tag v0.6.0; szczegóły w `docs/epics/E4/`)
+- [x] E4-TEST1 Snapshot testy `summary.md` na 3 przykładowych paczkach.
+- [x] E4-TEST2 E2E viewer: wczytaj zip, przełącz zakładki, filtr sieci po statusie.
+- [x] E4-TEST3 MCP: testy integracyjne każdego narzędzia na przykładowym katalogu.
+- [x] E4-R1 Review: viewer nie wykonuje niczego z paczki (XSS przez `outerHTML`/console args) — tylko tekst.
+- [x] E4-Q1 QA: pełna ścieżka zgłaszający → plik → developer otwiera viewer → agent odpytuje MCP.
+- [x] E4-DOC1 README developera: viewer, MCP, konfiguracja wysyłki.
 
 ---
 
@@ -281,6 +281,14 @@ Testy / Review / QA / Docs / Release
 
 **Problem:** rozszerzenie trzeba dostarczyć zgłaszającym bez tłumaczenia „tryb developera → load unpacked”.
 **Efekt:** zgłaszający dostaje link, instaluje w 2 kliknięcia; developer ma powtarzalny release.
+
+Wejście z E4 (release 0.6.0; szczegóły w `docs/epics/E4/` — state.md, qa-report.md)
+- [ ] E5-IN1 (HIGH, store E4) `docs/store/`: polityka prywatności + oświadczenie Limited Use; opisać konfigurację developerską (wyłączanie email/phone/html-structure przez build `--config` lub `storage.managed`). Do sklepu wyłącznie build bez `--config`; warianty `-devconfig` tylko self-hosted.
+- [ ] E5-IN2 (MEDIUM, = E4-IN9) AMO: zip źródeł + notatka dla reviewera; `strict_min_version` 140 vs 128 (2 ostrzeżenia `web-ext lint`).
+- [ ] E5-IN3 (INFO, = E4-IN10) `npm audit`: 3 high w devDeps (web-ext) — obserwować.
+- [ ] E5-IN4 (QA ręczne E4) Checklista z `docs/epics/E4/qa-report.md`: spike S3 (Firefox, `policies.json` 3rdparty), „Pokaż plik” po usunięciu pliku z Eksploratora (Windows/macOS, FF), viewer z `file://` w Firefoksie/Edge, realny klient MCP (Claude Code/Cursor), zgoda widoczna w realnym oknie popupu.
+- [ ] E5-IN5 (LOW, docs E4) Zrzuty `docs/img/krok-1…7.png` w instrukcji zgłaszającego to placeholdery (kroki 3, 6, 7 mają nowy ekran).
+- [ ] E5-IN6 (LOW, kandydat poza E5) Redakcja: podgląd JSON nie maskuje `{"value":…,"name":"password"}` (value przed name); nieutwardzone podmienione iteratory Map/Set/String i metody tablic w MAIN; `get_network` domyślnie ~13 tys. znaków (cel 10 tys.).
 
 Spec
 - [ ] E5-S1 Decyzja użytkownika — Chrome: Web Store (unlisted) vs polityka enterprise (`ExtensionInstallForcelist`)
