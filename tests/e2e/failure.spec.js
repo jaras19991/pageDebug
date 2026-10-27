@@ -88,6 +88,7 @@ async function saveWhileBusy(page, marker) {
       clickedAt,
       log: await popup.evaluate('window.__pdsStatusLog'),
       finalText: await popup.textOf('#status'),
+      savedShown: await popup.evaluate(`!document.getElementById('saved').hidden`),
     };
   } finally {
     await popup.close();
@@ -102,12 +103,14 @@ test('page main thread blocked during save: pageBusy/failed after 15 s, never Za
   const page = await ext.context.newPage();
   try {
     const marker = `before-busy-${Date.now()}`;
-    const { clickedAt, log, newFiles: files } = await saveWhileBusy(page, marker);
+    const result = await saveWhileBusy(page, marker);
+    const { clickedAt, log, newFiles: files } = result;
 
     const verdict = log.find(([, text]) => text === MESSAGES.pageBusy || text === MESSAGES.failed);
     expect(verdict, JSON.stringify(log)).toBeTruthy();
     expect(verdict[0] - clickedAt).toBeGreaterThanOrEqual(14_500);
     expect(log.some(([, text]) => text.startsWith(SAVED_PREFIX))).toBe(false);
+    expect(result.savedShown, 'saved screen must stay hidden').toBe(false);
     expect(files).toEqual([]);
 
     const { json } = await saveRecording(page);
@@ -155,6 +158,7 @@ test('download blocked by the browser: saveCancelled, no file, recording continu
         expect(await popup.evaluate(`!document.getElementById('recording').hidden && !document.getElementById('save').disabled`)).toBe(true);
         const log = await popup.evaluate('window.__pdsStatusLog');
         expect(log.some(([, text]) => text.startsWith(SAVED_PREFIX))).toBe(false);
+        expect(await popup.evaluate(`document.getElementById('saved').hidden`), 'saved screen must stay hidden').toBe(true);
       } finally {
         await popup.close();
       }

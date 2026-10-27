@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { TARGET_KEYS, mergeManifest } from '../../scripts/lib/manifest.mjs';
@@ -94,6 +95,40 @@ describe('manifest parity chrome vs firefox', () => {
     expect(firefox.background).toEqual({ scripts: ['background.js'], type: 'module' });
     expect(firefox.background.scripts[0]).toBe(chrome.background.service_worker);
     expect(firefox.background.type).toBe(chrome.background.type);
+  });
+
+  it('dist/chrome has storage.managed_schema and managed-schema.json; dist/firefox has neither (E4 D5)', () => {
+    expect(TARGET_KEYS).toContain('storage');
+    expect(chrome.storage).toEqual({ managed_schema: 'managed-schema.json' });
+    expect(built.files.chrome).toContain('managed-schema.json');
+    expect(existsSync(join(built.outDir, 'chrome', 'managed-schema.json'))).toBe(true);
+    expect(firefox).not.toHaveProperty('storage');
+    expect(built.files.firefox).not.toContain('managed-schema.json');
+    expect(existsSync(join(built.outDir, 'firefox', 'managed-schema.json'))).toBe(false);
+  });
+
+  it('managed-schema.json is the D5 schema and has no enum (filtering stays in code)', async () => {
+    const text = await readFile(join(built.outDir, 'chrome', 'managed-schema.json'), 'utf8');
+    expect(JSON.parse(text)).toEqual({
+      type: 'object',
+      properties: { disabledRules: { type: 'array', items: { type: 'string' } } },
+    });
+    expect(text).not.toMatch(/"enum"/);
+  });
+
+  it('permissions and optional_host_permissions equal the 0.5.0 list in both manifests (AC-2.1, NFR)', () => {
+    for (const m of [chrome, firefox]) {
+      expect(m.permissions).toEqual(['activeTab', 'scripting', 'storage', 'downloads']);
+      expect(m.optional_host_permissions).toEqual(['http://*/*', 'https://*/*', 'file:///*']);
+      expect(m).not.toHaveProperty('host_permissions');
+    }
+  });
+
+  it('no options_ui / options_page in both manifests (AC-6.2)', () => {
+    for (const m of [chrome, firefox]) {
+      expect(m).not.toHaveProperty('options_ui');
+      expect(m).not.toHaveProperty('options_page');
+    }
   });
 
   it('mergeManifest rejects an overlay overriding permissions', () => {

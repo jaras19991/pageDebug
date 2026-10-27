@@ -8,6 +8,7 @@
 // Navigate URLs are masked (maskSecrets) before they reach a record; consecutive replaceState calls with no
 // other step in between are one step (search-as-you-type, AC-3.3).
 // Top-level helpers carry the `steps` prefix (D6: all page modules end up in one IIFE).
+// Index loops only, no for…of or array destructuring (E4-IN2): the page may replace Array.prototype[Symbol.iterator].
 
 import { maskSecrets, redactRegExp, redactReplace } from '../lib/mask-secrets.js';
 
@@ -251,7 +252,9 @@ export function installStepsHook({ win, doc: _doc, now, record, selectorOf, intr
     hashchange: (_event, t) => navigate('hashchange', t),
   };
   const listeners = [];
-  for (const type of Object.keys(handlers)) {
+  const types = Object.keys(handlers);
+  for (let i = 0; i < types.length; i++) {
+    const type = types[i];
     const handler = handlers[type];
     const listener = function (event) {
       try {
@@ -267,7 +270,9 @@ export function installStepsHook({ win, doc: _doc, now, record, selectorOf, intr
   // History methods: the original runs exactly once (its exception propagates), the step comes after.
   const historyProto = stepsTry(() => I.History.prototype, null);
   const patched = [];
-  for (const name of ['pushState', 'replaceState']) {
+  const historyMethods = ['pushState', 'replaceState'];
+  for (let i = 0; i < historyMethods.length; i++) {
+    const name = historyMethods[i];
     const original = stepsTry(() => historyProto[name], null);
     if (typeof original !== 'function') continue;
     const hook = new I.Proxy(original, {
@@ -300,9 +305,14 @@ export function installStepsHook({ win, doc: _doc, now, record, selectorOf, intr
     if (!active) return;
     active = false;
     try {
-      for (const [type, listener] of listeners) stepsTry(() => call(remove, win, type, listener, STEPS_LISTENER_OPTIONS));
+      for (let i = 0; i < listeners.length; i++) {
+        const type = listeners[i][0];
+        const listener = listeners[i][1];
+        stepsTry(() => call(remove, win, type, listener, STEPS_LISTENER_OPTIONS));
+      }
       // Restore guard (E1 H2): only put the original back while our Proxy is still in place.
-      for (const { name, original, hook } of patched) {
+      for (let i = 0; i < patched.length; i++) {
+        const { name, original, hook } = patched[i];
         stepsTry(() => {
           if (historyProto[name] === hook) historyProto[name] = original;
         });

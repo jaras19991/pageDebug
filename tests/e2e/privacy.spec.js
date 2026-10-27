@@ -140,6 +140,10 @@ test('grep -c of each trap value over all unzipped files (incl. screenshot.jpg b
     const { json, files, entries, values } = await recordLogin(page, 'privacy.html');
     expect(entries).toContain('screenshot.jpg'); // the image is part of the grep
     expectTrapsRecorded(json);
+    // QA E4 F-2: the srcdoc of an iframe is the frame's whole HTML, so it is replaced by the marker.
+    const frame = json.dom.iframes.find((f) => f.attributes?.id === 'frame');
+    expect(frame, JSON.stringify(json.dom.iframes)).toBeTruthy();
+    expect(frame.attributes.srcdoc).toBe('[redacted:html-structure]');
     expect(leaks(files, values)).toEqual({});
   });
 });

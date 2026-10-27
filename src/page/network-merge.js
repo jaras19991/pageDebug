@@ -102,7 +102,9 @@ function sameUrl(hookUrl, rtUrl) {
 function withSize(entry, sizeBytes) {
   const out = {};
   let placed = false;
-  for (const key of Object.keys(entry)) {
+  const keys = Object.keys(entry);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
     if (key === 'sizeBytes') continue;
     out[key] = entry[key];
     if (key === 'durationMs') {
@@ -122,7 +124,7 @@ export function resourceKind(initiatorType, href) {
   if (initiatorType === 'fetch' || initiatorType === 'xmlhttprequest' || initiatorType === 'navigation') return null;
   const ext = extensionOf(href);
   if (ext) {
-    for (const [re, kind] of EXTENSION_KINDS) if (re.test(ext)) return kind;
+    for (let i = 0; i < EXTENSION_KINDS.length; i++) if (EXTENSION_KINDS[i][0].test(ext)) return EXTENSION_KINDS[i][1];
   }
   return (typeof initiatorType === 'string' && INITIATOR_KINDS[initiatorType]) || 'other';
 }
@@ -177,7 +179,8 @@ export function correlateSizes(hookEntries, rtEntries, { docOrigin, intrinsics }
   const order = mergeMap(records, (entry, index) => ({ entry, index }))
     .filter(({ entry }) => entry && (entry.type === 'fetch' || entry.type === 'xhr'))
     .sort((a, b) => (num(a.entry.t) ?? Infinity) - (num(b.entry.t) ?? Infinity));
-  for (const { entry, index } of order) {
+  for (let k = 0; k < order.length; k++) {
+    const { entry, index } = order[k];
     const t = num(entry.t);
     if (t === null) continue;
     for (let i = 0; i < candidates.length; i++) {
@@ -209,12 +212,14 @@ export function mergeLoadErrors(records, loadErrors) {
   const out = mergeMap(Array.isArray(records) ? records : [], (e) => e && { ...e });
   const errors = (Array.isArray(loadErrors) ? loadErrors : []).filter((e) => e && typeof e.url === 'string');
   const added = [];
-  for (const err of errors) {
+  for (let e = 0; e < errors.length; e++) {
+    const err = errors[e];
     const t = round2(err.t);
     const url = str(err.url, MERGE_LIMITS.urlChars);
     const kind = typeof err.kind === 'string' && err.kind ? err.kind : 'other';
     let best = null;
-    for (const rec of out) {
+    for (let r = 0; r < out.length; r++) {
+      const rec = out[r];
       if (!rec || rec.type === 'fetch' || rec.type === 'xhr' || rec.error != null) continue;
       if (rec.type !== kind || rec.url !== url) continue;
       if (t !== null && rec.t !== null && rec.t > t + MERGE_LIMITS.matchBeforeMs) continue;

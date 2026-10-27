@@ -1,0 +1,328 @@
+{
+ "iterator.zip": {
+  "tabsTexts": {
+   "summary": "# Paczka diagnostyczna — 127.0.0.1\nZapisano 2026-10-27T08:50:42.361Z · rozszerzenie 0.5.0 · schemat 4 · źródło: rozszerzenie · błędy JS 1 · błędy konsoli 1 · nieudane zapytania 1 · kroki 5 · słabe metryki 0 · zrzut: tak\n\n## Środowisko\n\n- Adres: `http://127.0.0.1:54697/privacy-iterator.html?access_token=[redacted:key-token]`\n- Przeglądarka: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36`\n- Okno: 1280×720, DPR 1\n- Język: `pl-PL`\n\n## Kroki\n\nOstatnie 5 z 5:\n- 0,0 s · navigate · `http://127.0.0.1:54697/privacy-iterator.html`\n- 0,3 s · click · `Pobierz`\n- 0,3 s · click · `Dalej`\n- 0,3 s · navigate · `http://127.0.0.1:54697/privacy-iterator.html?access_token=[redacted:key-token]`\n- 0,4 s · click · `Błąd` ← ostatni krok przed pierwszym błędem\n\n## Błędy\n\n- 2× od 0,4 s · `Uncaught Error: password: [redacted:key-password]` · `privacy-iterator.html:39:17`\n\n## Nieudane zapytania (1)\n\n- `GET` `http://127.0.0.1:54697/status/500?body=token` → 500 (3 ms)\n\n## CWV\n\n- `http://127.0.0.1:54697/privacy-iterator.html?access_token=[redacted:key-token]`: TTFB 2 ms (dobrze) · FCP 20 ms (dobrze) · LCP 20 ms (dobrze) · CLS 0,00 (dobrze) · INP 8 ms (dobrze)\n\n## Najwolniejsze zasoby\n\n- 3 ms · fetch · 230 B · `http://127.0.0.1:54697/status/500?body=token`\n\n## Ciasteczka i rozmiar\n\n- Ciasteczka: 0, razem 0 B\n- Ucięte przez limity: nic\n\n## Prywatność\n\n- Zamaskowano 10 wartości w 6 sekcjach (reguły v2). Hasła, tokeny i dane logowania nie są w tym pliku.\n- Zrzut ekranu: jest\n\n## Uwagi\n\n- `Recording started at 2026-10-27T08:50:41.195Z (page reloaded); earlier data is not included.`\n- `LCP, CLS and INP are values at the time of saving; they could still grow.`\n\nPełne dane: snapshot.json; obraz: screenshot.jpg.\n\nZrzut ekranu z paczki",
+   "summary__ms": 12,
+   "steps": "Dokument 1: http://127.0.0.1:54697/privacy-iterator.html?access_token=[redacted:key-token]\n09:50:41.202 (0,0 s)\n09:50:41.211 (0,0 s) Krok navigate · http://127.0.0.1:54697/privacy-iterator.html\n09:50:41.480 (0,3 s) Krok click · Pobierz\n09:50:41.481 (0,3 s) Zapytanie GET http://127.0.0.1:54697/status/500?body=token → 500 (3 ms)\n09:50:41.544 (0,3 s) Krok click · Dalej\n09:50:41.544 (0,3 s) Krok navigate · http://127.0.0.1:54697/privacy-iterator.html?access_token=[redacted:key-token]\n09:50:41.582 (0,4 s) Krok click · Błąd\n09:50:41.582 (0,4 s) Błąd Uncaught Error: password: [redacted:key-password] · privacy-iterator.html:39:17\n09:50:41.584 (0,4 s) Błąd Uncaught Error: password: [redacted:key-password] · privacy-iterator.html:40:34",
+   "steps__ms": 14,
+   "errors": "2× 09:50:41.582 (0,4 s) · Uncaught Error: password: [redacted:key-password] · privacy-iterator.html:39:17",
+   "errors__ms": 15,
+   "network": "Status: \nWszystkie statusy\n2xx\n3xx\n4xx\n5xx\nbłąd\nnieznany\n Typ: \nWszystkie typy\nfetch\n Adres: \n\nWyniki: 1 z 1\n\n#0 09:50:41.481 (0,3 s) · fetch · GET http://127.0.0.1:54697/status/500?body=token → 500 (3 ms)",
+   "network__ms": 13,
+   "console": "Wpisów: 1\n\n09:50:41.582 (0,4 s) error Uncaught Error: password: [redacted:key-password]\nArgumenty i stos",
+   "console__ms": 11,
+   "vitals": "Dokument 1: http://127.0.0.1:54697/privacy-iterator.html?access_token=[redacted:key-token]\nMetryka\tWartość\tOcena\tSzczegóły\nTTFB\t2 ms\tdobrze\t—\nFCP\t20 ms\tdobrze\t—\nLCP\t20 ms\tdobrze\telement: html > body > h1\nCLS\t0,000\tdobrze\t—\nINP\t8 ms\tdobrze\telement: #t-fetch · zdarzenie: pointerdown · opóźnienie 1 ms, obsługa 0 ms, rysowanie 7 ms\n\nDługie zadania: brak.",
+   "vitals__ms": 14,
+   "dom": "Liczby elementów\nKlucz\tWartość\ntotalElements\t12\nscripts\t1\nstylesheets\t0\nimages\t0\nlinks\t0\niframes\t0\nforms\t0\nDokument\nKlucz\tWartość\ndoctype\t{\"name\":\"html\",\"publicId\":\"\",\"systemId\":\"\"}\nlang\tpl\ncharset\tUTF-8\ncompatMode\tCSS1Compat\ncanonical\t—\nMeta (1)\ntagName\tid\tclassName\tname\ttype\tsrc\thref\ttext\tattributes\nMETA\t—\t—\t—\t—\t—\t—\t\t{\"charset\":\"utf-8\"}\nSkrypty (1)\nsrc\ttype\tasync\tdefer\ttextLength\tid\tattributes\n—\t—\tnie\tnie\t2379\t—\t{}\nZnaczniki html i body\nKlucz\tWartość\nbodyClassName\t—\nhtmlClassName\t—\ndataAttributesOnHtml\t{\"lang\":\"pl\"}\ndataAttributesOnBody\t{}\nStruktura (bez tekstów)\n<html><head><meta><title></title></head><body><h1></h1><p><button type=\"button\" id=\"t-fetch\"></button><button type=\"button\" id=\"t-nav\"></button><button type=\"button\" id=\"t-throw\"></button><span id=\"t-result\"></span></p><script></script></body></html>",
+   "dom__ms": 13,
+   "storage": "Ciasteczka\n\nLiczba: 0, łącznie 0 B\n\nlocalStorage\n\nPusto.\n\nsessionStorage\n\nPusto.",
+   "storage__ms": 10
+  },
+  "loadMs": 622,
+  "header": "Podgląd paczki diagnostycznej\n\nInna paczka? Przeciągnij ją tutaj albo wybierz z dysku.\n\nPlik paczki (.zip albo .json): \n\n127.0.0.1\n\nZapisano: 27.10.2026, 09:50:42 · rozszerzenie 0.5.0 · schemat 4\n\nBłędy JS: 1 · Błędy konsoli: 1 · Nieudane zapytania: 1 · Kroki: 5 · Słabe metryki: 0 · Zrzut: tak",
+  "tabsVisible": true,
+  "seen": {
+   "requests": [],
+   "dialogs": [],
+   "errors": []
+  },
+  "bodyText": 2147
+ },
+ "privacy.zip": {
+  "tabsTexts": {
+   "summary": "# Paczka diagnostyczna — 127.0.0.1\nZapisano 2026-10-27T08:50:44.269Z · rozszerzenie 0.5.0 · schemat 4 · źródło: rozszerzenie · błędy JS 0 · błędy konsoli 0 · nieudane zapytania 1 · kroki 2 · słabe metryki 0 · zrzut: tak\n\n## Środowisko\n\n- Adres: `http://127.0.0.1:54697/privacy.html`\n- Przeglądarka: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36`\n- Okno: 1280×720, DPR 1\n- Język: `pl-PL`\n\n## Kroki\n\nOstatnie 2 z 2:\n- 0,0 s · navigate · `http://127.0.0.1:54697/privacy.html`\n- 0,3 s · click · `Zaloguj`\n\n## Błędy\n\nbrak — nie zarejestrowano błędów\n\n## Nieudane zapytania (1)\n\n- `POST` `http://127.0.0.1:54697/api/login?access_token=[redacted:key-token]` → 401 (2 ms)\n\n## CWV\n\n- `http://127.0.0.1:54697/privacy.html`: TTFB 2 ms (dobrze) · FCP 32 ms (dobrze) · LCP 32 ms (dobrze) · CLS 0,00 (dobrze) · INP 8 ms (dobrze)\n\n## Najwolniejsze zasoby\n\n- 2 ms · fetch · rozmiar nieznany · `http://127.0.0.1:54697/api/login?access_token=[redacted:key-token]`\n- 2 ms · img · 2 KB · `http://127.0.0.1:54697/img/hero.png`\n\n## Ciasteczka i rozmiar\n\n- Ciasteczka: 1, razem 36 B\n- Ucięte przez limity: nic\n\n## Prywatność\n\n- Zamaskowano 8 wartości w 4 sekcjach (reguły v2). Hasła, tokeny i dane logowania nie są w tym pliku.\n- Zrzut ekranu: jest\n\n## Uwagi\n\n- `Recording started at 2026-10-27T08:50:43.304Z (page reloaded); earlier data is not included.`\n- `LCP, CLS and INP are values at the time of saving; they could still grow.`\n\nPełne dane: snapshot.json; obraz: screenshot.jpg.\n\nZrzut ekranu z paczki",
+   "summary__ms": 11,
+   "steps": "Dokument 1: http://127.0.0.1:54697/privacy.html\n09:50:43.311 (0,0 s)\n09:50:43.326 (0,0 s) Krok navigate · http://127.0.0.1:54697/privacy.html\n09:50:43.600 (0,3 s) Krok click · Zaloguj\n09:50:43.601 (0,3 s) Zapytanie POST http://127.0.0.1:54697/api/login?access_token=[redacted:key-token] → 401 (2 ms)",
+   "steps__ms": 14,
+   "errors": "Brak błędów w paczce.",
+   "errors__ms": 10,
+   "network": "Status: \nWszystkie statusy\n2xx\n3xx\n4xx\n5xx\nbłąd\nnieznany\n Typ: \nWszystkie typy\nimg\nfetch\n Adres: \n\nWyniki: 2 z 2\n\n#0 09:50:43.316 (0,0 s) · img · GET http://127.0.0.1:54697/img/hero.png → 200 (2 ms)\n#1 09:50:43.601 (0,3 s) · fetch · POST http://127.0.0.1:54697/api/login?access_token=[redacted:key-token] → 401 (2 ms)",
+   "network__ms": 15,
+   "console": "Wpisów: 2\n\n09:50:43.332 (0,0 s) log {\"token\":\"[redacted:key-token]\"}\nArgumenty i stos\n09:50:43.601 (0,3 s) log {\"token\":\"[redacted:key-token]\"}\nArgumenty i stos",
+   "console__ms": 10,
+   "vitals": "Dokument 1: http://127.0.0.1:54697/privacy.html\nMetryka\tWartość\tOcena\tSzczegóły\nTTFB\t2 ms\tdobrze\t—\nFCP\t32 ms\tdobrze\t—\nLCP\t32 ms\tdobrze\telement: #f-editable\nCLS\t0,000\tdobrze\t—\nINP\t8 ms\tdobrze\telement: #t-login · zdarzenie: pointerdown · opóźnienie 1 ms, obsługa 0 ms, rysowanie 7 ms\n\nDługie zadania: brak.",
+   "vitals__ms": 15,
+   "dom": "Liczby elementów\nKlucz\tWartość\ntotalElements\t49\nscripts\t1\nstylesheets\t1\nimages\t0\nlinks\t0\niframes\t1\nforms\t1\nDokument\nKlucz\tWartość\ndoctype\t{\"name\":\"html\",\"publicId\":\"\",\"systemId\":\"\"}\nlang\tpl\ncharset\tUTF-8\ncompatMode\tCSS1Compat\ncanonical\t—\nMeta (1)\ntagName\tid\tclassName\tname\ttype\tsrc\thref\ttext\tattributes\nMETA\t—\t—\t—\t—\t—\t—\t\t{\"charset\":\"utf-8\"}\nSkrypty (1)\nsrc\ttype\tasync\tdefer\ttextLength\tid\tattributes\n—\t—\tnie\tnie\t1837\t—\t{}\nArkusze stylów (1)\ntagName\thref\tmedia\tdisabled\ttextLength\tattributes\nSTYLE\t—\t—\tnie\t211\t{}\nRamki (iframe) (1)\nsrc\tid\tname\ttitleLength\tattributes\n—\tframe\t—\t13\t{\"id\":\"frame\",\"srcdoc\":\"<!doctype html><meta charset='utf-8'><body style='margin:8px'><label>Kod rabatowy <input type='text' id='in-frame' value='RABAT-2026'></label></body>\"}\nFormularze\nid\tname\tmethod\taction\tenctype\nprofile\t{}\tpost\thttp://127.0.0.1:54697/api/profile\tapplication/x-www-form-urlencoded\ntagName\ttype\tname\tid\tvalueLength\tchecked\nINPUT\temail\temail\tf-email\t24\tnie\nINPUT\ttel\tphone\tf-tel\t15\tnie\nINPUT\ttext\tname\tf-text\t12\tnie\nTEXTAREA\ttextarea\tnotes\tf-textarea\t25\t—\nSELECT\tselect-one\tcountry\tf-select\t2\t—\nINPUT\ttext\tcard\tf-card\t19\tnie\nINPUT\tpassword\tpassword\tf-password\t—\tnie\nINPUT\ttext\tq\tf-default\t17\tnie\nINPUT\tcheckbox\tterms\tk-checkbox\t2\ttak\nINPUT\tradio\tplan\tk-radio\t5\ttak\nINPUT\trange\tvolume\tk-range\t2\tnie\nINPUT\tcolor\tcolor\tk-color\t7\tnie\nINPUT\thidden\tcsrf\tk-hidden\t17\tnie\nINPUT\tbutton\t—\tk-button\t8\tnie\nINPUT\treset\t—\tk-reset\t7\tnie\nINPUT\tsubmit\t—\tk-submit\t6\tnie\nBUTTON\tsubmit\t—\tk-btn\t0\t—\nZnaczniki html i body\nKlucz\tWartość\nbodyClassName\t—\nhtmlClassName\t—\ndataAttributesOnHtml\t{\"lang\":\"pl\"}\ndataAttributesOnBody\t{}\nStruktura (bez tekstów)\n<html><head><meta><title></title><style></style></head><body><h1></h1><form id=\"profile\"><label><input type=\"email\" id=\"f-email\" class=\"field mask\"></label><label><input type=\"tel\" id=\"f-tel\" class=\"field mask\"></label><label><input type=\"text\" id=\"f-text\" class=\"field mask\"></label><label><textarea id=\"f-textarea\" class=\"field mask\"></textarea></label><label><select id=\"f-select\" class=\"field mask\"><option></option><option></option></select></label><label><input type=\"text\" id=\"f-card\" class=\"field mask\"></label><label><input type=\"password\" id=\"f-password\" class=\"field mask\"></label><label><input id=\"f-default\" class=\"field mask\"></label><div id=\"f-editable\" class=\"field mask\"></div><label><input type=\"checkbox\" id=\"k-checkbox\" class=\"keep\"></label><label><input type=\"radio\" id=\"k-radio\" class=\"keep\"></label><label><input type=\"range\" id=\"k-range\" class=\"keep\"></label><label><input type=\"color\" id=\"k-color\" class=\"keep\"></label><input type=\"hidden\" id=\"k-hidden\" class=\"keep\"><input type=\"image\" id=\"k-image\" class=\"keep\"><input type=\"button\" id=\"k-button\" class=\"keep\"><input type=\"reset\" id=\"k-reset\" class=\"keep\"><input type=\"submit\" id=\"k-submit\" class=\"keep\"><button type=\"submit\" id=\"k-btn\" class=\"keep\"></button></form><iframe id=\"frame\"></iframe><p><label><input type=\"file\" id=\"t-file\"></label></p><p><button type=\"button\" id=\"t-login\"></button><span id=\"t-result\"></span></p><script></script></body></html>",
+   "dom__ms": 15,
+   "storage": "Ciasteczka\n\nLiczba: 1, łącznie 36 B\n\nNazwa\tRozmiar (B)\tSkrót wartości\nsid\t36\t1322f200\nlocalStorage\nKlucz\tWartość\nauth\t[redacted:key-auth]\nsessionStorage\n\nPusto.",
+   "storage__ms": 8
+  },
+  "loadMs": 623,
+  "header": "Podgląd paczki diagnostycznej\n\nInna paczka? Przeciągnij ją tutaj albo wybierz z dysku.\n\nPlik paczki (.zip albo .json): \n\n127.0.0.1\n\nZapisano: 27.10.2026, 09:50:44 · rozszerzenie 0.5.0 · schemat 4\n\nBłędy JS: 0 · Błędy konsoli: 0 · Nieudane zapytania: 1 · Kroki: 2 · Słabe metryki: 0 · Zrzut: tak",
+  "tabsVisible": true,
+  "seen": {
+   "requests": [],
+   "dialogs": [],
+   "errors": []
+  },
+  "bodyText": 1910
+ },
+ "iterator-keep.zip": {
+  "tabsTexts": {
+   "summary": "# Paczka diagnostyczna — 127.0.0.1\nZapisano 2026-10-27T08:50:46.110Z · rozszerzenie 0.5.0 · schemat 4 · źródło: rozszerzenie · błędy JS 1 · błędy konsoli 1 · nieudane zapytania 0 · kroki 2 · słabe metryki 0 · zrzut: tak\n\n## Środowisko\n\n- Adres: `http://127.0.0.1:54697/privacy-iterator.html?keep=1`\n- Przeglądarka: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36`\n- Okno: 1280×720, DPR 1\n- Język: `pl-PL`\n\n## Kroki\n\nOstatnie 2 z 2:\n- 0,0 s · navigate · `http://127.0.0.1:54697/privacy-iterator.html?keep=1`\n- 0,3 s · click · `Błąd` ← ostatni krok przed pierwszym błędem\n\n## Błędy\n\n- 2× od 0,3 s · `Uncaught Error: password: [redacted:key-password]` · `privacy-iterator.html:39:17`\n\n## Nieudane zapytania (0)\n\nbrak — nie zarejestrowano zapytań\n\n## CWV\n\n- `http://127.0.0.1:54697/privacy-iterator.html?keep=1`: TTFB 2 ms (dobrze) · FCP 24 ms (dobrze) · LCP 24 ms (dobrze) · CLS 0,00 (dobrze) · INP 8 ms (dobrze)\n\n## Najwolniejsze zasoby\n\nbrak — nie zarejestrowano zapytań\n\n## Ciasteczka i rozmiar\n\n- Ciasteczka: 1, razem 36 B\n- Ucięte przez limity: nic\n\n## Prywatność\n\n- Zamaskowano 4 wartości w 3 sekcjach (reguły v2). Hasła, tokeny i dane logowania nie są w tym pliku.\n- Zrzut ekranu: jest\n\n## Uwagi\n\n- `Recording started at 2026-10-27T08:50:45.088Z (page reloaded); earlier data is not included.`\n- `LCP, CLS and INP are values at the time of saving; they could still grow.`\n\nPełne dane: snapshot.json; obraz: screenshot.jpg.\n\nZrzut ekranu z paczki",
+   "summary__ms": 14,
+   "steps": "Dokument 1: http://127.0.0.1:54697/privacy-iterator.html?keep=1\n09:50:45.095 (0,0 s)\n09:50:45.109 (0,0 s) Krok navigate · http://127.0.0.1:54697/privacy-iterator.html?keep=1\n09:50:45.383 (0,3 s) Krok click · Błąd\n09:50:45.383 (0,3 s) Błąd Uncaught Error: password: [redacted:key-password] · privacy-iterator.html:39:17\n09:50:45.385 (0,3 s) Błąd Uncaught Error: password: [redacted:key-password] · privacy-iterator.html:40:34",
+   "steps__ms": 12,
+   "errors": "2× 09:50:45.383 (0,3 s) · Uncaught Error: password: [redacted:key-password] · privacy-iterator.html:39:17",
+   "errors__ms": 10,
+   "network": "Brak zapytań sieciowych w paczce.",
+   "network__ms": 13,
+   "console": "Wpisów: 1\n\n09:50:45.383 (0,3 s) error Uncaught Error: password: [redacted:key-password]\nArgumenty i stos",
+   "console__ms": 12,
+   "vitals": "Dokument 1: http://127.0.0.1:54697/privacy-iterator.html?keep=1\nMetryka\tWartość\tOcena\tSzczegóły\nTTFB\t2 ms\tdobrze\t—\nFCP\t24 ms\tdobrze\t—\nLCP\t24 ms\tdobrze\telement: html > body > h1\nCLS\t0,000\tdobrze\t—\nINP\t8 ms\tdobrze\telement: #t-throw · zdarzenie: pointerdown · opóźnienie 1 ms, obsługa 0 ms, rysowanie 7 ms\n\nDługie zadania: brak.",
+   "vitals__ms": 15,
+   "dom": "Liczby elementów\nKlucz\tWartość\ntotalElements\t12\nscripts\t1\nstylesheets\t0\nimages\t0\nlinks\t0\niframes\t0\nforms\t0\nDokument\nKlucz\tWartość\ndoctype\t{\"name\":\"html\",\"publicId\":\"\",\"systemId\":\"\"}\nlang\tpl\ncharset\tUTF-8\ncompatMode\tCSS1Compat\ncanonical\t—\nMeta (1)\ntagName\tid\tclassName\tname\ttype\tsrc\thref\ttext\tattributes\nMETA\t—\t—\t—\t—\t—\t—\t\t{\"charset\":\"utf-8\"}\nSkrypty (1)\nsrc\ttype\tasync\tdefer\ttextLength\tid\tattributes\n—\t—\tnie\tnie\t2379\t—\t{}\nZnaczniki html i body\nKlucz\tWartość\nbodyClassName\t—\nhtmlClassName\t—\ndataAttributesOnHtml\t{\"lang\":\"pl\"}\ndataAttributesOnBody\t{}\nStruktura (bez tekstów)\n<html><head><meta><title></title></head><body><h1></h1><p><button type=\"button\" id=\"t-fetch\"></button><button type=\"button\" id=\"t-nav\"></button><button type=\"button\" id=\"t-throw\"></button><span id=\"t-result\"></span></p><script></script></body></html>",
+   "dom__ms": 13,
+   "storage": "Ciasteczka\n\nLiczba: 1, łącznie 36 B\n\nNazwa\tRozmiar (B)\tSkrót wartości\nsid\t36\t1322f200\nlocalStorage\nKlucz\tWartość\nauth\t[redacted:key-auth]\nsessionStorage\n\nPusto.",
+   "storage__ms": 10
+  },
+  "loadMs": 625,
+  "header": "Podgląd paczki diagnostycznej\n\nInna paczka? Przeciągnij ją tutaj albo wybierz z dysku.\n\nPlik paczki (.zip albo .json): \n\n127.0.0.1\n\nZapisano: 27.10.2026, 09:50:46 · rozszerzenie 0.5.0 · schemat 4\n\nBłędy JS: 1 · Błędy konsoli: 1 · Nieudane zapytania: 0 · Kroki: 2 · Słabe metryki: 0 · Zrzut: tak",
+  "tabsVisible": true,
+  "seen": {
+   "requests": [],
+   "dialogs": [],
+   "errors": []
+  },
+  "bodyText": 1872
+ },
+ "basic.zip": {
+  "tabsTexts": {
+   "summary": "# Paczka diagnostyczna — 127.0.0.1\nZapisano 2026-10-27T08:50:25.954Z · rozszerzenie 0.5.0 · schemat 4 · źródło: rozszerzenie · błędy JS 0 · błędy konsoli 1 · nieudane zapytania 0 · kroki 2 · słabe metryki 0 · zrzut: tak\n\n## Środowisko\n\n- Adres: `http://127.0.0.1:54697/basic.html`\n- Przeglądarka: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36`\n- Okno: 1280×720, DPR 1\n- Język: `pl-PL`\n\n## Kroki\n\nOstatnie 2 z 2:\n- 0,0 s · navigate · `http://127.0.0.1:54697/basic.html`\n- 1,4 s · click · `Kliknij` ← ostatni krok przed pierwszym błędem\n\n## Błędy\n\n- 1× od 1,4 s · `QA basic error` · `<anonymous>:372:16`\n\n## Nieudane zapytania (0)\n\nbrak — nie zarejestrowano zapytań\n\n## CWV\n\n- `http://127.0.0.1:54697/basic.html`: TTFB 2 ms (dobrze) · FCP 28 ms (dobrze) · LCP 28 ms (dobrze) · CLS 0,00 (dobrze) · INP 8 ms (dobrze)\n\n## Najwolniejsze zasoby\n\nbrak — nie zarejestrowano zapytań\n\n## Ciasteczka i rozmiar\n\n- Ciasteczka: 0, razem 0 B\n- Ucięte przez limity: nic\n\n## Prywatność\n\n- Zamaskowano 0 wartości w 0 sekcjach (reguły v2). Hasła, tokeny i dane logowania nie są w tym pliku.\n- Zrzut ekranu: jest\n\n## Uwagi\n\n- `Recording started at 2026-10-27T08:50:24.011Z (page reloaded); earlier data is not included.`\n- `LCP, CLS and INP are values at the time of saving; they could still grow.`\n\nPełne dane: snapshot.json; obraz: screenshot.jpg.\n\nZrzut ekranu z paczki",
+   "summary__ms": 9,
+   "steps": "Dokument 1: http://127.0.0.1:54697/basic.html\n09:50:24.026 (0,0 s)\n09:50:24.039 (0,0 s) Krok navigate · http://127.0.0.1:54697/basic.html\n09:50:25.421 (1,4 s) Krok click · Kliknij\n09:50:25.429 (1,4 s) Błąd QA basic error · <anonymous>:372:16",
+   "steps__ms": 15,
+   "errors": "1× 09:50:25.429 (1,4 s) · QA basic error · <anonymous>:372:16",
+   "errors__ms": 11,
+   "network": "Brak zapytań sieciowych w paczce.",
+   "network__ms": 12,
+   "console": "Wpisów: 2\n\n09:50:24.042 (0,0 s) log basic fixture loaded\nArgumenty i stos\n09:50:25.429 (1,4 s) error QA basic error\nArgumenty i stos",
+   "console__ms": 13,
+   "vitals": "Dokument 1: http://127.0.0.1:54697/basic.html\nMetryka\tWartość\tOcena\tSzczegóły\nTTFB\t2 ms\tdobrze\t—\nFCP\t28 ms\tdobrze\t—\nLCP\t28 ms\tdobrze\telement: html > body > h1\nCLS\t0,000\tdobrze\t—\nINP\t8 ms\tdobrze\telement: #action · zdarzenie: pointerdown · opóźnienie 0 ms, obsługa 0 ms, rysowanie 7 ms\n\nDługie zadania: brak.",
+   "vitals__ms": 15,
+   "dom": "Liczby elementów\nKlucz\tWartość\ntotalElements\t9\nscripts\t1\nstylesheets\t0\nimages\t0\nlinks\t0\niframes\t0\nforms\t0\nDokument\nKlucz\tWartość\ndoctype\t{\"name\":\"html\",\"publicId\":\"\",\"systemId\":\"\"}\nlang\tpl\ncharset\tUTF-8\ncompatMode\tCSS1Compat\ncanonical\t—\nMeta (1)\ntagName\tid\tclassName\tname\ttype\tsrc\thref\ttext\tattributes\nMETA\t—\t—\t—\t—\t—\t—\t\t{\"charset\":\"utf-8\"}\nSkrypty (1)\nsrc\ttype\tasync\tdefer\ttextLength\tid\tattributes\n—\t—\tnie\tnie\t681\t—\t{}\nZnaczniki html i body\nKlucz\tWartość\nbodyClassName\t—\nhtmlClassName\t—\ndataAttributesOnHtml\t{\"lang\":\"pl\"}\ndataAttributesOnBody\t{}\nStruktura (bez tekstów)\n<html><head><meta><title></title><script></script></head><body><h1></h1><p id=\"content\"></p><button id=\"action\" type=\"button\"></button></body></html>",
+   "dom__ms": 13,
+   "storage": "Ciasteczka\n\nLiczba: 0, łącznie 0 B\n\nlocalStorage\n\nPusto.\n\nsessionStorage\n\nPusto.",
+   "storage__ms": 9
+  },
+  "loadMs": 623,
+  "header": "Podgląd paczki diagnostycznej\n\nInna paczka? Przeciągnij ją tutaj albo wybierz z dysku.\n\nPlik paczki (.zip albo .json): \n\n127.0.0.1\n\nZapisano: 27.10.2026, 09:50:25 · rozszerzenie 0.5.0 · schemat 4\n\nBłędy JS: 0 · Błędy konsoli: 1 · Nieudane zapytania: 0 · Kroki: 2 · Słabe metryki: 0 · Zrzut: tak",
+  "tabsVisible": true,
+  "seen": {
+   "requests": [],
+   "dialogs": [],
+   "errors": []
+  },
+  "bodyText": 1776
+ },
+ "network.zip": {
+  "tabsTexts": {
+   "summary": "# Paczka diagnostyczna — 127.0.0.1\nZapisano 2026-10-27T08:50:49.114Z · rozszerzenie 0.5.0 · schemat 4 · źródło: rozszerzenie · błędy JS 0 · błędy konsoli 0 · nieudane zapytania 4 · kroki 1 · słabe metryki 0 · zrzut: tak\n\n## Środowisko\n\n- Adres: `http://127.0.0.1:54697/network.html`\n- Przeglądarka: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36`\n- Okno: 1280×720, DPR 1\n- Język: `pl-PL`\n\n## Kroki\n\nOstatnie 1 z 1:\n- 0,0 s · navigate · `http://127.0.0.1:54697/network.html`\n\n## Błędy\n\nbrak — nie zarejestrowano błędów\n\n## Nieudane zapytania (4)\n\n- `GET` `http://127.0.0.1:54697/img/missing-e2.png` → 404 (1 ms)\n- `GET` `http://127.0.0.1:54697/missing-e2.js` → 404 (12 ms)\n- `GET` `http://127.0.0.1:54697/status/500?body=json` → 500 (3 ms)\n- `GET` `http://127.0.0.1:54697/status/401?body=token` → 401 (3 ms)\n\n## CWV\n\n- `http://127.0.0.1:54697/network.html`: TTFB 2 ms (dobrze) · FCP 32 ms (dobrze) · LCP 32 ms (dobrze) · CLS 0,00 (dobrze) · INP niedostępne — brak interakcji\n\n## Najwolniejsze zasoby\n\n- 12 ms · script · 0 B · `http://127.0.0.1:54697/missing-e2.js`\n- 3 ms · xhr · 230 B · `http://127.0.0.1:54697/status/401?body=token`\n- 3 ms · fetch · 35 B · `http://127.0.0.1:54697/status/500?body=json`\n- 1 ms · css · 259 B · `http://127.0.0.1:54697/network-e2.css`\n- 1 ms · img · 9 B · `http://127.0.0.1:54697/img/missing-e2.png`\n\n## Ciasteczka i rozmiar\n\n- Ciasteczka: 1, razem 36 B\n- Ucięte przez limity: nic\n\n## Prywatność\n\n- Zamaskowano 3 wartości w 2 sekcjach (reguły v2). Hasła, tokeny i dane logowania nie są w tym pliku.\n- Zrzut ekranu: jest\n\n## Uwagi\n\n- `Recording started at 2026-10-27T08:50:46.967Z (page reloaded); earlier data is not included.`\n- `LCP, CLS and INP are values at the time of saving; they could still grow.`\n\nPełne dane: snapshot.json; obraz: screenshot.jpg.\n\nZrzut ekranu z paczki",
+   "summary__ms": 9,
+   "steps": "Dokument 1: http://127.0.0.1:54697/network.html\n09:50:46.973 (0,0 s)\n09:50:46.979 (0,0 s) Zapytanie GET http://127.0.0.1:54697/img/missing-e2.png → 404 (1 ms)\n09:50:46.979 (0,0 s) Zapytanie GET http://127.0.0.1:54697/missing-e2.js → 404 (12 ms)\n09:50:46.988 (0,0 s) Krok navigate · http://127.0.0.1:54697/network.html\n09:50:46.992 (0,0 s) Zapytanie GET http://127.0.0.1:54697/status/500?body=json → 500 (3 ms)\n09:50:46.993 (0,0 s) Zapytanie GET http://127.0.0.1:54697/status/401?body=token → 401 (3 ms)",
+   "steps__ms": 13,
+   "errors": "Brak błędów w paczce.",
+   "errors__ms": 8,
+   "network": "Status: \nWszystkie statusy\n2xx\n3xx\n4xx\n5xx\nbłąd\nnieznany\n Typ: \nWszystkie typy\ncss\nimg\nscript\nfetch\nxhr\nfont\n Adres: \n\nWyniki: 7 z 7\n\n#0 09:50:46.979 (0,0 s) · css · GET http://127.0.0.1:54697/network-e2.css → 200 (1 ms)\n#1 09:50:46.979 (0,0 s) · img · GET http://127.0.0.1:54697/img/missing-e2.png → 404 (1 ms)\n#2 09:50:46.979 (0,0 s) · script · GET http://127.0.0.1:54697/missing-e2.js → 404 (12 ms)\n#3 09:50:46.992 (0,0 s) · img · GET http://localhost:54697/img/hero.png?cross=1 → brak statusu (1 ms)\n#4 09:50:46.992 (0,0 s) · fetch · GET http://127.0.0.1:54697/status/500?body=json → 500 (3 ms)\n#5 09:50:46.993 (0,0 s) · xhr · GET http://127.0.0.1:54697/status/401?body=token → 401 (3 ms)\n#6 09:50:46.994 (0,0 s) · font · GET http://127.0.0.1:54697/fonts/pds-test.woff2 → 200 (1 ms)",
+   "network__ms": 15,
+   "console": "Brak wpisów konsoli w paczce.",
+   "console__ms": 12,
+   "vitals": "Dokument 1: http://127.0.0.1:54697/network.html\nMetryka\tWartość\tOcena\tSzczegóły\nTTFB\t2 ms\tdobrze\t—\nFCP\t32 ms\tdobrze\t—\nLCP\t32 ms\tdobrze\telement: #cross-img · zasób: http://localhost:54697/img/hero.png?cross=1\nCLS\t0,000\tdobrze\t—\nINP\tniedostępne — brak interakcji\t—\t—\n\nDługie zadania: brak.",
+   "vitals__ms": 16,
+   "dom": "Liczby elementów\nKlucz\tWartość\ntotalElements\t12\nscripts\t2\nstylesheets\t1\nimages\t2\nlinks\t0\niframes\t0\nforms\t0\nDokument\nKlucz\tWartość\ndoctype\t{\"name\":\"html\",\"publicId\":\"\",\"systemId\":\"\"}\nlang\tpl\ncharset\tUTF-8\ncompatMode\tCSS1Compat\ncanonical\t—\nMeta (1)\ntagName\tid\tclassName\tname\ttype\tsrc\thref\ttext\tattributes\nMETA\t—\t—\t—\t—\t—\t—\t\t{\"charset\":\"utf-8\"}\nSkrypty (2)\nsrc\ttype\tasync\tdefer\ttextLength\tid\tattributes\nhttp://127.0.0.1:54697/missing-e2.js\t—\tnie\tnie\t0\t—\t{\"src\":\"/missing-e2.js\"}\n—\t—\tnie\tnie\t1390\t—\t{}\nArkusze stylów (1)\ntagName\thref\tmedia\tdisabled\ttextLength\tattributes\nLINK\t/network-e2.css\t—\tnie\t0\t{\"rel\":\"stylesheet\",\"href\":\"/network-e2.css\"}\nObrazy (2)\nsrc\tnaturalWidth\tnaturalHeight\twidth\theight\tloading\taltLength\nhttp://127.0.0.1:54697/img/missing-e2.png\t0\t0\t47\t18\tauto\t4\nhttp://localhost:54697/img/hero.png?cross=1\t800\t450\t800\t450\tauto\t11\nZnaczniki html i body\nKlucz\tWartość\nbodyClassName\t—\nhtmlClassName\t—\ndataAttributesOnHtml\t{\"lang\":\"pl\"}\ndataAttributesOnBody\t{}\nStruktura (bez tekstów)\n<html><head><meta><title></title><link></head><body><h1></h1><p></p><img id=\"missing-img\"><img id=\"cross-img\"><script></script><script></script></body></html>",
+   "dom__ms": 14,
+   "storage": "Ciasteczka\n\nLiczba: 1, łącznie 36 B\n\nNazwa\tRozmiar (B)\tSkrót wartości\nsid\t36\t1322f200\nlocalStorage\nKlucz\tWartość\nauth\t[redacted:key-auth]\nsessionStorage\n\nPusto.",
+   "storage__ms": 9
+  },
+  "loadMs": 629,
+  "header": "Podgląd paczki diagnostycznej\n\nInna paczka? Przeciągnij ją tutaj albo wybierz z dysku.\n\nPlik paczki (.zip albo .json): \n\n127.0.0.1\n\nZapisano: 27.10.2026, 09:50:49 · rozszerzenie 0.5.0 · schemat 4\n\nBłędy JS: 0 · Błędy konsoli: 0 · Nieudane zapytania: 4 · Kroki: 1 · Słabe metryki: 0 · Zrzut: tak",
+  "tabsVisible": true,
+  "seen": {
+   "requests": [],
+   "dialogs": [],
+   "errors": []
+  },
+  "bodyText": 2235
+ },
+ "v4.json": {
+  "tabsTexts": {
+   "summary": "# Paczka diagnostyczna — 127.0.0.1\nZapisano 2026-01-15T10:01:05.000Z · rozszerzenie 0.5.0 · schemat 4 · źródło: rozszerzenie · błędy JS 2 · błędy konsoli 1 · nieudane zapytania 3 · kroki 10 · słabe metryki 1 · zrzut: tak\n\n## Środowisko\n\n- Adres: `http://127.0.0.1:8080/result.html?access_token=[redacted:key-token]`\n- Przeglądarka: `Mozilla/5.0 (Synthetic) Test/1.0`\n- Okno: 1280×720, DPR 1\n- Język: `pl-PL`\n\n## Kroki\n\nOstatnie 10 z 10:\n- 0,1 s · navigate · `http://127.0.0.1:8080/form.html`\n- 0,9 s · click · `Zacznij`\n- 1,1 s · input · `form > input:nth-of-type(1)`\n- 1,3 s · input · `#pass`\n- 1,4 s · change · `[data-testid=\"terms\"]`\n- 1,5 s · change · `#avatar`\n- 1,5 s · key · `#pass`\n- 1,5 s · submit · `#loginForm`\n- 4,2 s · navigate · `http://127.0.0.1:8080/result.html` ← ostatni krok przed pierwszym błędem\n- 6,3 s · click · `Zapisz`\n\n## Błędy\n\n- 1× od 4,2 s · `Uncaught TypeError: x is undefined` · `result.html:3:9`\n- 1× od 4,2 s · `Uncaught Error: frame failed` · `inner.html:1:1`\n- 1× od 4,2 s · `TypeError: x is undefined` · `result.js:12:9`\n\n## Nieudane zapytania (3)\n\n- `GET` `http://127.0.0.1:8080/img/missing.png` → 404 (2 ms)\n- `POST` `http://127.0.0.1:8080/api/fail` → 500 (3 ms)\n- `GET` `http://127.0.0.1:8080/missing.js` → 404 (2 ms)\n\n## CWV\n\n- `http://127.0.0.1:8080/form.html`: TTFB 47 ms (dobrze) · FCP 820 ms (dobrze) · LCP 1712 ms (dobrze) · CLS niedostępne — przeglądarka tego nie mierzy · INP niedostępne — przeglądarka tego nie mierzy\n- `http://127.0.0.1:8080/result.html`: TTFB 52 ms (dobrze) · FCP 910 ms (dobrze) · LCP 4300 ms (słabo) · CLS 0,18 (do poprawy) · INP 336 ms (do poprawy)\n\n## Najwolniejsze zasoby\n\n- 3 ms · fetch · 23 B · `http://127.0.0.1:8080/api/fail`\n- 2 ms · img · 9 B · `http://127.0.0.1:8080/img/missing.png`\n- 2 ms · img · rozmiar nieznany · `https://cdn.example/logo.png`\n- 2 ms · script · 9 B · `http://127.0.0.1:8080/missing.js`\n- 2 ms · css · 9 B · `http://127.0.0.1:8080/style.css`\n\n## Ciasteczka i rozmiar\n\n- Ciasteczka: 3, razem 45 B\n- Ucięte przez limity: nic\n\n## Prywatność\n\n- Zamaskowano 10 wartości w 5 sekcjach (reguły v1). Hasła, tokeny i dane logowania nie są w tym pliku.\n- Zrzut ekranu: jest\n\n## Uwagi\n\n- `Recording started at 2026-01-15T10:00:00.000Z (page reloaded); earlier data is not included.`\n- `LCP, CLS and INP are values at the time of saving; they could still grow.`\n\nPełne dane: snapshot.json; obraz: screenshot.jpg.\n",
+   "summary__ms": 9,
+   "steps": "Dokument 1: http://127.0.0.1:8080/form.html\n11:00:00.120 (0,1 s)\n11:00:00.120 (0,1 s) Krok navigate · http://127.0.0.1:8080/form.html\n11:00:00.160 (0,2 s) Zapytanie GET http://127.0.0.1:8080/img/missing.png → 404 (2 ms)\n11:00:00.932 (0,9 s) Krok click · Zacznij\n11:00:01.050 (1,1 s) Krok input · form > input:nth-of-type(1)\n11:00:01.322 (1,3 s) Krok input · #pass\n11:00:01.420 (1,4 s) Krok change · [data-testid=\"terms\"]\n11:00:01.470 (1,5 s) Krok change · #avatar\n11:00:01.520 (1,5 s) Krok key · #pass\n11:00:01.521 (1,5 s) Krok submit · #loginForm\nDokument 2: http://127.0.0.1:8080/result.html\n11:00:04.200 (4,2 s)\n11:00:04.200 (4,2 s) Krok navigate · http://127.0.0.1:8080/result.html\n11:00:04.208 (4,2 s) Błąd Uncaught TypeError: x is undefined · result.html:3:9\n11:00:04.209 (4,2 s) Błąd Uncaught Error: frame failed · inner.html:1:1\n11:00:04.212 (4,2 s) Zapytanie POST http://127.0.0.1:8080/api/fail → 500 (3 ms)\n11:00:04.215 (4,2 s) Błąd TypeError: x is undefined · result.js:12:9\n11:00:04.220 (4,2 s) Zapytanie GET http://127.0.0.1:8080/missing.js → 404 (2 ms)\n11:00:06.250 (6,3 s) Krok click · Zapisz",
+   "steps__ms": 14,
+   "errors": "1× 11:00:04.208 (4,2 s) · Uncaught TypeError: x is undefined · result.html:3:9\n1× 11:00:04.209 (4,2 s) · Uncaught Error: frame failed · inner.html:1:1\n1× 11:00:04.215 (4,2 s) · TypeError: x is undefined · result.js:12:9",
+   "errors__ms": 11,
+   "network": "Status: \nWszystkie statusy\n2xx\n3xx\n4xx\n5xx\nbłąd\nnieznany\n Typ: \nWszystkie typy\nimg\nfetch\nscript\ncss\n Adres: \n\nWyniki: 5 z 5\n\n#0 11:00:00.160 (0,2 s) · img · GET http://127.0.0.1:8080/img/missing.png → 404 (2 ms)\n#1 11:00:00.161 (0,2 s) · img · GET https://cdn.example/logo.png → brak statusu (2 ms)\n#2 11:00:04.212 (4,2 s) · fetch · POST http://127.0.0.1:8080/api/fail → 500 (3 ms)\n#3 11:00:04.220 (4,2 s) · script · GET http://127.0.0.1:8080/missing.js → 404 (2 ms)\n#4 11:00:04.221 (4,2 s) · css · GET http://127.0.0.1:8080/style.css → 200 (2 ms)",
+   "network__ms": 14,
+   "console": "Wpisów: 4\n\n11:00:00.150 (0,2 s) info form ready\nArgumenty i stos\n11:00:04.215 (4,2 s) error TypeError: x is undefined\nArgumenty i stos\n11:00:04.216 (4,2 s) log clicked\nArgumenty i stos\n11:00:04.217 (4,2 s) warn session [redacted:jwt]\nArgumenty i stos",
+   "console__ms": 10,
+   "vitals": "Dokument 1: http://127.0.0.1:8080/form.html\nMetryka\tWartość\tOcena\tSzczegóły\nTTFB\t47 ms\tdobrze\t—\nFCP\t820 ms\tdobrze\t—\nLCP\t1712 ms\tdobrze\telement: #hero · zasób: http://127.0.0.1:8080/img/hero.png\nCLS\tniedostępne — przeglądarka tego nie mierzy\t—\t—\nINP\tniedostępne — przeglądarka tego nie mierzy\t—\t—\n\nDługie zadania: niedostępne — przeglądarka tego nie mierzy\n\nDokument 2: http://127.0.0.1:8080/result.html\nMetryka\tWartość\tOcena\tSzczegóły\nTTFB\t52 ms\tdobrze\t—\nFCP\t910 ms\tdobrze\t—\nLCP\t4300 ms\tsłabo\telement: #hero · zasób: http://127.0.0.1:8080/img/hero.png\nCLS\t0,183\tdo poprawy\tprzesunięcie 0,183: main > h1\nINP\t336 ms\tdo poprawy\telement: #slow · zdarzenie: click · opóźnienie 2 ms, obsługa 304 ms, rysowanie 30 ms\nDługie zadania\nCzas\tBlokowanie\tSkrypty\n212 ms\t162 ms\theavyWork · BUTTON#slow.onclick · http://127.0.0.1:8080/heavy.js",
+   "vitals__ms": 16,
+   "dom": "Liczby elementów\nKlucz\tWartość\ntotalElements\t14\nscripts\t1\nstylesheets\t0\nimages\t1\nlinks\t0\niframes\t0\nforms\t1\nDokument\nKlucz\tWartość\ndoctype\t{\"name\":\"html\",\"publicId\":\"\",\"systemId\":\"\"}\nlang\tpl\ncharset\tUTF-8\ncompatMode\tCSS1Compat\nFormularze\nid\tname\tmethod\taction\tenctype\nprofile\t—\tpost\thttp://127.0.0.1:8080/profile\tmultipart/form-data\ntagName\ttype\tname\tid\tvalueLength\tfileCount\nINPUT\temail\temail\tmail\t20\t—\nINPUT\tpassword\tpassword\tpass\t—\t—\nINPUT\tfile\tavatar\tavatar\t—\t0\nZnaczniki html i body\nKlucz\tWartość\nbodyClassName\tpage\nhtmlClassName\t—\ndataAttributesOnHtml\t{}\ndataAttributesOnBody\t{}\nStruktura (bez tekstów)\n<html lang=\"pl\"><head><meta charset=\"utf-8\"><script></script></head><body class=\"page\"><main id=\"app\" data-section=\"result\"><h1></h1><button id=\"slow\" class=\"btn\" type=\"button\"></button><img id=\"hero\"><form id=\"profile\"><input type=\"email\" id=\"mail\"><input type=\"password\" id=\"pass\"><input type=\"file\" id=\"avatar\"></form><div data-user=\"[redacted:email]\"></div></main></body></html>",
+   "dom__ms": 11,
+   "storage": "Ciasteczka\n\nLiczba: 3, łącznie 45 B\n\nNazwa\tRozmiar (B)\tSkrót wartości\nsid\t20\t93d70a40\nconsent\t11\t8a798890\ntheme\t10\te6bb5689\nlocalStorage\nKlucz\tWartość\ntheme\tdark\nauthToken\t[redacted:key-token]\nprofile\t{\"email\":\"[redacted:email]\",\"plan\":\"free\"}\nsessionStorage\nKlucz\tWartość\ncart\t3",
+   "storage__ms": 11
+  },
+  "loadMs": 626,
+  "header": "Podgląd paczki diagnostycznej\n\nInna paczka? Przeciągnij ją tutaj albo wybierz z dysku.\n\nPlik paczki (.zip albo .json): \n\n127.0.0.1\n\nZapisano: 15.01.2026, 11:01:05 · rozszerzenie 0.5.0 · schemat 4\n\nBłędy JS: 2 · Błędy konsoli: 1 · Nieudane zapytania: 3 · Kroki: 10 · Słabe metryki: 1 · Zrzut: tak",
+  "tabsVisible": true,
+  "seen": {
+   "requests": [],
+   "dialogs": [],
+   "errors": []
+  },
+  "bodyText": 2751
+ },
+ "v3.json": {
+  "tabsTexts": {
+   "summary": "# Paczka diagnostyczna — 127.0.0.1\nZapisano 2026-01-15T10:01:05.000Z · rozszerzenie 0.4.0 · schemat 4 · źródło: rozszerzenie · błędy JS 2 · błędy konsoli 1 · nieudane zapytania 3 · kroki 9 · słabe metryki 1 · zrzut: tak\n\n## Środowisko\n\n- Adres: `http://127.0.0.1:8080/result.html`\n\n## Kroki\n\nOstatnie 9 z 9:\n- 0,1 s · navigate · `http://127.0.0.1:8080/form.html`\n- 0,9 s · click · `Zacznij`\n- 1,1 s · input · `form > input:nth-of-type(1)`\n- 1,3 s · input · `#pass`\n- 1,4 s · change · `[data-testid=\"terms\"]`\n- 1,5 s · key · `#pass`\n- 1,5 s · submit · `#loginForm`\n- 4,2 s · navigate · `http://127.0.0.1:8080/result.html` ← ostatni krok przed pierwszym błędem\n- 6,3 s · click · `Zapisz`\n\n## Błędy\n\n- 1× od 4,2 s · `Uncaught TypeError: x is undefined` · `result.html:3:9`\n- 1× od 4,2 s · `Uncaught Error: frame failed` · `inner.html:1:1`\n- 1× od 4,2 s · `TypeError: x is undefined` · `result.js:12:9`\n\n## Nieudane zapytania (3)\n\n- `GET` `http://127.0.0.1:8080/img/missing.png` → 404 (2 ms)\n- `POST` `http://127.0.0.1:8080/api/fail` → 500 (3 ms)\n- `GET` `http://127.0.0.1:8080/missing.js` → 404 (2 ms)\n\n## CWV\n\n- `http://127.0.0.1:8080/form.html`: TTFB 47 ms (dobrze) · FCP 820 ms (dobrze) · LCP 1712 ms (dobrze) · CLS niedostępne — przeglądarka tego nie mierzy · INP niedostępne — przeglądarka tego nie mierzy\n- `http://127.0.0.1:8080/result.html`: TTFB 52 ms (dobrze) · FCP 910 ms (dobrze) · LCP 4300 ms (słabo) · CLS 0,18 (do poprawy) · INP 336 ms (do poprawy)\n\n## Najwolniejsze zasoby\n\n- 3 ms · fetch · 23 B · `http://127.0.0.1:8080/api/fail`\n- 2 ms · img · 9 B · `http://127.0.0.1:8080/img/missing.png`\n- 2 ms · img · rozmiar nieznany · `https://cdn.example/logo.png`\n- 2 ms · script · 9 B · `http://127.0.0.1:8080/missing.js`\n- 2 ms · css · 9 B · `http://127.0.0.1:8080/style.css`\n\n## Ciasteczka i rozmiar\n\n- Ciasteczka: 1, razem 11 B\n- Ucięte przez limity: nic\n\n## Prywatność\n\n- Brak informacji o maskowaniu.\n- Zrzut ekranu: jest\n\n## Uwagi\n\n- `Recording started at 2026-01-15T10:00:00.000Z (page reloaded); earlier data is not included.`\n- `LCP, CLS and INP are values at the time of saving; they could still grow.`\n\nPełne dane: snapshot.json; obraz: screenshot-0.\n\nZrzut ekranu z paczki",
+   "summary__ms": 10,
+   "steps": "Dokument 1: http://127.0.0.1:8080/form.html\n11:00:00.120 (0,1 s)\n11:00:00.120 (0,1 s) Krok navigate · http://127.0.0.1:8080/form.html\n11:00:00.160 (0,2 s) Zapytanie GET http://127.0.0.1:8080/img/missing.png → 404 (2 ms)\n11:00:00.932 (0,9 s) Krok click · Zacznij\n11:00:01.050 (1,1 s) Krok input · form > input:nth-of-type(1)\n11:00:01.322 (1,3 s) Krok input · #pass\n11:00:01.420 (1,4 s) Krok change · [data-testid=\"terms\"]\n11:00:01.520 (1,5 s) Krok key · #pass\n11:00:01.521 (1,5 s) Krok submit · #loginForm\nDokument 2: http://127.0.0.1:8080/result.html\n11:00:04.200 (4,2 s)\n11:00:04.200 (4,2 s) Krok navigate · http://127.0.0.1:8080/result.html\n11:00:04.208 (4,2 s) Błąd Uncaught TypeError: x is undefined · result.html:3:9\n11:00:04.209 (4,2 s) Błąd Uncaught Error: frame failed · inner.html:1:1\n11:00:04.212 (4,2 s) Zapytanie POST http://127.0.0.1:8080/api/fail → 500 (3 ms)\n11:00:04.215 (4,2 s) Błąd TypeError: x is undefined · result.js:12:9\n11:00:04.220 (4,2 s) Zapytanie GET http://127.0.0.1:8080/missing.js → 404 (2 ms)\n11:00:06.250 (6,3 s) Krok click · Zapisz",
+   "steps__ms": 15,
+   "errors": "1× 11:00:04.208 (4,2 s) · Uncaught TypeError: x is undefined · result.html:3:9\n1× 11:00:04.209 (4,2 s) · Uncaught Error: frame failed · inner.html:1:1\n1× 11:00:04.215 (4,2 s) · TypeError: x is undefined · result.js:12:9",
+   "errors__ms": 11,
+   "network": "Status: \nWszystkie statusy\n2xx\n3xx\n4xx\n5xx\nbłąd\nnieznany\n Typ: \nWszystkie typy\nimg\nfetch\nscript\ncss\n Adres: \n\nWyniki: 5 z 5\n\n#0 11:00:00.160 (0,2 s) · img · GET http://127.0.0.1:8080/img/missing.png → 404 (2 ms)\n#1 11:00:00.161 (0,2 s) · img · GET https://cdn.example/logo.png → brak statusu (2 ms)\n#2 11:00:04.212 (4,2 s) · fetch · POST http://127.0.0.1:8080/api/fail → 500 (3 ms)\n#3 11:00:04.220 (4,2 s) · script · GET http://127.0.0.1:8080/missing.js → 404 (2 ms)\n#4 11:00:04.221 (4,2 s) · css · GET http://127.0.0.1:8080/style.css → 200 (2 ms)",
+   "network__ms": 12,
+   "console": "Wpisów: 2\n\n11:00:00.150 (0,2 s) info form ready\nArgumenty i stos\n11:00:04.215 (4,2 s) error TypeError: x is undefined\nArgumenty i stos",
+   "console__ms": 7,
+   "vitals": "Dokument 1: http://127.0.0.1:8080/form.html\nMetryka\tWartość\tOcena\tSzczegóły\nTTFB\t47 ms\tdobrze\t—\nFCP\t820 ms\tdobrze\t—\nLCP\t1712 ms\tdobrze\telement: #hero · zasób: http://127.0.0.1:8080/img/hero.png\nCLS\tniedostępne — przeglądarka tego nie mierzy\t—\t—\nINP\tniedostępne — przeglądarka tego nie mierzy\t—\t—\n\nDługie zadania: niedostępne — przeglądarka tego nie mierzy\n\nDokument 2: http://127.0.0.1:8080/result.html\nMetryka\tWartość\tOcena\tSzczegóły\nTTFB\t52 ms\tdobrze\t—\nFCP\t910 ms\tdobrze\t—\nLCP\t4300 ms\tsłabo\telement: #hero · zasób: http://127.0.0.1:8080/img/hero.png\nCLS\t0,183\tdo poprawy\tprzesunięcie 0,183: main > p:nth-of-type(1)\nINP\t336 ms\tdo poprawy\telement: #slow · zdarzenie: click · opóźnienie 2 ms, obsługa 304 ms, rysowanie 30 ms\nDługie zadania\nCzas\tBlokowanie\tSkrypty\n212 ms\t162 ms\theavyWork · BUTTON#slow.onclick · http://127.0.0.1:8080/heavy.js",
+   "vitals__ms": 16,
+   "dom": "Liczby elementów\nKlucz\tWartość\ntotalElements\t12\nforms\t0\nPełny HTML (paczka w starszej wersji)\n<html><body><p>Wynik</p></body></html>",
+   "dom__ms": 10,
+   "storage": "Ciasteczka\n\nLiczba: 1, łącznie 11 B\n\nNazwa\tRozmiar (B)\tSkrót wartości\nsid\t11\t—\nlocalStorage\nKlucz\tWartość\ntheme\tdark\nsessionStorage\n\nPusto.",
+   "storage__ms": 13
+  },
+  "loadMs": 636,
+  "header": "Podgląd paczki diagnostycznej\n\nInna paczka? Przeciągnij ją tutaj albo wybierz z dysku.\n\nPlik paczki (.zip albo .json): \n\n127.0.0.1\n\nZapisano: 15.01.2026, 11:01:05 · rozszerzenie 0.4.0 · schemat 4 (plik w wersji 3, odczytany jako 4)\n\nBłędy JS: 2 · Błędy konsoli: 1 · Nieudane zapytania: 3 · Kroki: 9 · Słabe metryki: 1 · Zrzut: tak",
+  "tabsVisible": true,
+  "seen": {
+   "requests": [],
+   "dialogs": [],
+   "errors": []
+  },
+  "bodyText": 2577
+ },
+ "v2.json": {
+  "tabsTexts": {
+   "summary": "# Paczka diagnostyczna — 127.0.0.1\nZapisano 2026-01-15T10:01:05.000Z · rozszerzenie 0.3.0 · schemat 4 · źródło: rozszerzenie · błędy JS 2 · błędy konsoli 1 · nieudane zapytania 1 · kroki 0 · słabe metryki 0 · zrzut: nie\n\n## Środowisko\n\n- Adres: `http://127.0.0.1:8080/result.html`\n- Przeglądarka: `Mozilla/5.0 (synthetic)`\n- Język: `pl-PL`\n\n## Kroki\n\nbrak — nie zarejestrowano kroków\n\n## Błędy\n\n- 1× od 4,2 s · `Uncaught TypeError: x is undefined` · `result.html:3:9`\n- 1× od 4,2 s · `rejected in head` · `result.html:5:20`\n- 1× od 4,2 s · `save failed` · `result.js:12:9`\n\n## Nieudane zapytania (1)\n\n- `POST` `http://127.0.0.1:8080/api/fail` → 500 (3 ms)\n\n## CWV\n\nbrak — nie zmierzono metryk\n\n## Najwolniejsze zasoby\n\n- 3 ms · fetch · rozmiar nieznany · `http://127.0.0.1:8080/api/fail`\n\n## Ciasteczka i rozmiar\n\n- Ciasteczka: 1, razem 10 B\n- Ucięte przez limity: nic\n\n## Prywatność\n\n- Brak informacji o maskowaniu.\n- Zrzut ekranu: brak — powód w Uwagach\n\n## Uwagi\n\n- `Recording started at 2026-01-15T10:00:00.000Z (page reloaded); earlier data is not included.`\n\nPełne dane: snapshot.json.\n",
+   "summary__ms": 11,
+   "steps": "Dokument 1: http://127.0.0.1:8080/form.html\n11:00:00.120 (0,1 s)\nDokument 2: http://127.0.0.1:8080/result.html\n11:00:04.200 (4,2 s)\n11:00:04.208 (4,2 s) Błąd Uncaught TypeError: x is undefined · result.html:3:9\n11:00:04.211 (4,2 s) Błąd rejected in head · result.html:5:20\n11:00:04.212 (4,2 s) Zapytanie POST http://127.0.0.1:8080/api/fail → 500 (3 ms)\n11:00:04.215 (4,2 s) Błąd save failed · result.js:12:9",
+   "steps__ms": 11,
+   "errors": "1× 11:00:04.208 (4,2 s) · Uncaught TypeError: x is undefined · result.html:3:9\n1× 11:00:04.211 (4,2 s) · rejected in head · result.html:5:20\n1× 11:00:04.215 (4,2 s) · save failed · result.js:12:9",
+   "errors__ms": 10,
+   "network": "Status: \nWszystkie statusy\n2xx\n3xx\n4xx\n5xx\nbłąd\nnieznany\n Typ: \nWszystkie typy\nfetch\n Adres: \n\nWyniki: 1 z 1\n\n#0 11:00:04.212 (4,2 s) · fetch · POST http://127.0.0.1:8080/api/fail → 500 (3 ms)",
+   "network__ms": 14,
+   "console": "Wpisów: 2\n\n11:00:00.430 (0,4 s) info form ready\nArgumenty i stos\n11:00:04.215 (4,2 s) error save failed\nArgumenty i stos",
+   "console__ms": 11,
+   "vitals": "Brak pomiarów CWV w paczce.",
+   "vitals__ms": 12,
+   "dom": "Liczby elementów\nKlucz\tWartość\ntotalElements\t14\nforms\t0\nDokument\nKlucz\tWartość\ndoctype\thtml\nlang\tpl\ncharset\tUTF-8\ncanonical\t—\nZnaczniki html i body\nKlucz\tWartość\nPełny HTML (paczka w starszej wersji)\n<html lang=\"pl\">…</html>",
+   "dom__ms": 15,
+   "storage": "Ciasteczka\n\nLiczba: 1, łącznie 10 B\n\nNazwa\tRozmiar (B)\tSkrót wartości\ntheme\t10\t—\nlocalStorage\nKlucz\tWartość\ntheme\tdark\nsessionStorage\n\nPusto.",
+   "storage__ms": 10
+  },
+  "loadMs": 627,
+  "header": "Podgląd paczki diagnostycznej\n\nInna paczka? Przeciągnij ją tutaj albo wybierz z dysku.\n\nPlik paczki (.zip albo .json): \n\n127.0.0.1\n\nZapisano: 15.01.2026, 11:01:05 · rozszerzenie 0.3.0 · schemat 4 (plik w wersji 2, odczytany jako 4)\n\nBłędy JS: 2 · Błędy konsoli: 1 · Nieudane zapytania: 1 · Kroki: 0 · Słabe metryki: 0 · Zrzut: nie",
+  "tabsVisible": true,
+  "seen": {
+   "requests": [],
+   "dialogs": [],
+   "errors": []
+  },
+  "bodyText": 1478
+ },
+ "v1.json": {
+  "tabsTexts": {
+   "summary": "# Paczka diagnostyczna — 127.0.0.1\nZapisano 2026-01-15T10:00:05.000Z · rozszerzenie ? · schemat 4 · źródło: rozszerzenie · błędy JS 1 · błędy konsoli 1 · nieudane zapytania 1 · kroki 0 · słabe metryki 0 · zrzut: nie\n\n## Środowisko\n\n- Adres: `http://127.0.0.1:8080/basic.html`\n\n## Kroki\n\nbrak — nie zarejestrowano kroków\n\n## Błędy\n\n- 1× od 0,0 s · `Uncaught TypeError: x is undefined` · `basic.html:3:9`\n- 1× od 0,0 s · `save failed`\n\n## Nieudane zapytania (1)\n\n- `POST` `http://127.0.0.1:8080/api/fail` → 500 (3 ms)\n\n## CWV\n\nbrak — nie zmierzono metryk\n\n## Najwolniejsze zasoby\n\n- 3 ms · fetch · rozmiar nieznany · `http://127.0.0.1:8080/api/fail`\n\n## Ciasteczka i rozmiar\n\n- Ciasteczka: 1, razem 11 B\n- Ucięte przez limity: nic\n\n## Prywatność\n\n- Brak informacji o maskowaniu.\n- Zrzut ekranu: brak — powód w Uwagach\n\n## Uwagi\n\n- `Console logs are captured only from initialization time.`\n\nPełne dane: snapshot.json.\n",
+   "summary__ms": 13,
+   "steps": "Dokument 1: http://127.0.0.1:8080/basic.html\n11:00:00.000 (-5,0 s)\n11:00:04.996 (0,0 s) Zapytanie POST http://127.0.0.1:8080/api/fail → 500 (3 ms)\n11:00:04.998 (0,0 s) Błąd Uncaught TypeError: x is undefined · basic.html:3:9\n11:00:05.000 (0,0 s) Błąd save failed",
+   "steps__ms": 11,
+   "errors": "1× 11:00:04.998 (0,0 s) · Uncaught TypeError: x is undefined · basic.html:3:9\n1× 11:00:05.000 (0,0 s) · save failed",
+   "errors__ms": 9,
+   "network": "Status: \nWszystkie statusy\n2xx\n3xx\n4xx\n5xx\nbłąd\nnieznany\n Typ: \nWszystkie typy\nfetch\n Adres: \n\nWyniki: 1 z 1\n\n#0 11:00:04.996 (0,0 s) · fetch · POST http://127.0.0.1:8080/api/fail → 500 (3 ms)",
+   "network__ms": 12,
+   "console": "Wpisów: 2\n\n11:00:04.995 (0,0 s) info PageDebugSnapshot initialized.\nArgumenty i stos\n11:00:05.000 (0,0 s) error save failed\nArgumenty i stos",
+   "console__ms": 10,
+   "vitals": "Brak pomiarów CWV w paczce.",
+   "vitals__ms": 12,
+   "dom": "Liczby elementów\nKlucz\tWartość\ntotalElements\t12\nforms\t1\nPełny HTML (paczka w starszej wersji)\n<html>…</html>",
+   "dom__ms": 14,
+   "storage": "Ciasteczka\n\nLiczba: 1, łącznie 11 B\n\nNazwa\tRozmiar (B)\tSkrót wartości\nsid\t11\t—\nlocalStorage\nKlucz\tWartość\ntheme\tdark\nsessionStorage\n\nPusto.",
+   "storage__ms": 12
+  },
+  "loadMs": 627,
+  "header": "Podgląd paczki diagnostycznej\n\nInna paczka? Przeciągnij ją tutaj albo wybierz z dysku.\n\nPlik paczki (.zip albo .json): \n\n127.0.0.1\n\nZapisano: 15.01.2026, 11:00:05 · rozszerzenie ? · schemat 4 (plik w wersji 1, odczytany jako 4)\n\nBłędy JS: 1 · Błędy konsoli: 1 · Nieudane zapytania: 1 · Kroki: 0 · Słabe metryki: 0 · Zrzut: nie\n\nPaczka w wersji 1: dane odczytane w przybliżeniu (czasy przeliczone z dat).",
+  "tabsVisible": true,
+  "seen": {
+   "requests": [],
+   "dialogs": [],
+   "errors": []
+  },
+  "bodyText": 1374
+ },
+ "corrupt.zip": {
+  "tabsTexts": {},
+  "loadMs": 632,
+  "header": "Podgląd paczki diagnostycznej\n\nPrzeciągnij plik paczki tutaj albo wybierz go z dysku.\n\nPlik paczki (.zip albo .json): \n\nPlik paczki jest uszkodzony.",
+  "tabsVisible": false,
+  "seen": {
+   "requests": [],
+   "dialogs": [],
+   "errors": []
+  },
+  "bodyText": 148
+ },
+ "notapackage.json": {
+  "tabsTexts": {},
+  "loadMs": 623,
+  "header": "Podgląd paczki diagnostycznej\n\nPrzeciągnij plik paczki tutaj albo wybierz go z dysku.\n\nPlik paczki (.zip albo .json): \n\nTo nie jest plik paczki.",
+  "tabsVisible": false,
+  "seen": {
+   "requests": [],
+   "dialogs": [],
+   "errors": []
+  },
+  "bodyText": 144
+ },
+ "notapackage.txt": {
+  "tabsTexts": {},
+  "loadMs": 628,
+  "header": "Podgląd paczki diagnostycznej\n\nPrzeciągnij plik paczki tutaj albo wybierz go z dysku.\n\nPlik paczki (.zip albo .json): \n\nTo nie jest plik paczki.",
+  "tabsVisible": false,
+  "seen": {
+   "requests": [],
+   "dialogs": [],
+   "errors": []
+  },
+  "bodyText": 144
+ },
+ "schema5.json": {
+  "tabsTexts": {
+   "summary": "# Paczka diagnostyczna — 127.0.0.1\nZapisano 2026-01-15T10:01:05.000Z · rozszerzenie 0.5.0 · schemat 5 · źródło: rozszerzenie · błędy JS 2 · błędy konsoli 1 · nieudane zapytania 3 · kroki 10 · słabe metryki 1 · zrzut: tak\n\n## Środowisko\n\n- Adres: `http://127.0.0.1:8080/result.html?access_token=[redacted:key-token]`\n- Przeglądarka: `Mozilla/5.0 (Synthetic) Test/1.0`\n- Okno: 1280×720, DPR 1\n- Język: `pl-PL`\n\n## Kroki\n\nOstatnie 10 z 10:\n- 0,1 s · navigate · `http://127.0.0.1:8080/form.html`\n- 0,9 s · click · `Zacznij`\n- 1,1 s · input · `form > input:nth-of-type(1)`\n- 1,3 s · input · `#pass`\n- 1,4 s · change · `[data-testid=\"terms\"]`\n- 1,5 s · change · `#avatar`\n- 1,5 s · key · `#pass`\n- 1,5 s · submit · `#loginForm`\n- 4,2 s · navigate · `http://127.0.0.1:8080/result.html` ← ostatni krok przed pierwszym błędem\n- 6,3 s · click · `Zapisz`\n\n## Błędy\n\n- 1× od 4,2 s · `Uncaught TypeError: x is undefined` · `result.html:3:9`\n- 1× od 4,2 s · `Uncaught Error: frame failed` · `inner.html:1:1`\n- 1× od 4,2 s · `TypeError: x is undefined` · `result.js:12:9`\n\n## Nieudane zapytania (3)\n\n- `GET` `http://127.0.0.1:8080/img/missing.png` → 404 (2 ms)\n- `POST` `http://127.0.0.1:8080/api/fail` → 500 (3 ms)\n- `GET` `http://127.0.0.1:8080/missing.js` → 404 (2 ms)\n\n## CWV\n\n- `http://127.0.0.1:8080/form.html`: TTFB 47 ms (dobrze) · FCP 820 ms (dobrze) · LCP 1712 ms (dobrze) · CLS niedostępne — przeglądarka tego nie mierzy · INP niedostępne — przeglądarka tego nie mierzy\n- `http://127.0.0.1:8080/result.html`: TTFB 52 ms (dobrze) · FCP 910 ms (dobrze) · LCP 4300 ms (słabo) · CLS 0,18 (do poprawy) · INP 336 ms (do poprawy)\n\n## Najwolniejsze zasoby\n\n- 3 ms · fetch · 23 B · `http://127.0.0.1:8080/api/fail`\n- 2 ms · img · 9 B · `http://127.0.0.1:8080/img/missing.png`\n- 2 ms · img · rozmiar nieznany · `https://cdn.example/logo.png`\n- 2 ms · script · 9 B · `http://127.0.0.1:8080/missing.js`\n- 2 ms · css · 9 B · `http://127.0.0.1:8080/style.css`\n\n## Ciasteczka i rozmiar\n\n- Ciasteczka: 3, razem 45 B\n- Ucięte przez limity: nic\n\n## Prywatność\n\n- Zamaskowano 10 wartości w 5 sekcjach (reguły v1). Hasła, tokeny i dane logowania nie są w tym pliku.\n- Zrzut ekranu: jest\n\n## Uwagi\n\n- `Recording started at 2026-01-15T10:00:00.000Z (page reloaded); earlier data is not included.`\n- `LCP, CLS and INP are values at the time of saving; they could still grow.`\n\nPełne dane: snapshot.json; obraz: screenshot.jpg.\n",
+   "summary__ms": 15,
+   "steps": "Dokument 1: http://127.0.0.1:8080/form.html\n11:00:00.120 (0,1 s)\n11:00:00.120 (0,1 s) Krok navigate · http://127.0.0.1:8080/form.html\n11:00:00.160 (0,2 s) Zapytanie GET http://127.0.0.1:8080/img/missing.png → 404 (2 ms)\n11:00:00.932 (0,9 s) Krok click · Zacznij\n11:00:01.050 (1,1 s) Krok input · form > input:nth-of-type(1)\n11:00:01.322 (1,3 s) Krok input · #pass\n11:00:01.420 (1,4 s) Krok change · [data-testid=\"terms\"]\n11:00:01.470 (1,5 s) Krok change · #avatar\n11:00:01.520 (1,5 s) Krok key · #pass\n11:00:01.521 (1,5 s) Krok submit · #loginForm\nDokument 2: http://127.0.0.1:8080/result.html\n11:00:04.200 (4,2 s)\n11:00:04.200 (4,2 s) Krok navigate · http://127.0.0.1:8080/result.html\n11:00:04.208 (4,2 s) Błąd Uncaught TypeError: x is undefined · result.html:3:9\n11:00:04.209 (4,2 s) Błąd Uncaught Error: frame failed · inner.html:1:1\n11:00:04.212 (4,2 s) Zapytanie POST http://127.0.0.1:8080/api/fail → 500 (3 ms)\n11:00:04.215 (4,2 s) Błąd TypeError: x is undefined · result.js:12:9\n11:00:04.220 (4,2 s) Zapytanie GET http://127.0.0.1:8080/missing.js → 404 (2 ms)\n11:00:06.250 (6,3 s) Krok click · Zapisz",
+   "steps__ms": 13,
+   "errors": "1× 11:00:04.208 (4,2 s) · Uncaught TypeError: x is undefined · result.html:3:9\n1× 11:00:04.209 (4,2 s) · Uncaught Error: frame failed · inner.html:1:1\n1× 11:00:04.215 (4,2 s) · TypeError: x is undefined · result.js:12:9",
+   "errors__ms": 10,
+   "network": "Status: \nWszystkie statusy\n2xx\n3xx\n4xx\n5xx\nbłąd\nnieznany\n Typ: \nWszystkie typy\nimg\nfetch\nscript\ncss\n Adres: \n\nWyniki: 5 z 5\n\n#0 11:00:00.160 (0,2 s) · img · GET http://127.0.0.1:8080/img/missing.png → 404 (2 ms)\n#1 11:00:00.161 (0,2 s) · img · GET https://cdn.example/logo.png → brak statusu (2 ms)\n#2 11:00:04.212 (4,2 s) · fetch · POST http://127.0.0.1:8080/api/fail → 500 (3 ms)\n#3 11:00:04.220 (4,2 s) · script · GET http://127.0.0.1:8080/missing.js → 404 (2 ms)\n#4 11:00:04.221 (4,2 s) · css · GET http://127.0.0.1:8080/style.css → 200 (2 ms)",
+   "network__ms": 15,
+   "console": "Wpisów: 4\n\n11:00:00.150 (0,2 s) info form ready\nArgumenty i stos\n11:00:04.215 (4,2 s) error TypeError: x is undefined\nArgumenty i stos\n11:00:04.216 (4,2 s) log clicked\nArgumenty i stos\n11:00:04.217 (4,2 s) warn session [redacted:jwt]\nArgumenty i stos",
+   "console__ms": 9,
+   "vitals": "Dokument 1: http://127.0.0.1:8080/form.html\nMetryka\tWartość\tOcena\tSzczegóły\nTTFB\t47 ms\tdobrze\t—\nFCP\t820 ms\tdobrze\t—\nLCP\t1712 ms\tdobrze\telement: #hero · zasób: http://127.0.0.1:8080/img/hero.png\nCLS\tniedostępne — przeglądarka tego nie mierzy\t—\t—\nINP\tniedostępne — przeglądarka tego nie mierzy\t—\t—\n\nDługie zadania: niedostępne — przeglądarka tego nie mierzy\n\nDokument 2: http://127.0.0.1:8080/result.html\nMetryka\tWartość\tOcena\tSzczegóły\nTTFB\t52 ms\tdobrze\t—\nFCP\t910 ms\tdobrze\t—\nLCP\t4300 ms\tsłabo\telement: #hero · zasób: http://127.0.0.1:8080/img/hero.png\nCLS\t0,183\tdo poprawy\tprzesunięcie 0,183: main > h1\nINP\t336 ms\tdo poprawy\telement: #slow · zdarzenie: click · opóźnienie 2 ms, obsługa 304 ms, rysowanie 30 ms\nDługie zadania\nCzas\tBlokowanie\tSkrypty\n212 ms\t162 ms\theavyWork · BUTTON#slow.onclick · http://127.0.0.1:8080/heavy.js",
+   "vitals__ms": 15,
+   "dom": "Liczby elementów\nKlucz\tWartość\ntotalElements\t14\nscripts\t1\nstylesheets\t0\nimages\t1\nlinks\t0\niframes\t0\nforms\t1\nDokument\nKlucz\tWartość\ndoctype\t{\"name\":\"html\",\"publicId\":\"\",\"systemId\":\"\"}\nlang\tpl\ncharset\tUTF-8\ncompatMode\tCSS1Compat\nFormularze\nid\tname\tmethod\taction\tenctype\nprofile\t—\tpost\thttp://127.0.0.1:8080/profile\tmultipart/form-data\ntagName\ttype\tname\tid\tvalueLength\tfileCount\nINPUT\temail\temail\tmail\t20\t—\nINPUT\tpassword\tpassword\tpass\t—\t—\nINPUT\tfile\tavatar\tavatar\t—\t0\nZnaczniki html i body\nKlucz\tWartość\nbodyClassName\tpage\nhtmlClassName\t—\ndataAttributesOnHtml\t{}\ndataAttributesOnBody\t{}\nStruktura (bez tekstów)\n<html lang=\"pl\"><head><meta charset=\"utf-8\"><script></script></head><body class=\"page\"><main id=\"app\" data-section=\"result\"><h1></h1><button id=\"slow\" class=\"btn\" type=\"button\"></button><img id=\"hero\"><form id=\"profile\"><input type=\"email\" id=\"mail\"><input type=\"password\" id=\"pass\"><input type=\"file\" id=\"avatar\"></form><div data-user=\"[redacted:email]\"></div></main></body></html>",
+   "dom__ms": 12,
+   "storage": "Ciasteczka\n\nLiczba: 3, łącznie 45 B\n\nNazwa\tRozmiar (B)\tSkrót wartości\nsid\t20\t93d70a40\nconsent\t11\t8a798890\ntheme\t10\te6bb5689\nlocalStorage\nKlucz\tWartość\ntheme\tdark\nauthToken\t[redacted:key-token]\nprofile\t{\"email\":\"[redacted:email]\",\"plan\":\"free\"}\nsessionStorage\nKlucz\tWartość\ncart\t3",
+   "storage__ms": 10
+  },
+  "loadMs": 623,
+  "header": "Podgląd paczki diagnostycznej\n\nInna paczka? Przeciągnij ją tutaj albo wybierz z dysku.\n\nPlik paczki (.zip albo .json): \n\n127.0.0.1\n\nZapisano: 15.01.2026, 11:01:05 · rozszerzenie 0.5.0 · schemat 5\n\nBłędy JS: 2 · Błędy konsoli: 1 · Nieudane zapytania: 3 · Kroki: 10 · Słabe metryki: 1 · Zrzut: tak\n\nNowsza wersja paczki — część danych może być niewidoczna.",
+  "tabsVisible": true,
+  "seen": {
+   "requests": [],
+   "dialogs": [],
+   "errors": []
+  },
+  "bodyText": 2810
+ }
+}

@@ -37,24 +37,32 @@ const isScalar = (value) => typeof value === 'string' || typeof value === 'numbe
 function namedPairRule(map) {
   if (!Object.prototype.hasOwnProperty.call(map, 'value')) return null;
   for (const field of ['name', 'key']) {
-    const rule = typeof map[field] === 'string' ? secretKeyRule(map[field]) : null;
+    // A marker (`{ key: '[redacted:key-key]' }` after a first pass) names nothing (idempotence).
+    const name = map[field];
+    const rule = typeof name === 'string' && name.indexOf(MARKER_PREFIX) === -1 ? secretKeyRule(name) : null;
     if (rule !== null) return rule;
   }
   return null;
 }
 
-// A console argument that names the next one (review E3 N9, N10): one token without white space (`'password'`), or any
-// text ending in `:`/`=` (`'password:'`, `'Enter token ='`); the separator is dropped before secretKeyRule. A marker is
-// never a key (it was a value).
+// A console argument that names the next one (review E3 N9, N10; E4-IN5): one token without white space (`'password'`),
+// any text ending in `:`/`=` (`'password:'`, `'Enter token ='`; the separator is dropped before secretKeyRule), or a
+// sentence whose last word is a key, optionally followed by `is`/`jest` (`'Your password is'`). Text holding a marker is
+// never a key: it was a value, and `[redacted:key-token]` would name the next argument in a second pass (idempotence).
 const ARG_KEY_SEPARATOR = redactRegExp(/\s*[:=]\s*$/);
 const ARG_ONE_TOKEN = redactRegExp(/^\S+$/);
 const ARG_MARKER = redactRegExp(/^\[redacted:[a-z0-9_*-]+\]$/);
+const ARG_COPULA = redactRegExp(/\s+(?:is|jest)\s*$/i);
+const ARG_LAST_WORD = redactRegExp(/(?:^|\s)([A-Za-z_][\w.-]*)$/);
 
 function argKeyRule(value) {
-  if (typeof value !== 'string' || value.length > MASK_LIMITS.keyChars + 8 || redactTest(ARG_MARKER, value)) return null;
+  if (typeof value !== 'string' || value.length > MASK_LIMITS.keyChars + 8 || value.indexOf(MARKER_PREFIX) !== -1) return null;
   const separator = redactExec(ARG_KEY_SEPARATOR, value);
   if (separator !== null) return secretKeyRule(redactSlice(value, 0, separator.index));
-  return redactTest(ARG_ONE_TOKEN, value) ? secretKeyRule(value) : null;
+  if (redactTest(ARG_ONE_TOKEN, value)) return secretKeyRule(value);
+  const copula = redactExec(ARG_COPULA, value);
+  const last = redactExec(ARG_LAST_WORD, copula === null ? value : redactSlice(value, 0, copula.index));
+  return last === null ? null : secretKeyRule(last[1]);
 }
 
 // Sets an own property, also for the key `__proto__` (a storage key or a JSON key from the page).
@@ -173,15 +181,16 @@ export function createRedactionContext(options) {
     },
 
     /**
-     * A list read as key/value pairs (review E3 N9, N13): a scalar after a key (argKeyRule) is masked with the rule of
-     * that key. A masked value that is a key itself names the next item (`'[Auth]', 'Token:', t`: fail-closed chain).
+     * A list read as key/value pairs (review E3 N9, N13): an item after a key (argKeyRule) is masked with the rule of
+     * that key, a container as a whole (E4-IN5, Q-4). A masked value that is a key itself names the next item
+     * (`'[Auth]', 'Token:', t`: fail-closed chain).
      */
     pairs(list, where = NONE) {
       const out = new Array(list.length);
       let rule = null;
       for (let i = 0; i < list.length; i++) {
         const item = list[i];
-        out[i] = rule !== null && isScalar(item) ? ctx.forced(item, rule) : ctx.deep(item, where);
+        out[i] = rule !== null ? ctx.forced(item, rule) : ctx.deep(item, where);
         rule = argKeyRule(item);
       }
       return out;
@@ -235,57 +244,109 @@ function redactNetwork(entry, ctx) {
 }
 
 // Console arguments as key/value pairs (review E3 N9, N13, N14): `('login', 'jan', 'password:', pw)` — every argument
-// that is a key (argKeyRule) masks the next one when it is a scalar; keys in a row form a chain; nested arrays alike.
+// that is a key (argKeyRule) masks the next one; keys in a row form a chain; nested arrays alike. A long entry
+// `{ truncated, preview }` keeps its other fields as user data; the preview is read token by token (E4-IN4).
 function redactConsoleArgs(args, ctx) {
-  if (isObject(args) && typeof args.preview === 'string') return ctx.deep({ ...args, preview: maskPreviewPairs(args.preview, ctx) }, CONSOLE);
-  return ctx.deep(args, CONSOLE);
+  if (!isObject(args) || typeof args.preview !== 'string') return ctx.deep(args, CONSOLE);
+  const out = {};
+  for (const key of Object.keys(args)) put(out, key, key === 'preview' ? redactJsonPreview(args.preview, ctx) : ctx.deep(args[key], CONSOLE));
+  return out;
 }
 
 const isDigit = (ch) => ch >= '0' && ch <= '9';
 const isScalarChar = (ch) => isDigit(ch) || (ch >= 'a' && ch <= 'z') || ch === '-' || ch === '+' || ch === '.' || ch === 'E';
 
-// The same pairs (and chains) in the JSON text of a long entry `{ truncated, preview }` (`["password:","x",…`), in every array of it,
-// also when the text ends inside the value. One linear scan: strings (with escapes), scalars and brackets; object
-// members are left to the text pass (`"key": value`). A masked scalar becomes a quoted marker.
-function maskPreviewPairs(text, ctx) {
+// Value of a JSON string literal without its quotes (`raw`), or null when it does not decode.
+function decodeLiteral(raw) {
+  try {
+    const value = JSON.parse(`"${raw}"`);
+    return typeof value === 'string' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+// `{"name":"password","value":…}` (namedPairRule of ctx.keyed) in an object frame of redactJsonPreview: a sensitive value
+// of `name`/`key` gives the rule of a later `value` key. A stream knows only a name read before `value`; `key` is itself
+// a key word, so its value may be masked as well (a false positive the full arguments do not have).
+function namePair(frame, value) {
+  if ((frame.name === 'name' || frame.name === 'key') && value !== null && value.length <= MASK_LIMITS.keyChars
+    && value.indexOf(MARKER_PREFIX) === -1) {
+    frame.pair = frame.pair ?? secretKeyRule(value);
+  }
+}
+
+/**
+ * The JSON text of a long console entry (`["password:","x",…`, cut at `entryChars`) redacted token by token (E4-IN4),
+ * with the rules of the full arguments: in arrays the pairs of ctx.pairs, in objects the key rule of ctx.keyed; a
+ * value after a key is masked, a container as a whole. Every other string literal is decoded, goes through the text
+ * pass and is encoded again (an unclosed one at the cut as it is); a number too. Brackets, separators and unchanged
+ * literals are copied, so the text parses like the original up to the cut; `ctx.applied` counts the replacements.
+ */
+function redactJsonPreview(text, ctx) {
   const n = text.length;
+  // Frames: { array, force: rule of the container or null, rule: rule for the next value, key: an object expects a key,
+  // name: the last key read, pair: rule of a sensitive `name`/`key` value for a later `value` key (namedPairRule) }.
   const stack = [];
   let out = '';
   let last = 0;
-  const replace = (start, end, marker) => {
-    out += redactSlice(text, last, start) + marker;
+  const replace = (start, end, replacement) => {
+    out += redactSlice(text, last, start) + replacement;
     last = end;
-    ctx.applied++;
   };
   for (let i = 0; i < n; i++) {
     const ch = text[i];
     const top = stack.length > 0 ? stack[stack.length - 1] : null;
+    const rule = top === null ? null : top.force ?? top.rule;
     if (ch === '"') {
       let j = i + 1;
       while (j < n && text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
       const end = Math.min(j, n);
-      if (top !== null && top.array) {
-        if (top.pending !== null) {
-          const value = redactSlice(text, i + 1, end);
-          if (value !== '' && !redactTest(ARG_MARKER, value)) replace(i + 1, end, `[redacted:${top.pending}]`);
-          // A masked key names the next item (review E3 N13).
-          top.pending = end - i - 1 <= MASK_LIMITS.keyChars + 8 ? argKeyRule(value) : null;
-        } else {
-          top.pending = end - i - 1 <= MASK_LIMITS.keyChars + 8 ? argKeyRule(redactSlice(text, i + 1, end)) : null;
+      const closed = j < n;
+      const raw = redactSlice(text, i + 1, end);
+      const value = closed ? decodeLiteral(raw) : null;
+      if (top !== null && !top.array && top.key) {
+        // An object key: kept as it is; it gives the rule of the value (keyed), `value` after a sensitive name the pair rule.
+        const keyRule = value === null || value.length > MASK_LIMITS.keyChars ? null : secretKeyRule(value);
+        top.rule = top.force ?? keyRule ?? (value === 'value' ? top.pair : null);
+        top.name = value;
+        top.key = false;
+      } else if (rule !== null) {
+        if (raw !== '' && !redactTest(ARG_MARKER, raw)) {
+          replace(i + 1, end, `[redacted:${rule}]`);
+          ctx.applied++;
         }
+        if (top.array) top.rule = argKeyRule(value ?? raw);
+        else namePair(top, value);
+      } else {
+        const masked = ctx.text(value ?? raw, CONSOLE);
+        if (masked !== (value ?? raw)) replace(i, closed ? end + 1 : end, value === null && !closed ? `"${masked}` : JSON.stringify(masked));
+        if (top !== null && top.array) top.rule = argKeyRule(value ?? raw);
+        else if (top !== null) namePair(top, value);
       }
       i = end;
     } else if (ch === '[' || ch === '{') {
-      if (top !== null) top.pending = null;
-      stack.push({ array: ch === '[', pending: null });
+      if (top !== null && top.array) top.rule = null;
+      stack.push({ array: ch === '[', force: rule, rule: null, key: ch === '{', name: null, pair: null });
     } else if (ch === ']' || ch === '}') {
       stack.pop();
-    } else if (top !== null && top.array && isScalarChar(ch)) {
+    } else if (ch === ',') {
+      if (top !== null && !top.array) {
+        top.key = true;
+        top.rule = null;
+      }
+    } else if (isScalarChar(ch)) {
       let j = i + 1;
       while (j < n && isScalarChar(text[j])) j++;
       const token = redactSlice(text, i, j);
-      if (top.pending !== null && token !== 'null') replace(i, j, `"[redacted:${top.pending}]"`);
-      top.pending = null;
+      if (token !== 'null' && rule !== null) {
+        replace(i, j, `"[redacted:${rule}]"`);
+        ctx.applied++;
+      } else if (token !== 'null') {
+        const masked = ctx.text(token, CONSOLE);
+        if (masked !== token) replace(i, j, JSON.stringify(masked));
+      }
+      if (top !== null && top.array) top.rule = null;
       i = j - 1;
     }
   }

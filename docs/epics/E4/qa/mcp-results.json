@@ -1,0 +1,110 @@
+{
+ "initialize": {
+  "name": "page-debug-mcp",
+  "version": "0.6.0"
+ },
+ "tools": [
+  "list_snapshots",
+  "get_summary",
+  "get_errors",
+  "get_network",
+  "get_vitals",
+  "get_steps",
+  "diff_snapshots"
+ ],
+ "list": "{\"total\":14,\"returned\":14,\"more\":0,\"items\":[{\"id\":\"corrupt.zip\",\"file\":\"corrupt.zip\",\"error\":\"Plik paczki jest uszkodzony.\",\"modifiedAt\":\"2026-10-27T08:53:48.678Z\"},{\"id\":\"network.zip\",\"file\":\"network.zip\",\"format\":\"zip\",\"host\":\"127.0.0.1\",\"collectedAt\":\"2026-10-27T08:50:49.114Z\",\"schemaVersion\":4,\"newer\":false,\"overview\":{\"runtimeErrors\":0,\"consoleErrors\":0,\"failedRequests\":4,\"steps\":1,\"poorVitals\":0,\"screenshot\":true},\"sizeBytes\":19785,\"modifiedAt\":\"2026-10-27T08:53:48.649Z\"},{\"id\":\"iterator-keep.zip\",\"file\":\"iterator-keep.zip\",\"format\":\"zip\",\"host\":\"127.0.0.1\",\"collectedAt\":\"2026-10-27T08:50:46.110Z\",\"schemaVersion\":4,\"newer\":false,\"overview\":{\"runtimeErrors\":1,\"consoleErrors\":1,\"failedRequests\":0,\"steps\":2,\"poorVitals\":0,\"screenshot\":true},\"sizeBytes\":17873,\"modifiedAt\":\"2026-10-27T08:53:48.614Z\"},{\"id\":\"privacy.zip\",\"file\":\"privacy.zip\",\"format\":\"zip\",\"host\":\"127.0.0.1\",\"collectedAt\":\"2026-10-27T08:50:44.269Z\",\"schemaVersion\":4,\"newer\":false,\"overview\":{\"runtimeErrors\":0,\"consoleErrors\":0,\"failedRequests\":1,\"steps\":2,\"poorVitals\":0,\"screenshot\":true},\"sizeBytes\":30736,\"modifiedAt\":\"2026-10-27T08:53:48.586Z\"},{\"id\":\"iterator.zip\",\"file\":\"iterator.zip\",\"format\":\"zip\",\"host\":\"127.0.0.1\",\"collectedAt\":\"2026-10-27T08:50:42.361Z\",\"schemaVersion\":4,\"newer\":false,\"overview\":{\"runtimeErrors\":1,\"consoleErrors\":1,\"failedRequests\":1,\"steps\":5,\"poorVitals\":0,\"screenshot\":true},\"sizeBytes\":18350,\"modifiedAt\":\"2026-10-27T08:53:48.566Z\"},{\"id\":\"basic.zip\",\"file\":\"basic.zip\",\"format\":\"zip\",\"host\":\"127.0.0.1\",\"collectedAt\":\"2026-10-27T08:50:25.954Z\",\"schemaVersion\":4,\"newer\":false,\"overview\":{\"runtimeErrors\":0,\"consoleErrors\":1,\"failedRequests\":0,\"steps\":2,\"poorVitals\":0,\"screenshot\":true},\"sizeBytes\":16162,\"modifiedAt\":\"2026-10-27T08:53:48.642Z\"},{\"id\":\"heavy.zip\",\"file\":\"heavy.zip\",\"format\":\"zip\",\"host\":\"heavy.example.com\",\"collectedAt\":\"2026-10-26T10:00:00.000Z\",\"schemaVersion\":4,\"newer\":false,\"overview\":{\"runtimeErrors\":300,\"consoleErrors\":200,\"failedRequests\":90,\"steps\":200,\"poorVitals\":1,\"screenshot\":true},\"sizeBytes\":3349782,\"modifiedAt\":\"2026-10-27T08:53:49.408Z\"},{\"id\":\"net5000.zip\",\"file\":\"net5000.zip\",\"format\":\"zip\",\"host\":\"heavy.example.com\",\"collectedAt\":\"2026-10-26T10:00:00.000Z\",\"schemaVersion\":4,\"newer\":false,\"overview\":{\"runtimeErrors\":5,\"consoleErrors\":1,\"failedRequests\":150,\"steps\":200,\"poorVitals\":1,\"screenshot\":true},\"sizeBytes\":390973,\"modifiedAt\":\"2026-10-27T08:53:49.482Z\"},{\"id\":\"diff-b.json\",\"file\":\"diff-b.json\",\"format\":\"json\",\"host\":\"127.0.0.1\",\"collectedAt\":\"2026-01-15T10:05:00.000Z\",\"schemaVersion\":4,\"newer\":false,\"overview\":{\"runtimeErrors\":2,\"consoleErrors\":1,\"failedRequests\":3,\"steps\":10,\"poorVitals\":1,\"screenshot\":true},\"sizeBytes\":13946,\"modifiedAt\":\"2026-10-27T08:53:48.861Z\"},{\"id\":\"diff-a.json\",\"file\":\"diff-a.json\",\"format\":\"json\",\"host\":\"127.0.0.1\",\"collectedAt\":\"2026-01-15T10:01:05.000Z\",\"schemaVersion\":4,\"newer\":false,\"overview\":{\"runtimeErrors\":2,\"consoleErrors\":1,\"failedRequests\":3,\"steps\":10,\"poorVitals\":1,\"screenshot\":true},\"sizeBytes\":14480,\"modifiedAt\":\"2026-10-27T08:53:48.818Z\"},{\"id\":\"v2.json\",\"file\":\"v2.json\",\"format\":\"json\",\"host\":\"127.0.0.1\",\"collectedAt\":\"2026-01-15T10:01:05.000Z\",\"schemaVersion\":2,\"newer\":false,\"overview\":{\"runtimeErrors\":2,\"consoleErrors\":1,\"failedRequests\":1,\"steps\":0,\"poorVitals\":0,\"screenshot\":false},\"sizeBytes\":4325,\"modifiedAt\":\"2026-10-27T08:53:48.704Z\"},{\"id\":\"v3.json\",\"file\":\"v3.json\",\"format\":\"json\",\"host\":\"127.0.0.1\",\"collectedAt\":\"2026-01-15T10:01:05.000Z\",\"schemaVersion\":3,\"newer\":false,\"overview\":{\"runtimeErrors\":2,\"consoleErrors\":1,\"failedRequests\":3,\"steps\":9,\"poorVitals\":1,\"screenshot\":true},\"sizeBytes\":10401,\"modifiedAt\":\"2026-10-27T08:53:48.740Z\"},{\"id\":\"v4.json\",\"file\":\"v4.json\",\"format\":\"json\",\"host\":\"127.0.0.1\",\"collectedAt\":\"2026-01-15T10:01:05.000Z\",\"schemaVersion\":4,\"newer\":false,\"overview\":{\"runtimeErrors\":2,\"consoleErrors\":1,\"failedRequests\":3,\"steps\":10,\"poorVitals\":1,\"screenshot\":true},\"sizeBytes\":13658,\"modifiedAt\":\"2026-10-27T08:53:48.779Z\"},{\"id\":\"v1.json\",\"file\":\"v1.json\",\"format\":\"json\",\"host\":\"127.0.0.1\",\"collectedAt\":\"2026-01-15T10:00:05.000Z\",\"schemaVersion\":1,\"newer\":false,\"overview\":{\"runtimeErrors\":1,\"consoleErrors\":1,\"failedRequests\":1,\"steps\":0,\"poorVitals\":0,\"screenshot\":false},\"sizeBytes\":1671,\"modifiedAt\":\"2026-10-27T08:53:48.687Z\"}]}",
+ "listRows": [
+  "corrupt.zip vundefined  ERR Plik paczki jest uszkodzony.",
+  "network.zip v4 2026-10-27T08:50:49.114Z ",
+  "iterator-keep.zip v4 2026-10-27T08:50:46.110Z ",
+  "privacy.zip v4 2026-10-27T08:50:44.269Z ",
+  "iterator.zip v4 2026-10-27T08:50:42.361Z ",
+  "basic.zip v4 2026-10-27T08:50:25.954Z ",
+  "heavy.zip v4 2026-10-26T10:00:00.000Z ",
+  "net5000.zip v4 2026-10-26T10:00:00.000Z ",
+  "diff-b.json v4 2026-01-15T10:05:00.000Z ",
+  "diff-a.json v4 2026-01-15T10:01:05.000Z ",
+  "v2.json v2 2026-01-15T10:01:05.000Z ",
+  "v3.json v3 2026-01-15T10:01:05.000Z ",
+  "v4.json v4 2026-01-15T10:01:05.000Z ",
+  "v1.json v1 2026-01-15T10:00:05.000Z "
+ ],
+ "get_summary_v4": "# Paczka diagnostyczna — 127.0.0.1\nZapisano 2026-01-15T10:01:05.000Z · rozszerzenie 0.5.0 · schemat 4 · źródło: rozszerzenie · błędy JS 2 · błędy konsoli 1 · nieudane zapytania 3 · kroki 10 · słabe metryki 1 · zrzut: tak\n\n## Środowisko\n\n- Adres: `http://127.0.0.1:8080/result.html?access_token=[redac",
+ "summaryIdentical": true,
+ "get_errors": "{\"id\":\"iterator.zip\",\"overview\":{\"runtimeErrors\":1,\"consoleErrors\":1},\"total\":1,\"more\":0,\"groups\":[{\"message\":\"Uncaught Error: password: [redacted:key-password]\",\"count\":2,\"firstAt\":\"2026-10-27T08:50:41.582Z\",\"firstRel\":0.388,\"frame\":\"privacy-iterator.html:39:17\",\"stack\":\"    at HTMLButtonElement.<anonymous> (http://127.0.0.1:54697/privacy-iterator.html:39:17)\",\"stepBefore\":{\"at\":\"2026-10-27T08:50:41.582Z\",\"rel\":0.387,\"doc\":0,\"type\":\"click\",\"label\":\"Błąd\"}}]}",
+ "get_steps": "{\"id\":\"iterator.zip\",\"total\":5,\"returned\":5,\"items\":[{\"at\":\"2026-10-27T08:50:41.211Z\",\"rel\":0.016,\"doc\":0,\"type\":\"navigate\",\"label\":null,\"url\":\"http://127.0.0.1:54697/privacy-iterator.html\",\"beforeFirstError\":false},{\"at\":\"2026-10-27T08:50:41.480Z\",\"rel\":0.286,\"doc\":0,\"type\":\"click\",\"label\":\"Pobierz\",\"beforeFirstError\":false},{\"at\":\"2026-10-27T08:50:41.544Z\",\"rel\":0.349,\"doc\":0,\"type\":\"click\",\"label\":\"Dalej\",\"beforeFirstError\":false},{\"at\":\"2026-10-27T08:50:41.544Z\",\"rel\":0.349,\"doc\":0,\"type\":\"navigate\",\"label\":null,\"url\":\"http://127.0.0.1:54697/privacy-iterator.html?access_token=[redacted:key-token]\",\"beforeFirstError\":false},{\"at\":\"2026-10-27T08:50:41.582Z\",\"rel\":0.387,\"doc\":0,\"type\":\"click\",\"label\":\"Błąd\",\"beforeFirstError\":true}]}",
+ "get_vitals": "{\"id\":\"iterator.zip\",\"docs\":[{\"doc\":0,\"url\":\"http://127.0.0.1:54697/privacy-iterator.html?access_token=[redacted:key-token]\",\"timeOrigin\":\"2026-10-27T08:50:41.202Z\",\"metrics\":{\"TTFB\":{\"available\":true,\"value\":2.1,\"rating\":\"good\",\"ratingText\":\"dobrze\",\"at\":\"2026-10-27T08:50:41.204Z\",\"rel\":0.009,\"details\":{\"finalized\":true}},\"FCP\":{\"available\":true,\"value\":20,\"rating\":\"good\",\"ratingText\":\"dobrze\",\"at\":\"2026-10-27T08:50:41.222Z\",\"rel\":0.027,\"details\":{\"finalized\":true}},\"LCP\":{\"available\":true,\"value\":20,\"rating\":\"good\",\"ratingText\":\"dobrze\",\"at\":\"2026-10-27T08:50:41.222Z\",\"rel\":0.027,\"details\":{\"finalized\":false,\"selector\":\"html > body > h1\"}},\"CLS\":{\"available\":true,\"value\":0,\"rating\":\"good\",\"ratingText\":\"dobrze\",\"at\":null,\"rel\":null,\"details\":{\"finalized\":false,\"sources\":[]}},\"INP\":{\"avail",
+ "get_network_default_iter": "{\"id\":\"iterator.zip\",\"total\":1,\"matched\":1,\"offset\":0,\"returned\":1,\"remaining\":0,\"items\":[{\"index\":0,\"at\":\"2026-10-27T08:50:41.481Z\",\"rel\":0.286,\"doc\":0,\"type\":\"fetch\",\"method\":\"GET\",\"url\":\"http://127.0.0.1:54697/status/500?body=token\",\"status\":500,\"statusText\":\"Internal Server Error\",\"ok\":false,\"durationMs\":2.8,\"sizeBytes\":230,\"error\":null}]}",
+ "diff": {
+  "isError": false,
+  "text": "{\"a\":{\"id\":\"diff-a.json\",\"collectedAt\":\"2026-01-15T10:01:05.000Z\"},\"b\":{\"id\":\"diff-b.json\",\"collectedAt\":\"2026-01-15T10:05:00.000Z\"},\"statusKey\":\"Statusy porównywane po metodzie i ścieżce URL bez hosta, query i fragmentu (staging i produkcja dają te same klucze).\",\"errors\":{\"added\":[{\"message\":\"Uncaught RangeError: too much recursion\",\"count\":1,\"frame\":\"inner.html:1:1\"}],\"removed\":[{\"message\":\"Uncaught Error: frame failed\",\"count\":1,\"frame\":\"inner.html:1:1\"}]},\"statuses\":[{\"method\":\"POST\",\"path\":\"/api/fail\",\"before\":500,\"after\":200},{\"method\":\"GET\",\"path\":\"/missing.js\",\"before\":404,\"after\":\"net::ERR_FAILED\"}],\"vitals\":[{\"metric\":\"LCP\",\"before\":{\"value\":4300,\"rating\":\"poor\"},\"after\":{\"value\":2100,\"rating\":\"needs-improvement\"}},{\"metric\":\"INP\",\"before\":{\"value\":336,\"rating\":\"needs-improvement\"},\"after\":null}],\"cookies\":{\"count\":{\"before\":4,\"after\":4},\"totalBytes\":{\"before\":55,\"after\":47},\"added\":[\"lang\"],\"removed\":[\"consent\"],\"changedHash\":[\"sid\"]},\"omitted\":0}"
+ },
+ "diffLen": 973,
+ "get_network_default_heavy.zip": {
+  "len": 12987,
+  "isError": false,
+  "head": "{\"id\":\"heavy.zip\",\"total\":3000,\"matched\":90,\"offset\":0,\"returned\":50,\"remaining\":40,\"items\":[{\"index\":0,\"at\":\"2026-10-25T10:00:00.005Z\",\"rel\":-85799.995,\"doc\":0,\"type\":\"xhr\",\"method\":\"GET\",\"url\":\"https://heavy.example.com/api/items/0?v=899026153\",\"status\":null,\"statusText\":null,\"ok\":false,\"durationM",
+  "tail": "le.com/static/file/1600?v=358740022\",\"status\":500,\"statusText\":null,\"ok\":false,\"durationMs\":199.4,\"sizeBytes\":70714,\"error\":null},{\"index\":1649,\"at\":\"2026-10-25T10:00:16.495Z\",\"rel\":-85783.505,\"doc\":0,\"type\":\"other\",\"method\":\"GET\",\"url\":\"https://heavy.example.com/static/file/1649?v=212664239\",\"status\":null,\"statusText\":null,\"ok\":false,\"durationMs\":240,\"sizeBytes\":67495,\"error\":\"Failed to fetch\"}]}"
+ },
+ "get_errors_heavy.zip": {
+  "len": 23498,
+  "tail": "-10-25T10:00:00.100Z\",\"rel\":-85799.9,\"doc\":0,\"type\":\"click\",\"label\":\"Dodaj\"},\"stackTruncated\":true}],\"hint\":\"Pominięto 5 z 10 pozycji (limit odpowiedzi 25000 znaków); zawęź zapytanie: zmniejsz limit\"}"
+ },
+ "get_summary_heavy.zip": {
+  "len": 5232
+ },
+ "get_network_max_heavy.zip": {
+  "len": 24502,
+  "tail": "cation/json\",\"cache-control\":\"no-cache\"},\"requestBody\":null,\"responseBodyPreview\":null,\"responseBodyTruncated\":false}],\"hint\":\"Pominięto 458 z 500 pozycji (limit odpowiedzi 25000 znaków); zawęź zapytanie: zmniejsz limit, użyj offset, status, type, urlContains albo wyłącz includeHeaders/includeBody\"}"
+ },
+ "get_network_default_net5000.zip": {
+  "len": 12976,
+  "isError": false,
+  "head": "{\"id\":\"net5000.zip\",\"total\":5000,\"matched\":150,\"offset\":0,\"returned\":50,\"remaining\":100,\"items\":[{\"index\":0,\"at\":\"2026-10-25T10:00:00.005Z\",\"rel\":-85799.995,\"doc\":0,\"type\":\"xhr\",\"method\":\"GET\",\"url\":\"https://heavy.example.com/api/items/0?v=26044192\",\"status\":null,\"statusText\":null,\"ok\":false,\"durati",
+  "tail": "ple.com/static/file/1600?v=156208323\",\"status\":500,\"statusText\":null,\"ok\":false,\"durationMs\":195,\"sizeBytes\":11724,\"error\":null},{\"index\":1649,\"at\":\"2026-10-25T10:00:16.495Z\",\"rel\":-85783.505,\"doc\":0,\"type\":\"other\",\"method\":\"GET\",\"url\":\"https://heavy.example.com/static/file/1649?v=655442503\",\"status\":null,\"statusText\":null,\"ok\":false,\"durationMs\":214.8,\"sizeBytes\":1289,\"error\":\"Failed to fetch\"}]}"
+ },
+ "get_errors_net5000.zip": {
+  "len": 21641,
+  "tail": "6-10-25T10:00:00.100Z\",\"rel\":-85799.9,\"doc\":0,\"type\":\"click\",\"label\":\"Dodaj\"},\"stackTruncated\":true}],\"hint\":\"Pominięto 1 z 6 pozycji (limit odpowiedzi 25000 znaków); zawęź zapytanie: zmniejsz limit\"}"
+ },
+ "get_summary_net5000.zip": {
+  "len": 4400
+ },
+ "get_network_max_net5000.zip": {
+  "len": 24503,
+  "tail": "cation/json\",\"cache-control\":\"no-cache\"},\"requestBody\":null,\"responseBodyPreview\":null,\"responseBodyTruncated\":false}],\"hint\":\"Pominięto 458 z 500 pozycji (limit odpowiedzi 25000 znaków); zawęź zapytanie: zmniejsz limit, użyj offset, status, type, urlContains albo wyłącz includeHeaders/includeBody\"}"
+ },
+ "badId": [
+  {
+   "isError": true,
+   "text": "Nieprawidłowy identyfikator paczki: podaj samą nazwę pliku .zip lub .json z listy list_snapshots (bez ścieżki)."
+  },
+  {
+   "isError": true,
+   "text": "Nieprawidłowy identyfikator paczki: podaj samą nazwę pliku .zip lub .json z listy list_snapshots (bez ścieżki)."
+  },
+  {
+   "isError": true,
+   "text": "Plik paczki jest uszkodzony."
+  },
+  {
+   "isError": true,
+   "text": "Nieprawidłowy identyfikator paczki: podaj samą nazwę pliku .zip lub .json z listy list_snapshots (bez ścieżki)."
+  },
+  {
+   "isError": true,
+   "text": "Nie ma takiej paczki w katalogu (dowiązania symboliczne są pomijane). Sprawdź list_snapshots."
+  }
+ ],
+ "stillAlive": true,
+ "v3_summary": "# Paczka diagnostyczna — 127.0.0.1\nZapisano 2026-01-15T10:01:05.000Z · rozszerzenie 0.4.0 · schemat 4 · źródło: rozszerzenie · błędy JS 2 · błędy konsoli 1 · nieudane zapytania 3 · kroki 9 · słabe met",
+ "v1_summary": "# Paczka diagnostyczna — 127.0.0.1\nZapisano 2026-01-15T10:00:05.000Z · rozszerzenie ? · schemat 4 · źródło: rozszerzenie · błędy JS 1 · błędy konsoli 1 · nieudane zapytania 1 · kroki 0 · słabe metryki",
+ "leaks": {
+  "zip": {},
+  "summary_md": {},
+  "mcp": {},
+  "viewer": {}
+ },
+ "trapCount": 12,
+ "stderr": ""
+}

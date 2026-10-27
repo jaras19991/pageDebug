@@ -163,6 +163,29 @@ describe('start', () => {
     expect(env.fake.registered.get(SCRIPT_IDS.recorder).matches).toEqual(['https://example.com/*']);
   });
 
+  it('successful start clears pds:last:<tabId>; refused consent and a failed start keep it (AC-1.6, E4-D4d)', async () => {
+    const LAST = { fileName: 'snapshot-a.zip', downloadId: 3, savedAt: 1 };
+    const lastKey = (tabId) => `${KEYS.lastPrefix}${tabId}`;
+
+    env = setup({ granted: [] });
+    await env.store.setLast(TAB, LAST);
+    expect(await startRecording(env)).toEqual({ ok: false, reason: 'permissionDenied' });
+    expect(env.fake.sessionData.get(lastKey(TAB))).toEqual(LAST);
+
+    env = setup();
+    await env.store.setLast(TAB, LAST);
+    env.fake.failNextRegister = new Error('boom');
+    expect(await startRecording(env)).toEqual({ ok: false, reason: 'recordFailed' });
+    expect(env.fake.sessionData.get(lastKey(TAB))).toEqual(LAST);
+
+    await env.store.setLast(OTHER_TAB, LAST);
+    expect((await startRecording(env, { requestId: 'r2' })).ok).toBe(true);
+    expect(env.fake.sessionData.has(lastKey(TAB))).toBe(false);
+    // Only the started tab forgets its saved file.
+    expect(env.fake.sessionData.get(lastKey(OTHER_TAB))).toEqual(LAST);
+    expect((await env.h.getStatus({ tabId: TAB, url: URL_A })).lastSaved).toBeNull();
+  });
+
   it('disarm clears only the matching pending request', async () => {
     await env.h.armStart({ requestId: 'r1', tabId: TAB, origin: ORIGIN, pattern: PATTERN });
     await env.h.disarm({ requestId: 'other' });

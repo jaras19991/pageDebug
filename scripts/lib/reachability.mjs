@@ -5,7 +5,8 @@
 // Parsing is regex-based on purpose: our HTML and JS are small and hand-written, and the
 // build must not depend on npm packages. Supported references:
 //   manifest  icons, action.default_icon/default_popup, background.*, content_scripts[].js/css,
-//             web_accessible_resources, options/devtools/side panel pages   (relative to root)
+//             web_accessible_resources, options/devtools/side panel pages,
+//             storage.managed_schema                                         (relative to root)
 //   HTML      <script src="…">, <link href="…">  (comments ignored)          (relative to the HTML file)
 //             url(…) in <style> / style=""                                    (relative to the HTML file)
 //   CSS       url(…), @import '…'  (comments ignored)                         (relative to the CSS file)
@@ -128,6 +129,7 @@ function manifestRefs(m) {
   push(m.options_ui?.page);
   push(m.devtools_page);
   push(m.side_panel?.default_path);
+  push(m.storage?.managed_schema);
   return refs;
 }
 

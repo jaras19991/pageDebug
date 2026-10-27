@@ -21,13 +21,23 @@ export const MESSAGES = Object.freeze({
   privacyNote:
     'Hasła i tokeny są usuwane z pliku automatycznie, a wartości ciasteczek zastępowane krótkim skrótem. Plik nadal może zawierać adresy odwiedzanych stron i treść logów.',
   noUpload: 'Plik zostaje na Twoim dysku, rozszerzenie niczego nie wysyła.',
-  // Store review F2: clicking "Nagrywaj" is the consent; the file may hold personal data.
+  // Appended to the disclosure list when the developer's configuration (E4 D5) turned a default rule off (AC-6.5);
+  // keys are the rule names of DEFAULT_RULES. Wording may still be refined by docs / store review.
+  disclosureDevExtra: Object.freeze({
+    email: 'adresy e-mail widoczne na stronie i w logach',
+    phone: 'numery telefonów widoczne na stronie i w logach',
+    'html-structure': 'pełna treść strony, w tym widoczne na niej teksty',
+  }),
+  // Store review F2: clicking "Nagrywaj" is the consent; the file may hold personal data (wording E4 IN8, AC-1.8).
   consentNotice:
-    'Plik może zawierać Twoje dane osobowe i dane logowania — wyślij go tylko developerowi. Klikając „Nagrywaj”, zgadzasz się na zapisanie tych danych w pliku.',
+    'Mimo automatycznego usuwania haseł i tokenów plik może zawierać Twoje dane osobowe (np. adresy stron, treść logów) — wyślij go tylko developerowi. Klikając „Nagrywaj”, zgadzasz się na zapisanie tych danych w pliku.',
   reloadNotice:
     'Po kliknięciu „Nagrywaj” strona odświeży się, a nagrywanie zacznie się od jej początku.',
   otherTabRecording:
     'Trwa nagrywanie w innej karcie. Kliknięcie „Nagrywaj” zakończy je bez zapisu.',
+  // The same on the saved screen (QA E4 F-3): there is no "Nagrywaj" there, and the line is not about the saved file.
+  otherTabRecordingSaved:
+    'W innej karcie trwa teraz nagrywanie. Nie dotyczy ono zapisanego pliku.',
 
   // Recording flow.
   starting: 'Uruchamiam nagrywanie…',
@@ -45,6 +55,7 @@ export const MESSAGES = Object.freeze({
   // Review N6 (fail-closed): the frame check got no usable answer, so the screenshot starts off.
   screenshotCheckFailedNote: 'Nie udało się sprawdzić strony — zrzut wyłączony. Możesz go włączyć.',
   saving: 'Zapisuję paczkę…',
+  // Kept for messageFor only; the ready state no longer shows it (E4 D7: the saved screen replaces the status line).
   saved: (fileName) => `Zapisano plik ${fileName} — znajdziesz go w pobranych plikach.`,
   // Appended to "saved" when the file has no screenshot (QA F-5): turned off, or not taken / not masked.
   screenshotOffSaved: 'Plik nie zawiera zrzutu ekranu.',
@@ -55,6 +66,15 @@ export const MESSAGES = Object.freeze({
     'Nie udało się zapisać pliku na dysku. Nagrywanie trwa — kliknij „Zapisz paczkę” ponownie.',
   pageBusy:
     'Strona jeszcze się ładuje albo nie odpowiada. Poczekaj chwilę i kliknij „Zapisz paczkę” ponownie.',
+
+  // Saved screen (E4 D7, AC-1.1/1.2): shown while the tab's last save is known, until the next "Nagrywaj".
+  // No sending from the popup (decision 2026-10-26): the reporter sends the file on their own.
+  savedTitle: 'Zapisano',
+  savedFile: (fileName) => `Plik: ${fileName}`,
+  savedInstruction: 'Wyślij ten plik osobie, która poprosiła Cię o zgłoszenie — jako załącznik e-maila lub w zgłoszeniu.',
+  showFile: 'Pokaż plik',
+  newRecording: 'Nowe nagranie',
+  fileMissing: 'Nie znaleziono pliku. Zapisz paczkę ponownie.',
 
   // Problems (restricted/fileAccess/noTab/failed unchanged since E0: regression AC-1.3/1.6).
   permissionDenied:

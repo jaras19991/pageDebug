@@ -26,6 +26,15 @@ const VITALS_URL_MAX = 4000;
 const VITALS_NAME_MAX = 500;
 
 /** `items.map(fn)` as a loop: Array.prototype.map belongs to the page, which may replace it (AC-3.6). */
+// Array copy of an array-like (entry lists, `sources`, `scripts`) by index: spread and for…of use the array iterator,
+// which the page may replace (E4-IN2b).
+export function vitalsList(items) {
+  const out = [];
+  const n = items ? items.length >>> 0 : 0;
+  for (let i = 0; i < n; i++) out.push(items[i]);
+  return out;
+}
+
 export function vitalsMap(items, fn) {
   const out = [];
   for (let i = 0; i < items.length; i++) out.push(fn(items[i], i));
@@ -52,7 +61,8 @@ export function clsFromShifts(entries) {
   let bestValue = 0;
   let current = [];
   let currentValue = 0;
-  for (const entry of shifts) {
+  for (let i = 0; i < shifts.length; i++) {
+    const entry = shifts[i];
     const first = current[0];
     const last = current[current.length - 1];
     if (current.length && entry.startTime - last.startTime < VITALS_CLS_GAP_MS
@@ -79,14 +89,18 @@ export function clsFromShifts(entries) {
 // interactions → the longest; otherwise skip one of the longest per 50 interactions (~p98).
 export function inpFromEvents(entries) {
   const longest = new Map();
-  for (const entry of entries || []) {
+  const list = vitalsList(entries);
+  for (let i = 0; i < list.length; i++) {
+    const entry = list[i];
     if (!entry || !(entry.interactionId > 0)) continue;
     const seen = longest.get(entry.interactionId);
     if (!seen || entry.duration > seen.duration) longest.set(entry.interactionId, entry);
   }
   const count = longest.size;
   if (count === 0) return null;
-  const candidates = [...longest.values()].sort((a, b) => b.duration - a.duration).slice(0, VITALS_INP_CANDIDATES);
+  const values = [];
+  longest.forEach((value) => { values.push(value); });
+  const candidates = values.sort((a, b) => b.duration - a.duration).slice(0, VITALS_INP_CANDIDATES);
   const entry = candidates[Math.min(candidates.length - 1, Math.floor(count / VITALS_INP_PER_SKIP))];
   return { value: entry.duration, entry, count };
 }
@@ -116,7 +130,7 @@ export function topLongTasks(loafs, max = LONG_TASKS_MAX) {
     t: loaf.startTime,
     duration: loaf.duration,
     blockingDuration: loaf.blockingDuration,
-    scripts: vitalsMap([...(loaf.scripts || [])].slice(0, VITALS_SCRIPTS_MAX), (script) => ({
+    scripts: vitalsMap(vitalsList(loaf.scripts).slice(0, VITALS_SCRIPTS_MAX), (script) => ({
       url: vitalsCap(script.sourceURL, VITALS_URL_MAX),
       function: vitalsCap(script.sourceFunctionName, VITALS_NAME_MAX),
       invoker: vitalsCap(script.invoker, VITALS_NAME_MAX),

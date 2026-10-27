@@ -1,11 +1,11 @@
-// Redaction rules, `rulesVersion: 1` (E3 D3; skill privacy-redaction). Text-level functions used by redact.js in the
+// Redaction rules, `rulesVersion: 2` (E3 D3, E4 D9; skill privacy-redaction). Text-level functions used by redact.js in the
 // background, by the console fallback and, through mask-secrets.js, by the hooks in MAIN. Pure, synchronous,
 // idempotent, no DOM and no imports. Every regex is created once at module load (a redactRegExp pair) and is linear: no nested
 // quantifiers over overlapping classes, and runs start only at a run boundary (look-behind on the run class).
 // A masked value becomes `[redacted:<rule>]`; values that already are a marker are skipped, so a second pass
 // changes nothing and reports `applied: 0`.
 
-export const RULES_VERSION = 1;
+export const RULES_VERSION = 2;
 
 // Intrinsics captured at module load (AC-3.6): in MAIN the bundle loads on document_start, before page scripts,
 // and a page may later replace String.prototype.replace/split or RegExp.prototype members. Regexes are used only
@@ -32,7 +32,10 @@ class RedactRegExp extends RegExp {
     return RedactRegExp;
   }
 }
-for (const key of Reflect.ownKeys(REDACT_PROTO)) {
+// An index loop even at load (E4-IN2): an eslint-disable comment would be copied into bundles where the rule is off.
+const REDACT_PROTO_KEYS = Reflect.ownKeys(REDACT_PROTO);
+for (let i = 0; i < REDACT_PROTO_KEYS.length; i++) {
+  const key = REDACT_PROTO_KEYS[i];
   if (key !== 'constructor') Object.defineProperty(RedactRegExp.prototype, key, Object.getOwnPropertyDescriptor(REDACT_PROTO, key));
 }
 
@@ -134,10 +137,10 @@ const MARKER_START = redactRegExp(/^\[redacted:[a-z0-9_*-]+\]/);
 export function secretKeyRule(name) {
   if (typeof name !== 'string' || name === '' || name.length > MASK_LIMITS.keyChars) return null;
   const key = redactLower(redactReplace(name, CAMEL_CASE, '$1_$2'));
-  for (const { token, re } of KEY_MATCHERS) if (redactTest(re, key)) return `key-${token}`;
+  for (let i = 0; i < KEY_MATCHERS.length; i++) if (redactTest(KEY_MATCHERS[i].re, key)) return `key-${KEY_MATCHERS[i].token}`;
   const lower = redactLower(name);
   if (redactTest(SESSION_SUFFIX, lower)) return 'key-session';
-  for (const token of WHOLE_KEYS) if (lower === token) return `key-${token}`;
+  for (let i = 0; i < WHOLE_KEYS.length; i++) if (lower === WHOLE_KEYS[i]) return `key-${WHOLE_KEYS[i]}`;
   return null;
 }
 
@@ -146,7 +149,7 @@ export function urlKeyRule(name) {
   const rule = secretKeyRule(name);
   if (rule !== null || typeof name !== 'string') return rule;
   const lower = redactLower(name);
-  for (const token of URL_KEYS) if (lower === token) return `key-${token}`;
+  for (let i = 0; i < URL_KEYS.length; i++) if (lower === URL_KEYS[i]) return `key-${URL_KEYS[i]}`;
   return null;
 }
 
@@ -192,22 +195,40 @@ export function ibanValid(iban) {
   const s = redactReplace(String(iban), SPACES, '');
   if (!redactTest(IBAN_SHAPE, s)) return false;
   const moved = redactSlice(s, 4) + redactSlice(s, 0, 4);
+  // Index loops over char codes (E4-IN2): the page may replace String.prototype[Symbol.iterator]. IBAN_SHAPE leaves ASCII only.
   let rest = 0;
-  for (const ch of moved) {
-    const code = ch.charCodeAt(0);
-    const value = code >= 65 ? String(code - 55) : ch;
-    for (const digit of value) rest = (rest * 10 + (digit.charCodeAt(0) - 48)) % 97;
+  for (let i = 0; i < moved.length; i++) {
+    const code = moved.charCodeAt(i);
+    // A letter is two digits (A = 10 … Z = 35), a digit is one.
+    if (code >= 65) rest = (rest * 100 + (code - 55)) % 97;
+    else rest = (rest * 10 + (code - 48)) % 97;
   }
   return rest === 1;
 }
 
 /** Shannon entropy in bits per character. */
 export function shannon(text) {
-  const counts = new Map();
-  for (const ch of text) counts.set(ch, (counts.get(ch) || 0) + 1);
+  // Per code point, in first-seen order, without string or Map iterators (E4-IN2: the page may replace them).
+  const counts = Object.create(null);
+  const seen = [];
+  for (let i = 0; i < text.length; i++) {
+    let cp = text.charCodeAt(i);
+    if (cp >= 0xd800 && cp <= 0xdbff && i + 1 < text.length) {
+      const low = text.charCodeAt(i + 1);
+      if (low >= 0xdc00 && low <= 0xdfff) {
+        cp = (cp - 0xd800) * 0x400 + (low - 0xdc00) + 0x10000;
+        i++;
+      }
+    }
+    if (counts[cp] === undefined) {
+      counts[cp] = 0;
+      seen[seen.length] = cp;
+    }
+    counts[cp]++;
+  }
   let bits = 0;
-  for (const n of counts.values()) {
-    const p = n / text.length;
+  for (let i = 0; i < seen.length; i++) {
+    const p = counts[seen[i]] / text.length;
     bits -= p * Math.log2(p);
   }
   return bits;
@@ -223,6 +244,9 @@ const QUOTE = '(?:"|&quot;|&#0*34;|&#[xX]0*22;)';
 const QUOTED_KEY = redactRegExp(new RegExp(`(?<!\\\\)(\\\\*)(${QUOTE})([^"\\\\\\n&]{1,256})\\1\\2(\\s*:\\s*)`, 'g'));
 // `key: "value"` and `'key': "value"` (F3: JS objects, YAML), at any level of escaping of the value quote.
 const BARE_KEY = redactRegExp(new RegExp(`(?<![\\w.\\-[\\]"'])('?)([A-Za-z_][\\w.\\-[\\]]{0,255})\\1[ \\t]*:[ \\t]*(?=\\\\*${QUOTE})`, 'g'));
+// Prose after an unquoted `auth`/`session`/`key` (E4-IN1, PB-2): `auth: "Invalid credentials"` is a message, not a
+// secret. Only these whole key names and only ≥ 2 words of letters (no digits, no symbols), an optional final dot.
+const PROSE_VALUE = redactRegExp(/^\p{L}+(?: +\p{L}+)+\.?$/u);
 const QUOTE_AT = redactRegExp(new RegExp(QUOTE, 'y'));
 const BACKSLASHES_AT = redactRegExp(/\\*/y);
 // `"key": 123` / `true` / `false` (E3-IN2), also cut at the end of the text; null stays (nothing there).
@@ -249,11 +273,19 @@ const XML_ENTITY_OPEN_END = redactRegExp(new RegExp(`(${XML_LT})${XML_ENTITY_TAG
 const FORM_PAIR = redactRegExp(/(?<![A-Za-z0-9_.\-[\];])([A-Za-z0-9_.\-[\]]{1,256})=([^&#\s"'\\;,<>]+)/g);
 // `;key=value` (a path parameter like `;jsessionid=`, or a cookie list without spaces): the value also ends at `?` (F8).
 const PATH_PAIR = redactRegExp(/(?<=;)([A-Za-z0-9_.\-[\]]{1,256})=([^&#\s"'\\;,<>?]+)/g);
-// `key: value` (E3-IN2): unquoted or single-quoted key; the value ends at the line end, `,`, `;` or `}`.
-const COLON_PAIR = redactRegExp(/(?<![\w.\-[\]"'])('?)([A-Za-z_][\w.\-[\]]{0,255})\1[ \t]*:[ \t]*(?!\/\/)([^\s"\\,;}][^\n\r"\\,;}]*)/g);
+// `key: value` (E3-IN2): unquoted or single-quoted key; the value ends at the line end, `,`, `;` or `}`. A `"` may
+// stand before the key (E4-IN1: the key opens a JSON string, `{"log":"password: x"}`); a JSON key `"k":` has a `"`
+// before the `:` too, so it never matches here. The regex takes the key only and the value is read after a sensitive
+// key (E4-IN1b): the value of any other key is scanned for pairs too (`Error: password: x`, `user: jan token: t`).
+// A lone `'` may stand before the key too (E4-FIX2: `Failed 'token: x'`, a quoted message); `'k':` is the quoted key
+// form, and a key followed by `'` never reaches the `:`, so the position after an opening `'` cannot match it twice.
+const COLON_PAIR = redactRegExp(/(?<![\w.\-[\]])('?)([A-Za-z_][\w.\-[\]]{0,255})\1[ \t]*:[ \t]*(?!\/\/)(?=[^\s"\\,;}])/g);
+const COLON_VALUE_AT = redactRegExp(/[^\n\r"\\,;}]*/y);
+// `code=`/`ticket=` after `?`, `&`, `&amp;` or `#` in text (E4-IN3): a relative address (`/cb?code=`), a fragment, a
+// JSON-escaped `https:\/\/…?code=`. Not after `_` (`country_code=PL`) nor without `=` (`{"code":"PL"}`).
+const URL_KEY_IN_TEXT = redactRegExp(/(?<=[?&#]|&amp;)(code|ticket)=([^&#\s"'\\;,<>]+)/gi);
 // `Cookie: a=1; b=2` and `Set-Cookie: …`: a cookie list has `;` inside, so the value runs to the line end.
 const COOKIE_LINE = redactRegExp(/(?<![\w.\-[\]"'])('?)([\w.\-[\]]{0,200}cookie)\1[ \t]*:[ \t]*([^\s"\\][^\n\r"\\]*)/gi);
-const TRAILING_BLANKS = redactRegExp(/[ \t]+$/);
 
 // Length of the quote token (`"`, `&quot;`, `&#34;`, `&#x22;`) at `i`, 0 when there is none.
 function quoteLengthAt(text, i) {
@@ -302,6 +334,8 @@ function maskQuotedPairs(text, pair, bare, opts, count) {
     from = m.index + m[0].length;
     const rule = secretKeyRule(bare ? m[2] : m[3]);
     if (rule === null) continue;
+    const name = bare && m[1] === '' ? redactLower(m[2]) : '';
+    const prose = name === 'auth' || name === 'session' || name === 'key';
     const at = from;
     // A quoted key gives the quote the value must open with; after a bare key the value quote is read here.
     const level = bare ? redactExecAt(BACKSLASHES_AT, text, at)[0].length : m[1].length;
@@ -313,7 +347,7 @@ function maskQuotedPairs(text, pair, bare, opts, count) {
       const { end, closeLength } = quotedValueEnd(text, start, level, quote);
       const value = redactSlice(text, start, end);
       from = end + closeLength;
-      if (value === '' || redactTest(MARKER, value)) continue;
+      if (value === '' || redactTest(MARKER, value) || (prose && redactTest(PROSE_VALUE, value))) continue;
       count.n++;
       out += `${redactSlice(text, last, start)}[redacted:${rule}]`;
       last = end;
@@ -411,21 +445,67 @@ function maskPairs(whole, opts, count) {
     return `${key}=[redacted:${rule}]`;
   };
   out = redactReplace(redactReplace(out, FORM_PAIR, formPair), PATH_PAIR, formPair);
+  out = redactReplace(out, URL_KEY_IN_TEXT, (all, key, value) => {
+    if (redactTest(MARKER_START, value)) return all;
+    count.n++;
+    return `${key}=[redacted:key-${redactLower(key)}]`;
+  });
 
   if (opts.colonPairs) {
-    const colon = (all, _quote, key, value, offset, whole) => {
-      // `[redacted:key-code]:44:15` (a marker before a stack position) is not a `key: value` pair.
-      if (redactSlice(whole, Math.max(0, offset - 10), offset) === '[redacted:') return all;
-      const rule = secretKeyRule(key);
-      if (rule === null || redactTest(MARKER_START, value)) return all;
-      const secret = redactReplace(value, TRAILING_BLANKS, '');
-      if (secret === '' || redactTest(MARKER, secret)) return all;
-      count.n++;
-      return `${redactSlice(all, 0, all.length - value.length)}[redacted:${rule}]${redactSlice(value, secret.length)}`;
-    };
-    out = redactReplace(redactReplace(out, COOKIE_LINE, colon), COLON_PAIR, colon);
+    out = redactReplace(out, COOKIE_LINE, (all, _quote, key, value, offset, whole) => {
+      const masked = maskColonValue(whole, offset, key, value, count);
+      return masked === null ? all : `${redactSlice(all, 0, all.length - value.length)}${masked}`;
+    });
+    out = maskColonPairs(out, count);
   }
   return tail === null ? out : out + tail[0];
+}
+
+// `text` without its trailing spaces and tabs. A loop, not `/[ \t]+$/`: that regex retries from every blank of a long
+// run that does not reach the end, quadratic in the run length (E4-REREVIEW).
+function trimTrailingBlanks(text) {
+  let end = text.length;
+  while (end > 0 && (text[end - 1] === ' ' || text[end - 1] === '\t')) end--;
+  return end === text.length ? text : redactSlice(text, 0, end);
+}
+
+// The masked form of `value` after `key` at `offset` (the marker, then the trailing blanks), null when it stays.
+function maskColonValue(text, offset, key, value, count) {
+  // `[redacted:key-code]:44:15` (a marker before a stack position) is not a `key: value` pair.
+  if (redactSlice(text, Math.max(0, offset - 10), offset) === '[redacted:') return null;
+  const rule = secretKeyRule(key);
+  if (rule === null || redactTest(MARKER_START, value)) return null;
+  const secret = trimTrailingBlanks(value);
+  if (secret === '' || redactTest(MARKER, secret)) return null;
+  count.n++;
+  return `[redacted:${rule}]${redactSlice(value, secret.length)}`;
+}
+
+// `value` without its last `'` (and the blanks before it), when it ends with one.
+function closingQuoteDropped(value) {
+  const trimmed = trimTrailingBlanks(value);
+  return trimmed[trimmed.length - 1] === "'" ? trimTrailingBlanks(redactSlice(trimmed, 0, trimmed.length - 1)) : value;
+}
+
+// COLON_PAIR pairs. The search goes on right after the `:` of a key that stays, so a pair inside its value is found;
+// a masked value is skipped whole. The value is read only after a sensitive key, so the scan stays linear.
+function maskColonPairs(text, count) {
+  let out = '';
+  let last = 0;
+  let from = 0;
+  for (let m = redactExecAt(COLON_PAIR, text, from); m !== null; m = redactExecAt(COLON_PAIR, text, from)) {
+    from = m.index + m[0].length;
+    if (secretKeyRule(m[2]) === null) continue;
+    let value = redactExecAt(COLON_VALUE_AT, text, from)[0];
+    // `'token: x'`: the closing `'` of a message that opened before the key stays after the marker.
+    if (m[1] === '' && m.index > 0 && text[m.index - 1] === "'") value = closingQuoteDropped(value);
+    const masked = maskColonValue(text, m.index, m[2], value, count);
+    if (masked === null) continue;
+    out += `${redactSlice(text, last, from)}${masked}`;
+    last = from + value.length;
+    from = last;
+  }
+  return last === 0 ? text : out + redactSlice(text, last);
 }
 
 // ---- value patterns -----------------------------------------------------------------------------------------------
@@ -672,7 +752,9 @@ function maskQuery(query, opts, count) {
 }
 
 function fragmentIsSensitive(fragment, opts) {
-  for (const pair of redactSplit(redactSlice(fragment, 1), FRAGMENT_SEPARATORS)) {
+  const pairs = redactSplit(redactSlice(fragment, 1), FRAGMENT_SEPARATORS);
+  for (let i = 0; i < pairs.length; i++) {
+    const pair = pairs[i];
     const eq = pair.indexOf('=');
     if (eq > 0 && pair.length > eq + 1 && urlKeyRule(decodeKey(redactSlice(pair, 0, eq))) !== null) return true;
   }
@@ -692,7 +774,10 @@ export function maskUrl(url, opts) {
   if (url === '') return { text: url, applied: 0 };
   const o = { ...normalize(opts), phone: false };
   const count = { n: 0 };
-  const [, base = '', query = '', fragment = ''] = redactExec(URL_PARTS, url) || [];
+  const parts = redactExec(URL_PARTS, url);
+  const base = parts?.[1] ?? '';
+  const query = parts?.[2] ?? '';
+  const fragment = parts?.[3] ?? '';
   let path = redactReplace(base, PATH_PARAM, (all, key, value) => {
     if (value === '' || redactTest(MARKER, value)) return all;
     const rule = secretKeyRule(key);

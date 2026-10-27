@@ -109,7 +109,7 @@ test('popup ready shows the new disclosure items in visible text (AC-1.1)', asyn
     const popup = await openPopupFor(page);
     try {
       await popup.waitFor(`!document.getElementById('ready').hidden`);
-      const items = await popup.evaluate(`[...document.querySelectorAll('#disclosure li')].map((li) => {
+      const items = await popup.evaluate(`[...document.querySelectorAll('#disclosure li:not(#disclosureDev)')].map((li) => {
         const r = li.getBoundingClientRect();
         return { text: li.innerText, visible: r.width > 0 && r.height > 0 && getComputedStyle(li).visibility === 'visible' };
       })`);
@@ -239,7 +239,7 @@ test('saved file name matches snapshot-<host>-<YYYYMMDD-HHMMSS>.zip; exactly one
     const [, , y, mo, d, h, mi, sec] = match.map(Number);
     const stamp = new Date(y, mo - 1, d, h, mi, sec).getTime();
     expect(Math.abs(stamp - Date.now()), fileName).toBeLessThan(60_000);
-    expect(statusText).toBe(MESSAGES.saved(fileName));
+    expect(statusText).toBe('');
 
     expect(await counter.names()).toEqual([fileName]);
     const items = await sw.evaluate(

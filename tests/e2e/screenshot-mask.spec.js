@@ -5,12 +5,13 @@
 // change the image (spike E2-T0, S0). Cross-origin frames are NOT masked by design (PB-1 = B); the test pins that down.
 import { test, expect } from '@playwright/test';
 import { MESSAGES } from '../../src/popup/messages.js';
+import { SCREENSHOT_NOTES } from '../../src/lib/screenshot-notes.js';
 import { SCREENSHOT_FILE } from '../helpers/snapshot-validator.js';
 import { startFixtureServer } from './helpers/fixtures-server.js';
 import { readZipPackage } from './helpers/download.js';
-import { regionLuma } from './helpers/image.js';
+import { lumaDiff, regionLuma } from './helpers/image.js';
 import { launchWithExtension, openPopupFor, waitForDownloadFile } from './helpers/launch.js';
-import { popupState, saveRecording, setRecordingLimit, startRecording } from './helpers/recording.js';
+import { popupState, readSaveOutcome, saveRecording, setRecordingLimit, startRecording } from './helpers/recording.js';
 
 const UNIFORM_MAX_STDDEV = 0.02 * 255; // AC-2.2: luma deviation ≤ 2%
 const MASK_LUMA = 158; // #9e9e9e
@@ -18,7 +19,6 @@ const FIELD_RED_LUMA = 0.299 * 230 + 0.587 * 20 + 0.114 * 20; // rgb(230, 20, 20
 const NOTE_OFF = 'Screenshot not included (turned off by the reporter).';
 const NOTE_NOT_HIDDEN_RE = /^No screenshot: form fields could not be hidden \(.+\)\.$/;
 const LIMIT_MS = 3000;
-const SAVED_RE = /^Zapisano plik (.+?) — /;
 
 let server;
 
@@ -104,7 +104,7 @@ const describe = (stats) => JSON.stringify({ ...stats, mean: Math.round(stats.me
 // switch starts OFF with the note in #screenshotNote (store review S1), so `checked` is a manual change of it.
 async function saveWithCheckbox(page, checked, { frames = false } = {}) {
   const popup = await openPopupFor(page);
-  let status;
+  let outcome;
   try {
     await popup.waitFor(`!document.getElementById('recording').hidden && !document.getElementById('save').disabled`);
     if (frames) {
@@ -121,18 +121,14 @@ async function saveWithCheckbox(page, checked, { frames = false } = {}) {
     if (current !== checked) await popup.click('#includeScreenshot'); // a real click: toggles and fires change
     expect(await popup.evaluate(`document.getElementById('includeScreenshot').checked`)).toBe(checked);
     await popup.click('#save');
-    // The final text: "Zapisano plik …" or an error (status.error), not a progress text.
-    status = await popup.waitFor(
-      `(() => { const s = document.getElementById('status'); return /^Zapisano plik /.test(s.textContent) || s.classList.contains('error') ? s.textContent : null; })()`,
-      16_000,
-    );
+    // The saved screen (file name) or an error status, not a progress text.
+    outcome = await readSaveOutcome(popup);
   } finally {
     await popup.close();
   }
-  const match = SAVED_RE.exec(status);
-  if (!match) throw new Error(`Save failed: ${status}`);
-  const { path } = await waitForDownloadFile(page, { fileName: match[1] });
-  return { ...(await readZipPackage(path)), statusText: status };
+  if ('error' in outcome) throw new Error(`Save failed: ${outcome.error}`);
+  const { path } = await waitForDownloadFile(page, { fileName: outcome.fileName });
+  return { ...(await readZipPackage(path)), statusText: outcome.savedShot };
 }
 
 // AC-2.2 on privacy.html: every visible field rect uniform, the heading outside the fields not.
@@ -172,6 +168,55 @@ async function checkPrivacyMask(ext, expectedDpr) {
   });
 }
 
+// E4 AC-3.11 (IN7): the mask covers the whole field (E3 AC-2.2) and the label 4 CSS px above it is not touched. The reference
+// is Playwright's own capture of the unmasked page taken just before the save; the label is dark text on white, so any
+// grey from the mask would raise the mean luma difference far above the JPEG residue.
+const LABEL_MAX_DIFF = 6; // of 255
+async function checkLabelAboveField(ext, expectedDpr) {
+  return withTab(ext, async (page) => {
+    await page.goto(`${server.url}/mask-label.html`);
+    await startRecording(page);
+    const m = await page.evaluate(() => {
+      const w = globalThis;
+      const rect = (id) => {
+        const r = w.document.getElementById(id).getBoundingClientRect();
+        return { x: r.left, y: r.top, width: r.width, height: r.height };
+      };
+      return {
+        fields: [rect('f-card'), rect('f-mail')], labels: [rect('l-card'), rect('l-mail')],
+        innerWidth: w.innerWidth, innerHeight: w.innerHeight, dpr: w.devicePixelRatio,
+      };
+    });
+    expect(m.dpr).toBe(expectedDpr);
+    // The label ends 4 CSS px above the field.
+    m.labels.forEach((l, i) => expect(Math.round(m.fields[i].y - (l.y + l.height))).toBe(4));
+    const reference = await page.screenshot({ type: 'png' });
+    const { json, files } = await saveRecording(page);
+    expect(json.screenshots, JSON.stringify(json.notes)).toHaveLength(1);
+    const [shot] = json.screenshots;
+    const scale = shot.width / m.innerWidth;
+    expect(Math.abs(scale - expectedDpr)).toBeLessThan(0.02);
+    const image = files[shot.file];
+
+    const fieldRects = m.fields.map((f) => toImage(f, m, scale));
+    const stats = await regionLuma(ext.context, image, fieldRects);
+    stats.forEach((s, i) => {
+      expect(s.stddev, `field ${i} ${describe(s)}`).toBeLessThanOrEqual(UNIFORM_MAX_STDDEV);
+      expect(Math.abs(s.mean - MASK_LUMA), `field ${i} ${describe(s)}`).toBeLessThanOrEqual(6);
+    });
+    for (const [i, label] of m.labels.entries()) {
+      const rect = toImage(label, m, scale);
+      const diff = await lumaDiff(ext.context, image, reference, rect);
+      expect([diff.widthA, diff.heightA], 'reference and screenshot differ in size').toEqual([diff.widthB, diff.heightB]);
+      expect(diff.pixels).toBeGreaterThan(0);
+      expect(diff.meanDiff, `label ${i} at dpr ${expectedDpr}`).toBeLessThanOrEqual(LABEL_MAX_DIFF);
+      // And the label is really there: dark text on white, not uniform.
+      const [label$] = await regionLuma(ext.context, image, [rect]);
+      expect(label$.stddev, `label ${i} ${describe(label$)}`).toBeGreaterThan(UNIFORM_MAX_STDDEV);
+    }
+  });
+}
+
 test.describe('DPR 1', () => {
   let ext;
 
@@ -185,6 +230,10 @@ test.describe('DPR 1', () => {
 
   test('dpr 1: every field rect (getBoundingClientRect × dpr) uniform (luma stddev ≤ 2%); a control region outside fields not uniform (AC-2.2)', async () => {
     await checkPrivacyMask(ext, 1);
+  });
+
+  test('label 4 px above a field stays intact (mean luma diff vs unmasked capture ≤ 6/255), field fully covered, dpr 1 (AC-3.11)', async () => {
+    await checkLabelAboveField(ext, 1);
   });
 
   test('values, activeElement and scrollY identical before and after save; no DOM mutation during the save (AC-2.3)', async () => {
@@ -296,7 +345,9 @@ test.describe('DPR 1', () => {
       const scale = shot.width / m.innerWidth;
       // 6 top-level fields + the one in the same-origin frame; the cross-origin frame adds nothing.
       expect(shot.maskedFields).toBe(m.fields.length + 1);
-      expect(json.notes.some((n) => /frame/i.test(n)), JSON.stringify(json.notes)).toBe(false);
+      // E4 AC-3.10: a visible cross-origin frame in a package with the image gets the "not covered" note; no "turned off" one.
+      expect(json.notes, JSON.stringify(json.notes)).toContain(SCREENSHOT_NOTES.framesVisible(1));
+      expect(json.notes.some((n) => /^Screenshot not included/i.test(n)), JSON.stringify(json.notes)).toBe(false);
 
       const rects = [...m.fields, same, cross].map((f) => toImage(f, m, scale));
       expect(rects.every(Boolean)).toBe(true);
@@ -327,5 +378,9 @@ test.describe('DPR 2', () => {
 
   test('dpr 2: every field rect (getBoundingClientRect × dpr) uniform (luma stddev ≤ 2%); a control region outside fields not uniform (AC-2.2)', async () => {
     await checkPrivacyMask(ext, 2);
+  });
+
+  test('label 4 px above a field stays intact (mean luma diff vs unmasked capture ≤ 6/255), field fully covered, dpr 2 (AC-3.11)', async () => {
+    await checkLabelAboveField(ext, 2);
   });
 });

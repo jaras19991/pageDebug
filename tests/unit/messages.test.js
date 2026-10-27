@@ -1,12 +1,20 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MESSAGES, formatClock, messageFor } from '../../src/popup/messages.js';
+import { DEFAULT_RULES } from '../../src/lib/redact-rules.js';
 
 const FORBIDDEN = ['executeScript', 'inject', 'undefined', 'Error:', 'stack', 'PageDebugSnapshot'];
 // E2 AC-1.2: jargon of the new categories. Checked case-insensitively in the disclosure and
 // case-sensitively elsewhere, so the plain "http://" scheme in fileUnsupportedFirefox stays allowed.
 const FORBIDDEN_E2 = ['CWV', 'LCP', 'webRequest', 'HTTP', 'base64', 'selector'];
 const SAMPLE_FILE = 'page-debug-snapshot-1700000000000.json';
-const SAMPLE_ARGS = { saved: SAMPLE_FILE, recordingSince: '2026-10-22T14:03:21.000Z' };
+const SAMPLE_ARGS = { saved: SAMPLE_FILE, savedFile: SAMPLE_FILE, recordingSince: '2026-10-22T14:03:21.000Z' };
+// AC-1.8 (E4-IN8, decision Q-5), verbatim.
+const CONSENT_AC_1_8 =
+  'Mimo automatycznego usuwania haseł i tokenów plik może zawierać Twoje dane osobowe (np. adresy stron, treść logów) — wyślij go tylko developerowi. Klikając „Nagrywaj”, zgadzasz się na zapisanie tych danych w pliku.';
+// AC-1.1 (decision Q-2), verbatim.
+const INSTRUCTION_Q2 = 'Wyślij ten plik osobie, która poprosiła Cię o zgłoszenie — jako załącznik e-maila lub w zgłoszeniu.';
+// Texts of the E4 saved screen and the developer-configuration disclosure (AC-1.7).
+const E4_KEYS = ['savedTitle', 'savedFile', 'savedInstruction', 'showFile', 'newRecording', 'fileMissing', 'disclosureDevExtra', 'otherTabRecordingSaved'];
 
 // Flattens strings, arrays and functions (called with a sample argument) into [path, text].
 function collectTexts(value, path) {
@@ -15,6 +23,9 @@ function collectTexts(value, path) {
   }
   if (Array.isArray(value)) {
     return value.flatMap((item, i) => collectTexts(item, `${path}[${i}]`));
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.entries(value).flatMap(([key, item]) => collectTexts(item, `${path}.${key}`));
   }
   return [[path, value]];
 }
@@ -59,11 +70,13 @@ describe('MESSAGES', () => {
         'screenshotCheckFailedNote',
         'screenshotOffSaved',
         'screenshotFailedSaved',
+        ...E4_KEYS,
         ...OUTCOMES,
       ].sort(),
     );
     expect(Object.isFrozen(MESSAGES)).toBe(true);
     expect(Object.isFrozen(MESSAGES.disclosureItems)).toBe(true);
+    expect(Object.isFrozen(MESSAGES.disclosureDevExtra)).toBe(true);
   });
 
   it('messages contain no forbidden words', () => {
@@ -138,14 +151,14 @@ describe('MESSAGES', () => {
     );
   });
 
-  it('forbidden words JSON, zip, hash, redakcja anywhere; "token" only inside privacyNote (AC-1.3)', () => {
+  it('forbidden words JSON, zip, hash, redakcja anywhere; "token" only inside privacyNote and consentNotice (AC-1.3, AC-1.8)', () => {
     for (const [key, text] of allTexts()) {
       // The file name passed into `saved` is the background's, not our wording.
       const own = text.replace(SAMPLE_FILE, '').toLowerCase();
       for (const word of ['json', 'zip', 'hash', 'redakcja', 'redakcji']) {
         expect(own, `${key} contains ${word}`).not.toContain(word);
       }
-      if (key !== 'privacyNote') expect(own, `${key} contains token`).not.toContain('token');
+      if (key !== 'privacyNote' && key !== 'consentNotice') expect(own, `${key} contains token`).not.toContain('token');
     }
   });
 
@@ -170,10 +183,46 @@ describe('MESSAGES', () => {
     }
   });
 
-  it('consent notice (store review F2) warns about personal data and ties "Nagrywaj" to consent, verbatim', () => {
-    expect(MESSAGES.consentNotice).toBe(
-      'Plik może zawierać Twoje dane osobowe i dane logowania — wyślij go tylko developerowi. Klikając „Nagrywaj”, zgadzasz się na zapisanie tych danych w pliku.',
-    );
+  it('consentNotice is AC-1.8 verbatim in messages.js and popup.html (AC-1.8)', () => {
+    // popup.html side: popup-html.test.js compares #consentNotice with MESSAGES.consentNotice.
+    expect(MESSAGES.consentNotice).toBe(CONSENT_AC_1_8);
+    expect(MESSAGES.consentNotice).not.toContain('dane logowania');
+  });
+
+  it('saved screen texts; instruction is Q-2 verbatim (AC-1.1, AC-1.2)', () => {
+    expect(MESSAGES.savedTitle).toBe('Zapisano');
+    expect(MESSAGES.savedFile(SAMPLE_FILE)).toBe(`Plik: ${SAMPLE_FILE}`);
+    expect(MESSAGES.savedInstruction).toBe(INSTRUCTION_Q2);
+    expect(MESSAGES.showFile).toBe('Pokaż plik');
+    expect(MESSAGES.newRecording).toBe('Nowe nagranie');
+    expect(MESSAGES.fileMissing).toBe('Nie znaleziono pliku. Zapisz paczkę ponownie.');
+  });
+
+  it('new texts (saved*, showFile, newRecording, fileMissing, disclosureDevExtra) contain none of JSON|zip|MCP|snapshot|hash|redakcja (case-insensitive) (AC-1.7)', () => {
+    const texts = E4_KEYS.flatMap((key) => collectTexts(MESSAGES[key], key));
+    expect(texts.length).toBeGreaterThanOrEqual(E4_KEYS.length + 2);
+    for (const [key, text] of texts) {
+      // The file name is data from the background, not our wording.
+      const own = text.replace(SAMPLE_FILE, '');
+      expect(own, key).not.toMatch(/json|zip|mcp|snapshot|hash|redakcj/i);
+      expect(own.trim().length, key).toBeGreaterThan(0);
+    }
+  });
+
+  it('disclosureDevExtra has one text per DEFAULT_RULES rule, in plain Polish (AC-6.5)', () => {
+    expect(Object.keys(MESSAGES.disclosureDevExtra).sort()).toEqual([...DEFAULT_RULES].sort());
+    expect(MESSAGES.disclosureDevExtra.email).toContain('adresy e-mail');
+    expect(MESSAGES.disclosureDevExtra.phone).toContain('numery telefonów');
+    expect(MESSAGES.disclosureDevExtra['html-structure']).toContain('pełna treść strony');
+    for (const text of Object.values(MESSAGES.disclosureDevExtra)) {
+      expect(text).not.toMatch(/html|regu[łl]|developer|konfigurac/i);
+    }
+  });
+
+  it('no text offers sending from the popup (decision 2026-10-26: no "Wyślij" button, mailto or link)', () => {
+    for (const [key, text] of allTexts()) {
+      expect(text, key).not.toMatch(/mailto:|https?:\/\/\w/i);
+    }
   });
 
   it('reload notice mentions odświeży', () => {

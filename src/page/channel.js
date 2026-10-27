@@ -72,7 +72,9 @@ function createChannelEnd({ side, doc, intrinsics, onMessage, onUnbound, setTime
     st.docListeners.push([type, fn]);
   }
   function unlistenDoc() {
-    for (const [type, fn] of st.docListeners) call(I.removeEventListener, doc, type, fn, true);
+    // Index loop: in MAIN the page may replace the array iterator (E4-IN2b).
+    const list = st.docListeners;
+    for (let i = 0; i < list.length; i++) call(I.removeEventListener, doc, list[i][0], list[i][1], true);
     st.docListeners = [];
   }
 

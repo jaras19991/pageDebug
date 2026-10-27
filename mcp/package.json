@@ -1,0 +1,14 @@
+{
+  "name": "page-debug-mcp",
+  "version": "0.6.0",
+  "description": "Lokalny serwer MCP (stdio, tylko odczyt) udostępniający agentom AI paczki Page Debug Snapshot z katalogu na dysku.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "page-debug-mcp": "server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

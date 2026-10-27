@@ -836,6 +836,182 @@
    "secrets": [
     "CutEnt1tyS3c"
    ]
+  },
+  {
+   "id": "in1-json-start",
+   "rule": "key-password",
+   "text": "{\"log\":\"password: hunter2x\"}",
+   "secrets": [
+    "hunter2x"
+   ]
+  },
+  {
+   "id": "in1-json-start-esc",
+   "rule": "key-token",
+   "text": "\"{\\\"msg\\\":\\\"token: abcd1234efgh\\\"}\"",
+   "secrets": [
+    "abcd1234efgh"
+   ]
+  },
+  {
+   "id": "in1-auth-code",
+   "rule": "key-auth",
+   "text": "auth: \"a1b2c3d4e5\"",
+   "secrets": [
+    "a1b2c3d4e5"
+   ]
+  },
+  {
+   "id": "in1-password-phrase",
+   "rule": "key-password",
+   "text": "password: \"correct horse battery\"",
+   "secrets": [
+    "correct horse battery"
+   ]
+  },
+  {
+   "id": "in3-relative",
+   "rule": "key-code",
+   "text": "GET /cb?code=SplxlOBeZQQYbYS6 failed",
+   "secrets": [
+    "SplxlOBeZQQYbYS6"
+   ]
+  },
+  {
+   "id": "in3-amp",
+   "rule": "key-code",
+   "text": "redirect to /cb?state=xyz&code=abc123xyz failed",
+   "secrets": [
+    "abc123xyz"
+   ]
+  },
+  {
+   "id": "in3-hash",
+   "rule": "key-code",
+   "text": "landing on /cb#code=abc123xyz",
+   "secrets": [
+    "abc123xyz"
+   ]
+  },
+  {
+   "id": "in3-ticket",
+   "rule": "key-ticket",
+   "text": "redirect /cas/login?ticket=ST-1234-abcd",
+   "secrets": [
+    "ST-1234-abcd"
+   ]
+  },
+  {
+   "id": "in3-json-escaped",
+   "rule": "key-code",
+   "text": "\"https:\\/\\/a.pl\\/cb?code=SplxlOBeZQQ\"",
+   "secrets": [
+    "SplxlOBeZQQ"
+   ]
+  },
+  {
+   "id": "in1b-error-prefix",
+   "rule": "key-password",
+   "text": "Error: password: Hunter2Secret!",
+   "secrets": [
+    "Hunter2Secret!"
+   ]
+  },
+  {
+   "id": "in1b-uncaught-error",
+   "rule": "key-key",
+   "text": "Uncaught Error: x-api-key: 9f8e7d6c5b4a3921",
+   "secrets": [
+    "9f8e7d6c5b4a3921"
+   ]
+  },
+  {
+   "id": "in1b-type-error",
+   "rule": "key-token",
+   "text": "TypeError: token: abcd1234efgh is not valid",
+   "secrets": [
+    "abcd1234efgh"
+   ]
+  },
+  {
+   "id": "in1b-warning",
+   "rule": "key-session",
+   "text": "Warning: session: s3ssi0nValu3X",
+   "secrets": [
+    "s3ssi0nValu3X"
+   ]
+  },
+  {
+   "id": "in1b-chain",
+   "rule": "key-password",
+   "text": "Login failed: user: jan password: Pa55word!x",
+   "secrets": [
+    "Pa55word!x"
+   ]
+  },
+  {
+   "id": "in1b-chain-long",
+   "rule": "key-secret",
+   "text": "Uncaught Error: request: 42: step: auth flow: secret: Sup3rS3cretV4l",
+   "secrets": [
+    "Sup3rS3cretV4l"
+   ]
+  },
+  {
+   "id": "in1b-mid-sentence",
+   "rule": "key-token",
+   "text": "Cannot log in, the server said: token: Zx9Yw8Vu7Ts6",
+   "secrets": [
+    "Zx9Yw8Vu7Ts6"
+   ]
+  },
+  {
+   "id": "in1b-json-prefix",
+   "rule": "key-password",
+   "text": "{\"log\":\"Error: password: hunter2xyz\"}",
+   "secrets": [
+    "hunter2xyz"
+   ]
+  },
+  {
+   "id": "in1b-json-prefix-esc",
+   "rule": "key-token",
+   "text": "\"{\\\"msg\\\":\\\"TypeError: token: abcd1234efgh\\\"}\"",
+   "secrets": [
+    "abcd1234efgh"
+   ]
+  },
+  {
+   "id": "in1b-multiline",
+   "rule": "key-api_key",
+   "text": "Error: boom\n    at load (app.js:1:2)\nWarning: api_key: AbC123dEf456gH",
+   "secrets": [
+    "AbC123dEf456gH"
+   ]
+  },
+  {
+   "id": "fix2-sq-token",
+   "rule": "key-token",
+   "text": "Failed 'token: abcd1234efgh'",
+   "secrets": [
+    "abcd1234efgh"
+   ]
+  },
+  {
+   "id": "fix2-sq-password",
+   "rule": "key-password",
+   "text": "'password: hunter2xyz'",
+   "secrets": [
+    "hunter2xyz"
+   ]
+  },
+  {
+   "id": "fix2-sq-api-key-msg",
+   "rule": "key-api_key",
+   "text": "console said 'api_key: Zq81mmK2pLx9' twice",
+   "secrets": [
+    "Zq81mmK2pLx9"
+   ]
   }
  ]
 }

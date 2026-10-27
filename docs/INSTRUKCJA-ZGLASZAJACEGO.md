@@ -1,7 +1,7 @@
 # Jak zapisać plik z opisem problemu na stronie
 
 Ten dodatek do przeglądarki nagrywa to, co dzieje się na stronie, na której coś nie działa, i zapisuje to w jednym pliku
-na Twoim komputerze. Plik wysyłasz osobie, która ma problem naprawić. Dodatek sam niczego nie wysyła.
+na Twoim komputerze. Plik wysyłasz sam, osobie, która ma problem naprawić (na przykład e-mailem albo przez komunikator). Dodatek sam niczego nie wysyła.
 
 ## Co jest w pliku, a czego nie ma
 
@@ -50,7 +50,8 @@ Pomoże Ci w tym osoba, która dała Ci ten dodatek. Dostaniesz od niej folder (
 2. Kliknij ikonę układanki (puzzla) w prawym górnym rogu przeglądarki, a na liście — „Page Debug Snapshot”.
    (Pinezka obok sprawi, że ikona zostanie na wierzchu.)
    ![krok 2](img/krok-2.png)
-3. Przeczytaj listę danych i kliknij czarny przycisk „Nagrywaj”.
+3. Przeczytaj listę danych i zdanie tuż nad przyciskiem „Nagrywaj”. Mówi ono, że plik może zawierać Twoje dane osobowe i że klikając „Nagrywaj”, zgadzasz się
+   na ich zapisanie w pliku. Jeśli się zgadzasz, kliknij czarny przycisk „Nagrywaj”.
    ![krok 3](img/krok-3.png)
 4. Gdy przeglądarka zapyta o zgodę na dostęp do tej strony, kliknij „Zezwól”. Okno z dodatkiem zamknie się samo.
    To pytanie pojawia się tylko za pierwszym razem dla danej strony.
@@ -60,13 +61,16 @@ Pomoże Ci w tym osoba, która dała Ci ten dodatek. Dostaniesz od niej folder (
    ![krok 5](img/krok-5.png)
 6. Zostań na tej samej stronie i kliknij ponownie ikonę dodatku. Nad przyciskiem „Zapisz paczkę” jest pole „Dołącz zrzut ekranu”.
    Zostaw je zaznaczone, chyba że na stronie widzisz okienko innego serwisu (np. płatność) — wtedy odznacz je. Kliknij „Zapisz paczkę”
-   i poczekaj na zielony tekst „Zapisano plik … — znajdziesz go w pobranych plikach.”
+   i poczekaj, aż w oknie dodatku pojawi się napis „Zapisano” z nazwą pliku.
    ![krok 6](img/krok-6.png)
-7. Otwórz folder z pobranymi plikami, znajdź plik, którego nazwa zaczyna się od `snapshot-` i kończy na `.zip` (to jeden spakowany
-   plik — nie rozpakowuj go), i wyślij go tak, jak opisano niżej w części „Gdzie wysłać”.
+7. Kliknij „Pokaż plik” — otworzy się folder z zapisanym plikiem (nazwa zaczyna się od `snapshot-` i kończy na `.zip`; to jeden spakowany
+   plik — nie rozpakowuj go). Wyślij go sam, na przykład jako załącznik e-maila albo przez komunikator, tak jak opisano niżej w części „Gdzie wysłać”.
+   Dodatek niczego nie wysyła i nie ma przycisku „Wyślij”.
    ![krok 7](img/krok-7.png)
 
-Dodatek zapisuje jeden plik. Jeśli zapiszesz dwa razy w tej samej sekundzie, drugi dostanie dopisek „ (1)” — dodatek podaje dokładną nazwę w zielonym komunikacie.
+Chcesz nagrać coś jeszcze? W oknie z napisem „Zapisano” kliknij „Nowe nagranie”, a potem „Nagrywaj” — wrócisz do kroku 3.
+
+Dodatek zapisuje jeden plik. Jeśli zapiszesz dwa razy w tej samej sekundzie, drugi dostanie dopisek „ (1)” — dodatek podaje dokładną nazwę na ekranie „Zapisano”.
 
 Jeśli minie 10 minut, nagrywanie zatrzyma się samo i dodatek napisze „Nagrywanie zatrzymane po 10 minutach — zapisz paczkę.”
 Nic się nie traci — kliknij „Zapisz paczkę”; w pliku będzie to, co udało się nagrać.
@@ -100,12 +104,16 @@ Inne komunikaty:
   powiększenia, otwórz okno jeszcze raz i zapisz ponownie (trzeba zacząć od „Nagrywaj”).
 - Pod polem „Dołącz zrzut ekranu” jest napis o okienkach innych serwisów albo „Nie udało się sprawdzić strony — zrzut wyłączony.” — to zamierzone zabezpieczenie.
   Zrzut możesz włączyć, ale pamiętaj o ostrzeżeniu wyżej.
-- Nie możesz znaleźć pliku — w przeglądarce użyj skrótu `Ctrl+J` (otwiera listę pobranych plików).
+- Nie możesz znaleźć pliku — otwórz okno dodatku (po zapisie widać w nim „Zapisano”) i kliknij „Pokaż plik”. Możesz też użyć w przeglądarce skrótu `Ctrl+J`
+  (otwiera listę pobranych plików).
+- „Nie znaleziono pliku. Zapisz paczkę ponownie.” — plik został w międzyczasie przeniesiony albo usunięty. Zacznij nagranie od nowa (krok 2) i zapisz plik jeszcze raz.
 
 Po zapisaniu pliku dodatek niczego już na tej stronie nie nagrywa. Zgodę na dostęp do strony możesz cofnąć:
 w Chrome wpisz w pasku adresu `chrome://extensions`, kliknij „Szczegóły” przy dodatku i zmień „Dostęp do witryn”;
 w Firefoksie wpisz `about:addons`, kliknij dodatek i otwórz „Uprawnienia”.
 
 ## Gdzie wysłać
+
+Dodatek niczego nie wysyła — plik przekazujesz sam. Wyślij go tylko osobie, która poprosiła Cię o zgłoszenie:
 
 `<adres lub sposób wysyłki — uzupełnia osoba prowadząca projekt>`

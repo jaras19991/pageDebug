@@ -86,7 +86,8 @@ export function createSelectorOf({ doc, intrinsics }) {
   function uniqueTestAttribute(el) {
     const all = call(I.getElementsByTagName, doc, '*');
     if (call(I.getCollectionLength, all) > SELECTOR_DATA_MAX_ELEMENTS) return null;
-    for (const name of SELECTOR_TEST_ATTRIBUTES) {
+    for (let i = 0; i < SELECTOR_TEST_ATTRIBUTES.length; i++) {
+      const name = SELECTOR_TEST_ATTRIBUTES[i];
       const value = call(I.getAttribute, el, name);
       if (value === null || value === undefined) continue;
       const sel = `${escape(tagOf(el))}[${name}="${escape(value)}"]`;

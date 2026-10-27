@@ -3,10 +3,11 @@
 // Chrome: web-ext loads the extension over CDP (Extensions.loadUnpacked), because Chrome stable >= 137
 // ignores --load-extension. Override the binary with PDS_CHROMIUM_BINARY; if the default Chrome fails
 // to start, the Chromium bundled with Playwright is tried once.
+// Developer configuration (E4 D5): PDS_CONFIG=<file> builds it in, as `build --config`.
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { build } from './build.mjs';
+import { build, cliOptions } from './build.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -92,7 +93,7 @@ async function main(argv) {
     return 2;
   }
 
-  await build({ targets: [args.browser] });
+  await build({ targets: [args.browser], devConfigPath: cliOptions([], process.env).devConfigPath });
   const options = runOptions(args);
   if (!existsSync(join(options.sourceDir, 'manifest.json'))) {
     console.error(`No manifest.json in ${options.sourceDir} after build`);

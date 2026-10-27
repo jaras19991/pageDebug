@@ -62,7 +62,8 @@ export function installConsoleHook({ win, now, record, json, levels, intrinsics 
   let busy = false;
   let active = true;
 
-  for (const level of levels) {
+  for (let i = 0; i < levels.length; i++) {
+    const level = levels[i];
     const orig = target[level];
     if (typeof orig !== 'function') continue;
     originals.set(level, orig);
@@ -94,9 +95,10 @@ export function installConsoleHook({ win, now, record, json, levels, intrinsics 
     if (restored) return;
     restored = true;
     active = false;
-    for (const [level, orig] of originals) {
+    // Map#forEach, not for…of: a page may replace the array iterator (E4-IN2b).
+    originals.forEach((orig, level) => {
       if (target[level] === wrappers.get(level)) target[level] = orig;
-    }
+    });
     originals.clear();
     wrappers.clear();
     consoleHookActive.delete(win);

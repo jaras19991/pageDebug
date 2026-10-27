@@ -11,7 +11,8 @@ const base = () => ({
 
 describe('mergeManifest', () => {
   it('exports the closed list of target keys (D4)', () => {
-    expect(TARGET_KEYS).toEqual(['browser_specific_settings', 'minimum_chrome_version', 'background']);
+    // E4 D5: `storage` (managed_schema) only in the Chrome overlay.
+    expect(TARGET_KEYS).toEqual(['browser_specific_settings', 'minimum_chrome_version', 'background', 'storage']);
     expect(Object.isFrozen(TARGET_KEYS)).toBe(true);
   });
 

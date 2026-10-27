@@ -54,12 +54,20 @@
       gap: 8px;
     }
 
-    /* Keeps "Nagrywaj" fully visible in a 600 px popup however long the disclosure gets (AC-1.3). */
+    /* Keeps "Nagrywaj" fully visible in a 600 px popup however long the disclosure gets (AC-1.3), together with the
+       consent and reload notices above it (QA E4 F-1): they never scroll below the fold, the disclosure does. */
     #ready .actions {
       position: sticky;
       bottom: 0;
       background: #ffffff;
       padding: 8px 0;
+      border-top: 1px solid #ddd;
+    }
+
+    #ready .actions p {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.35;
     }
 
     .toggle {
@@ -118,6 +126,19 @@
     #status.error {
       color: #b00020;
     }
+
+    /* Saved screen (E4 D7): a few short lines and two buttons, well inside 360×600 without scrolling (AC-1.1). */
+    #savedFile {
+      word-break: break-word;
+    }
+
+    #savedShot:empty, #savedMissing:empty {
+      display: none;
+    }
+
+    #savedMissing {
+      color: #b00020;
+    }
   </style>
 </head>
 <body>
@@ -136,12 +157,15 @@
       <li>struktura strony bez tekstów i bez wartości wpisanych w formularze</li>
       <li>zrzut ekranu w chwili zapisu (możesz go wyłączyć) — pola formularzy tej strony są na nim zakryte, ale formularze osadzone z innych serwisów (np. płatność, logowanie) mogą być widoczne</li>
       <li>nazwy i rozmiary ciasteczek oraz dane zapisane przez stronę</li>
+      <!-- Filled by view.js when the developer's configuration turns a default rule off (AC-6.5); empty = hidden. -->
+      <li id="disclosureDev" hidden></li>
     </ul>
     <p id="privacyNote">Hasła i tokeny są usuwane z pliku automatycznie, a wartości ciasteczek zastępowane krótkim skrótem. Plik nadal może zawierać adresy odwiedzanych stron i treść logów.</p>
     <p id="noUpload">Plik zostaje na Twoim dysku, rozszerzenie niczego nie wysyła.</p>
-    <p id="consentNotice">Plik może zawierać Twoje dane osobowe i dane logowania — wyślij go tylko developerowi. Klikając „Nagrywaj”, zgadzasz się na zapisanie tych danych w pliku.</p>
-    <p id="reloadNotice">Po kliknięciu „Nagrywaj” strona odświeży się, a nagrywanie zacznie się od jej początku.</p>
+    <!-- Sticky footer: the consent (AC-1.8) is read together with the button, only the list above scrolls (QA E4 F-1). -->
     <div class="actions">
+      <p id="consentNotice">Mimo automatycznego usuwania haseł i tokenów plik może zawierać Twoje dane osobowe (np. adresy stron, treść logów) — wyślij go tylko developerowi. Klikając „Nagrywaj”, zgadzasz się na zapisanie tych danych w pliku.</p>
+      <p id="reloadNotice">Po kliknięciu „Nagrywaj” strona odświeży się, a nagrywanie zacznie się od jej początku.</p>
       <button id="record" type="button">Nagrywaj</button>
     </div>
   </section>
@@ -157,6 +181,19 @@
       <!-- Filled by view.js when the page embeds frames of other sites (store S1); empty = not shown. -->
       <p id="screenshotNote"></p>
       <button id="save" type="button">Zapisz paczkę</button>
+    </div>
+  </section>
+
+  <!-- E4 D7: after a save, until "Nagrywaj". view.js fills #savedFile, #savedShot and #savedMissing (textContent only). -->
+  <section id="saved" hidden>
+    <p id="savedTitle" class="lead">Zapisano</p>
+    <p id="savedFile"></p>
+    <p id="savedInstruction">Wyślij ten plik osobie, która poprosiła Cię o zgłoszenie — jako załącznik e-maila lub w zgłoszeniu.</p>
+    <p id="savedShot"></p>
+    <p id="savedMissing" role="alert"></p>
+    <div class="actions">
+      <button id="showFile" type="button">Pokaż plik</button>
+      <button id="newRecording" type="button">Nowe nagranie</button>
     </div>
   </section>
 

@@ -163,6 +163,67 @@ describe('dom (AC-3.2, spec "Dane")', () => {
     expect(p.dom.html).toEqual({ lang: 'pl', outerHTML: '<html><body data-token="[redacted:key-token]"><input value="[redacted:form-value]"></body></html>' });
   });
 
+  // QA E4 F-2: `srcdoc` is the whole HTML of the frame, texts and field values included (tests/fixtures/pages/privacy.html).
+  const SRCDOC = "<!doctype html><body><label>Kod rabatowy <input type='text' id='in-frame' value='RABAT-2026'></label></body>";
+  const frameDom = () => ({ dom: { iframes: [{ src: null, id: 'frame', name: null, titleLength: 13, attributes: { id: 'frame', srcdoc: SRCDOC } }] } });
+
+  it('iframe srcdoc → [redacted:html-structure]: no text, no field value (QA E4 F-2)', () => {
+    const p = frameDom();
+    const ctx = createRedactionContext();
+    redactPageSections(p, ctx);
+    expect(p.dom.iframes[0].attributes).toEqual({ id: 'frame', srcdoc: '[redacted:html-structure]' });
+    expect(ctx.applied).toBe(1);
+    const again = createRedactionContext();
+    redactPageSections(p, again);
+    expect(again.applied).toBe(0);
+    const empty = { dom: { iframes: [{ attributes: { srcdoc: '' } }] } };
+    redactPageSections(empty, createRedactionContext());
+    expect(empty.dom.iframes[0].attributes.srcdoc).toBe('');
+  });
+
+  it('iframe srcdoc with html-structure off (developer option): like fullHtml, field values masked, texts kept', () => {
+    const p = frameDom();
+    redactPageSections(p, createRedactionContext({ disabledRules: ['html-structure'] }));
+    const out = p.dom.iframes[0].attributes.srcdoc;
+    expect(out).toContain('Kod rabatowy');
+    expect(out).toContain('value="[redacted:form-value]"');
+    expect(out).not.toContain('RABAT-2026');
+  });
+
+  // E4-REREVIEW: `>` inside a quoted attribute does not end the tag; a tag inside textarea does not end its content.
+  const fullHtmlOf = (html) => {
+    const p = { dom: { html: { outerHTML: html } } };
+    redactPageSections(p, createRedactionContext({ disabledRules: ['html-structure'] }));
+    return p.dom.html.outerHTML;
+  };
+
+  it('fullHtml: input with `>` in a quoted attribute, textarea with a tag inside (E4-FIX3)', () => {
+    expect(fullHtmlOf('<input data-x="a>b" value="S1">')).toBe('<input data-x="a>b" value="[redacted:form-value]">');
+    expect(fullHtmlOf("<input data-x='a>b' value='S2' >")).toBe("<input data-x='a>b' value=\"[redacted:form-value]\" >");
+    expect(fullHtmlOf('<INPUT title="x>y>z" VALUE=S4>')).toBe('<INPUT title="x>y>z" VALUE="[redacted:form-value]">');
+    expect(fullHtmlOf('<textarea>S3 <b></textarea><p>t</p>')).toBe('<textarea>[redacted:form-value]</textarea><p>t</p>');
+    expect(fullHtmlOf('<TEXTAREA name="m>n">S5 <i>x</i>\n</TextArea ><textarea>S6</textarea>'))
+      .toBe('<TEXTAREA name="m>n">[redacted:form-value]</TextArea ><textarea>[redacted:form-value]</textarea>');
+    // An unclosed textarea runs to the end of the document (as in the browser).
+    expect(fullHtmlOf('<textarea>S7 <b>')).toBe('<textarea>[redacted:form-value]');
+    for (const s of ['S1', 'S3', 'S5', 'S6']) expect(fullHtmlOf(`<input data-x="a>b" value="${s}"><textarea>${s} <b></textarea>`)).not.toContain(s);
+  });
+
+  it('iframe srcdoc with html-structure off: the same quoted `>` and textarea cases (E4-FIX3)', () => {
+    const p = { dom: { iframes: [{ attributes: { srcdoc: '<input data-x="a>b" value="S1"><textarea>S3 <b></textarea>' } }] } };
+    redactPageSections(p, createRedactionContext({ disabledRules: ['html-structure'] }));
+    expect(p.dom.iframes[0].attributes.srcdoc).toBe('<input data-x="a>b" value="[redacted:form-value]"><textarea>[redacted:form-value]</textarea>');
+  });
+
+  it('fullHtml: many <input / <textarea with unclosed quotes stays linear (E4-FIX3)', () => {
+    for (const html of ['<input "'.repeat(25000), "<input a='".repeat(20000), '<input value="x'.repeat(15000),
+      '<textarea "'.repeat(20000), '<textarea>'.repeat(20000), '</textarea'.repeat(20000), '<input '.repeat(30000)]) {
+      const start = performance.now();
+      fullHtmlOf(html);
+      expect([html.slice(0, 12), performance.now() - start < 300]).toEqual([html.slice(0, 12), true]);
+    }
+  });
+
   it('nothing from the trap list in dom', () => {
     noLeak(dom);
     expect(dom.counts).toEqual({ totalElements: 40, forms: 1 });

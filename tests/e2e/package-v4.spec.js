@@ -231,13 +231,15 @@ async function gitShow(path) {
   return JSON.parse(stdout);
 }
 
-test('manifests equal 0.4.0 except version (NFR uprawnienia)', async () => {
+test('manifests equal 0.4.0 except version and Chrome storage.managed_schema (NFR uprawnienia)', async () => {
   const base = await gitShow('src/manifest.base.json');
   for (const target of ['chrome', 'firefox']) {
     const baseline = mergeManifest(base, await gitShow(`src/manifest.${target}.json`));
     const built = JSON.parse(await readFile(resolve(ROOT, 'dist', target, 'manifest.json'), 'utf8'));
     const { version: builtVersion, ...builtRest } = built;
     const { version: baselineVersion, ...baselineRest } = baseline;
+    // E4 D5: managed_schema for the developer configuration (enterprise policy) is the one new key, Chrome only.
+    if (target === 'chrome') baselineRest.storage = { managed_schema: 'managed-schema.json' };
     expect(typeof builtVersion).toBe('string');
     expect(typeof baselineVersion).toBe('string');
     expect(builtRest, target).toEqual(baselineRest);

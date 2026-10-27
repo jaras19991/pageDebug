@@ -19,7 +19,7 @@ function serializeIsPlainObject(value) {
 function serializeCloneSourceValue(value) {
   if (Array.isArray(value)) {
     const out = [];
-    for (const item of value) out.push(serializeCloneSourceValue(item));
+    for (let i = 0; i < value.length; i++) out.push(serializeCloneSourceValue(value[i]));
     return out;
   }
   if (serializeIsPlainObject(value)) return deepMerge({}, value);
@@ -315,14 +315,14 @@ return Object.freeze({ deepMerge: deepMerge, safeSlice: safeSlice, toPlain: toPl
 
 // module: lib/redact-rules.js
 const __pds_m1 = (function () {
-// Redaction rules, `rulesVersion: 1` (E3 D3; skill privacy-redaction). Text-level functions used by redact.js in the
+// Redaction rules, `rulesVersion: 2` (E3 D3, E4 D9; skill privacy-redaction). Text-level functions used by redact.js in the
 // background, by the console fallback and, through mask-secrets.js, by the hooks in MAIN. Pure, synchronous,
 // idempotent, no DOM and no imports. Every regex is created once at module load (a redactRegExp pair) and is linear: no nested
 // quantifiers over overlapping classes, and runs start only at a run boundary (look-behind on the run class).
 // A masked value becomes `[redacted:<rule>]`; values that already are a marker are skipped, so a second pass
 // changes nothing and reports `applied: 0`.
 
-const RULES_VERSION = 1;
+const RULES_VERSION = 2;
 
 // Intrinsics captured at module load (AC-3.6): in MAIN the bundle loads on document_start, before page scripts,
 // and a page may later replace String.prototype.replace/split or RegExp.prototype members. Regexes are used only
@@ -349,7 +349,10 @@ class RedactRegExp extends RegExp {
     return RedactRegExp;
   }
 }
-for (const key of Reflect.ownKeys(REDACT_PROTO)) {
+// An index loop even at load (E4-IN2): an eslint-disable comment would be copied into bundles where the rule is off.
+const REDACT_PROTO_KEYS = Reflect.ownKeys(REDACT_PROTO);
+for (let i = 0; i < REDACT_PROTO_KEYS.length; i++) {
+  const key = REDACT_PROTO_KEYS[i];
   if (key !== 'constructor') Object.defineProperty(RedactRegExp.prototype, key, Object.getOwnPropertyDescriptor(REDACT_PROTO, key));
 }
 
@@ -451,10 +454,10 @@ const MARKER_START = redactRegExp(/^\[redacted:[a-z0-9_*-]+\]/);
 function secretKeyRule(name) {
   if (typeof name !== 'string' || name === '' || name.length > MASK_LIMITS.keyChars) return null;
   const key = redactLower(redactReplace(name, CAMEL_CASE, '$1_$2'));
-  for (const { token, re } of KEY_MATCHERS) if (redactTest(re, key)) return `key-${token}`;
+  for (let i = 0; i < KEY_MATCHERS.length; i++) if (redactTest(KEY_MATCHERS[i].re, key)) return `key-${KEY_MATCHERS[i].token}`;
   const lower = redactLower(name);
   if (redactTest(SESSION_SUFFIX, lower)) return 'key-session';
-  for (const token of WHOLE_KEYS) if (lower === token) return `key-${token}`;
+  for (let i = 0; i < WHOLE_KEYS.length; i++) if (lower === WHOLE_KEYS[i]) return `key-${WHOLE_KEYS[i]}`;
   return null;
 }
 
@@ -463,7 +466,7 @@ function urlKeyRule(name) {
   const rule = secretKeyRule(name);
   if (rule !== null || typeof name !== 'string') return rule;
   const lower = redactLower(name);
-  for (const token of URL_KEYS) if (lower === token) return `key-${token}`;
+  for (let i = 0; i < URL_KEYS.length; i++) if (lower === URL_KEYS[i]) return `key-${URL_KEYS[i]}`;
   return null;
 }
 
@@ -509,22 +512,40 @@ function ibanValid(iban) {
   const s = redactReplace(String(iban), SPACES, '');
   if (!redactTest(IBAN_SHAPE, s)) return false;
   const moved = redactSlice(s, 4) + redactSlice(s, 0, 4);
+  // Index loops over char codes (E4-IN2): the page may replace String.prototype[Symbol.iterator]. IBAN_SHAPE leaves ASCII only.
   let rest = 0;
-  for (const ch of moved) {
-    const code = ch.charCodeAt(0);
-    const value = code >= 65 ? String(code - 55) : ch;
-    for (const digit of value) rest = (rest * 10 + (digit.charCodeAt(0) - 48)) % 97;
+  for (let i = 0; i < moved.length; i++) {
+    const code = moved.charCodeAt(i);
+    // A letter is two digits (A = 10 … Z = 35), a digit is one.
+    if (code >= 65) rest = (rest * 100 + (code - 55)) % 97;
+    else rest = (rest * 10 + (code - 48)) % 97;
   }
   return rest === 1;
 }
 
 /** Shannon entropy in bits per character. */
 function shannon(text) {
-  const counts = new Map();
-  for (const ch of text) counts.set(ch, (counts.get(ch) || 0) + 1);
+  // Per code point, in first-seen order, without string or Map iterators (E4-IN2: the page may replace them).
+  const counts = Object.create(null);
+  const seen = [];
+  for (let i = 0; i < text.length; i++) {
+    let cp = text.charCodeAt(i);
+    if (cp >= 0xd800 && cp <= 0xdbff && i + 1 < text.length) {
+      const low = text.charCodeAt(i + 1);
+      if (low >= 0xdc00 && low <= 0xdfff) {
+        cp = (cp - 0xd800) * 0x400 + (low - 0xdc00) + 0x10000;
+        i++;
+      }
+    }
+    if (counts[cp] === undefined) {
+      counts[cp] = 0;
+      seen[seen.length] = cp;
+    }
+    counts[cp]++;
+  }
   let bits = 0;
-  for (const n of counts.values()) {
-    const p = n / text.length;
+  for (let i = 0; i < seen.length; i++) {
+    const p = counts[seen[i]] / text.length;
     bits -= p * Math.log2(p);
   }
   return bits;
@@ -540,6 +561,9 @@ const QUOTE = '(?:"|&quot;|&#0*34;|&#[xX]0*22;)';
 const QUOTED_KEY = redactRegExp(new RegExp(`(?<!\\\\)(\\\\*)(${QUOTE})([^"\\\\\\n&]{1,256})\\1\\2(\\s*:\\s*)`, 'g'));
 // `key: "value"` and `'key': "value"` (F3: JS objects, YAML), at any level of escaping of the value quote.
 const BARE_KEY = redactRegExp(new RegExp(`(?<![\\w.\\-[\\]"'])('?)([A-Za-z_][\\w.\\-[\\]]{0,255})\\1[ \\t]*:[ \\t]*(?=\\\\*${QUOTE})`, 'g'));
+// Prose after an unquoted `auth`/`session`/`key` (E4-IN1, PB-2): `auth: "Invalid credentials"` is a message, not a
+// secret. Only these whole key names and only ≥ 2 words of letters (no digits, no symbols), an optional final dot.
+const PROSE_VALUE = redactRegExp(/^\p{L}+(?: +\p{L}+)+\.?$/u);
 const QUOTE_AT = redactRegExp(new RegExp(QUOTE, 'y'));
 const BACKSLASHES_AT = redactRegExp(/\\*/y);
 // `"key": 123` / `true` / `false` (E3-IN2), also cut at the end of the text; null stays (nothing there).
@@ -566,11 +590,19 @@ const XML_ENTITY_OPEN_END = redactRegExp(new RegExp(`(${XML_LT})${XML_ENTITY_TAG
 const FORM_PAIR = redactRegExp(/(?<![A-Za-z0-9_.\-[\];])([A-Za-z0-9_.\-[\]]{1,256})=([^&#\s"'\\;,<>]+)/g);
 // `;key=value` (a path parameter like `;jsessionid=`, or a cookie list without spaces): the value also ends at `?` (F8).
 const PATH_PAIR = redactRegExp(/(?<=;)([A-Za-z0-9_.\-[\]]{1,256})=([^&#\s"'\\;,<>?]+)/g);
-// `key: value` (E3-IN2): unquoted or single-quoted key; the value ends at the line end, `,`, `;` or `}`.
-const COLON_PAIR = redactRegExp(/(?<![\w.\-[\]"'])('?)([A-Za-z_][\w.\-[\]]{0,255})\1[ \t]*:[ \t]*(?!\/\/)([^\s"\\,;}][^\n\r"\\,;}]*)/g);
+// `key: value` (E3-IN2): unquoted or single-quoted key; the value ends at the line end, `,`, `;` or `}`. A `"` may
+// stand before the key (E4-IN1: the key opens a JSON string, `{"log":"password: x"}`); a JSON key `"k":` has a `"`
+// before the `:` too, so it never matches here. The regex takes the key only and the value is read after a sensitive
+// key (E4-IN1b): the value of any other key is scanned for pairs too (`Error: password: x`, `user: jan token: t`).
+// A lone `'` may stand before the key too (E4-FIX2: `Failed 'token: x'`, a quoted message); `'k':` is the quoted key
+// form, and a key followed by `'` never reaches the `:`, so the position after an opening `'` cannot match it twice.
+const COLON_PAIR = redactRegExp(/(?<![\w.\-[\]])('?)([A-Za-z_][\w.\-[\]]{0,255})\1[ \t]*:[ \t]*(?!\/\/)(?=[^\s"\\,;}])/g);
+const COLON_VALUE_AT = redactRegExp(/[^\n\r"\\,;}]*/y);
+// `code=`/`ticket=` after `?`, `&`, `&amp;` or `#` in text (E4-IN3): a relative address (`/cb?code=`), a fragment, a
+// JSON-escaped `https:\/\/…?code=`. Not after `_` (`country_code=PL`) nor without `=` (`{"code":"PL"}`).
+const URL_KEY_IN_TEXT = redactRegExp(/(?<=[?&#]|&amp;)(code|ticket)=([^&#\s"'\\;,<>]+)/gi);
 // `Cookie: a=1; b=2` and `Set-Cookie: …`: a cookie list has `;` inside, so the value runs to the line end.
 const COOKIE_LINE = redactRegExp(/(?<![\w.\-[\]"'])('?)([\w.\-[\]]{0,200}cookie)\1[ \t]*:[ \t]*([^\s"\\][^\n\r"\\]*)/gi);
-const TRAILING_BLANKS = redactRegExp(/[ \t]+$/);
 
 // Length of the quote token (`"`, `&quot;`, `&#34;`, `&#x22;`) at `i`, 0 when there is none.
 function quoteLengthAt(text, i) {
@@ -619,6 +651,8 @@ function maskQuotedPairs(text, pair, bare, opts, count) {
     from = m.index + m[0].length;
     const rule = secretKeyRule(bare ? m[2] : m[3]);
     if (rule === null) continue;
+    const name = bare && m[1] === '' ? redactLower(m[2]) : '';
+    const prose = name === 'auth' || name === 'session' || name === 'key';
     const at = from;
     // A quoted key gives the quote the value must open with; after a bare key the value quote is read here.
     const level = bare ? redactExecAt(BACKSLASHES_AT, text, at)[0].length : m[1].length;
@@ -630,7 +664,7 @@ function maskQuotedPairs(text, pair, bare, opts, count) {
       const { end, closeLength } = quotedValueEnd(text, start, level, quote);
       const value = redactSlice(text, start, end);
       from = end + closeLength;
-      if (value === '' || redactTest(MARKER, value)) continue;
+      if (value === '' || redactTest(MARKER, value) || (prose && redactTest(PROSE_VALUE, value))) continue;
       count.n++;
       out += `${redactSlice(text, last, start)}[redacted:${rule}]`;
       last = end;
@@ -728,21 +762,67 @@ function maskPairs(whole, opts, count) {
     return `${key}=[redacted:${rule}]`;
   };
   out = redactReplace(redactReplace(out, FORM_PAIR, formPair), PATH_PAIR, formPair);
+  out = redactReplace(out, URL_KEY_IN_TEXT, (all, key, value) => {
+    if (redactTest(MARKER_START, value)) return all;
+    count.n++;
+    return `${key}=[redacted:key-${redactLower(key)}]`;
+  });
 
   if (opts.colonPairs) {
-    const colon = (all, _quote, key, value, offset, whole) => {
-      // `[redacted:key-code]:44:15` (a marker before a stack position) is not a `key: value` pair.
-      if (redactSlice(whole, Math.max(0, offset - 10), offset) === '[redacted:') return all;
-      const rule = secretKeyRule(key);
-      if (rule === null || redactTest(MARKER_START, value)) return all;
-      const secret = redactReplace(value, TRAILING_BLANKS, '');
-      if (secret === '' || redactTest(MARKER, secret)) return all;
-      count.n++;
-      return `${redactSlice(all, 0, all.length - value.length)}[redacted:${rule}]${redactSlice(value, secret.length)}`;
-    };
-    out = redactReplace(redactReplace(out, COOKIE_LINE, colon), COLON_PAIR, colon);
+    out = redactReplace(out, COOKIE_LINE, (all, _quote, key, value, offset, whole) => {
+      const masked = maskColonValue(whole, offset, key, value, count);
+      return masked === null ? all : `${redactSlice(all, 0, all.length - value.length)}${masked}`;
+    });
+    out = maskColonPairs(out, count);
   }
   return tail === null ? out : out + tail[0];
+}
+
+// `text` without its trailing spaces and tabs. A loop, not `/[ \t]+$/`: that regex retries from every blank of a long
+// run that does not reach the end, quadratic in the run length (E4-REREVIEW).
+function trimTrailingBlanks(text) {
+  let end = text.length;
+  while (end > 0 && (text[end - 1] === ' ' || text[end - 1] === '\t')) end--;
+  return end === text.length ? text : redactSlice(text, 0, end);
+}
+
+// The masked form of `value` after `key` at `offset` (the marker, then the trailing blanks), null when it stays.
+function maskColonValue(text, offset, key, value, count) {
+  // `[redacted:key-code]:44:15` (a marker before a stack position) is not a `key: value` pair.
+  if (redactSlice(text, Math.max(0, offset - 10), offset) === '[redacted:') return null;
+  const rule = secretKeyRule(key);
+  if (rule === null || redactTest(MARKER_START, value)) return null;
+  const secret = trimTrailingBlanks(value);
+  if (secret === '' || redactTest(MARKER, secret)) return null;
+  count.n++;
+  return `[redacted:${rule}]${redactSlice(value, secret.length)}`;
+}
+
+// `value` without its last `'` (and the blanks before it), when it ends with one.
+function closingQuoteDropped(value) {
+  const trimmed = trimTrailingBlanks(value);
+  return trimmed[trimmed.length - 1] === "'" ? trimTrailingBlanks(redactSlice(trimmed, 0, trimmed.length - 1)) : value;
+}
+
+// COLON_PAIR pairs. The search goes on right after the `:` of a key that stays, so a pair inside its value is found;
+// a masked value is skipped whole. The value is read only after a sensitive key, so the scan stays linear.
+function maskColonPairs(text, count) {
+  let out = '';
+  let last = 0;
+  let from = 0;
+  for (let m = redactExecAt(COLON_PAIR, text, from); m !== null; m = redactExecAt(COLON_PAIR, text, from)) {
+    from = m.index + m[0].length;
+    if (secretKeyRule(m[2]) === null) continue;
+    let value = redactExecAt(COLON_VALUE_AT, text, from)[0];
+    // `'token: x'`: the closing `'` of a message that opened before the key stays after the marker.
+    if (m[1] === '' && m.index > 0 && text[m.index - 1] === "'") value = closingQuoteDropped(value);
+    const masked = maskColonValue(text, m.index, m[2], value, count);
+    if (masked === null) continue;
+    out += `${redactSlice(text, last, from)}${masked}`;
+    last = from + value.length;
+    from = last;
+  }
+  return last === 0 ? text : out + redactSlice(text, last);
 }
 
 // ---- value patterns -----------------------------------------------------------------------------------------------
@@ -989,7 +1069,9 @@ function maskQuery(query, opts, count) {
 }
 
 function fragmentIsSensitive(fragment, opts) {
-  for (const pair of redactSplit(redactSlice(fragment, 1), FRAGMENT_SEPARATORS)) {
+  const pairs = redactSplit(redactSlice(fragment, 1), FRAGMENT_SEPARATORS);
+  for (let i = 0; i < pairs.length; i++) {
+    const pair = pairs[i];
     const eq = pair.indexOf('=');
     if (eq > 0 && pair.length > eq + 1 && urlKeyRule(decodeKey(redactSlice(pair, 0, eq))) !== null) return true;
   }
@@ -1009,7 +1091,10 @@ function maskUrl(url, opts) {
   if (url === '') return { text: url, applied: 0 };
   const o = { ...normalize(opts), phone: false };
   const count = { n: 0 };
-  const [, base = '', query = '', fragment = ''] = redactExec(URL_PARTS, url) || [];
+  const parts = redactExec(URL_PARTS, url);
+  const base = parts?.[1] ?? '';
+  const query = parts?.[2] ?? '';
+  const fragment = parts?.[3] ?? '';
   let path = redactReplace(base, PATH_PARAM, (all, key, value) => {
     if (value === '' || redactTest(MARKER, value)) return all;
     const rule = secretKeyRule(key);
@@ -1407,6 +1492,7 @@ const { maskSecrets, cutPreview, maskUrl, secretKeyRule, MASK_LIMITS, redactRegE
 // Redaction at the source (E3 D1, defence in depth; the background pass decides): values of request headers with a
 // sensitive name become `[redacted:key-<token>]` and the URL goes through the Always rules for URL fields, both
 // before anything reaches the buffer. The call of the page always gets its own, unchanged arguments.
+// Index loops only, no for…of, array destructuring or spread (E4-IN2): the page may replace Array.prototype[Symbol.iterator].
 
 
 const NETWORK_LIMITS = Object.freeze({
@@ -1533,11 +1619,14 @@ function makeTools(ctx) {
     };
     if (headers == null || typeof headers !== 'object') return out;
     if (Array.isArray(headers)) {
-      for (const pair of headers.slice(0, NETWORK_LIMITS.headers)) if (pair) add(pair[0], pair[1]);
+      const n = Math.min(headers.length, NETWORK_LIMITS.headers);
+      for (let i = 0; i < n; i++) if (headers[i]) add(headers[i][0], headers[i][1]);
     } else if (typeof headers.forEach === 'function') {
       headers.forEach((value, key) => add(key, value));
     } else {
-      for (const key of Object.keys(headers).slice(0, NETWORK_LIMITS.headers)) add(key, headers[key]);
+      const keys = Object.keys(headers);
+      const n = Math.min(keys.length, NETWORK_LIMITS.headers);
+      for (let i = 0; i < n; i++) add(keys[i], headers[keys[i]]);
     }
     return out;
   };
@@ -1550,7 +1639,8 @@ function makeTools(ctx) {
   };
 
   const contentTypeOf = (headers) => {
-    for (const key of Object.keys(headers || {})) if (key.toLowerCase() === 'content-type') return headers[key];
+    const keys = Object.keys(headers || {});
+    for (let i = 0; i < keys.length; i++) if (keys[i].toLowerCase() === 'content-type') return headers[keys[i]];
     return null;
   };
 
@@ -1647,12 +1737,15 @@ function readLimited(tools, stream, done) {
 // unexplained 0 is `unknown`. `statusUnavailable` is placed right after `status` (key order of the package schema).
 function markStatusUnavailable(entry, reason) {
   const keys = Object.keys(entry);
-  const tail = [];
-  for (const key of keys.slice(keys.indexOf('status') + 1)) tail.push([key, entry[key]]);
-  for (const [key] of tail) delete entry[key];
+  const values = [];
+  const from = keys.indexOf('status') + 1;
+  for (let i = from; i < keys.length; i++) {
+    values[i] = entry[keys[i]];
+    delete entry[keys[i]];
+  }
   entry.status = null;
   entry.statusUnavailable = reason;
-  for (const [key, value] of tail) entry[key] = value;
+  for (let i = from; i < keys.length; i++) entry[keys[i]] = values[i];
   entry.ok = null;
 }
 
@@ -1671,7 +1764,8 @@ function installFetchHook(ctx) {
   let active = true;
 
   const describe = (args) => {
-    const [input, init] = args;
+    const input = args[0];
+    const init = args[1];
     const req = isRequestLike(input) ? input : null;
     const hasInit = init !== null && typeof init === 'object';
     const rawMethod = (hasInit && init.method != null ? init.method : null) ?? (req ? req.method : 'GET');
@@ -1765,9 +1859,11 @@ function installFetchHook(ctx) {
 function parseResponseHeaders(raw, toObject) {
   if (typeof raw !== 'string' || !raw) return {};
   const pairs = [];
-  for (const line of redactSplit(raw.trim(), LINE_BREAKS)) {
+  const lines = redactSplit(raw.trim(), LINE_BREAKS);
+  for (let n = 0; n < lines.length; n++) {
+    const line = lines[n];
     const i = line.indexOf(':');
-    if (i > 0) pairs.push([line.slice(0, i).trim(), line.slice(i + 1).trim()]);
+    if (i > 0) pairs[pairs.length] = [line.slice(0, i).trim(), line.slice(i + 1).trim()];
     if (pairs.length >= NETWORK_LIMITS.headers) break;
   }
   return toObject(pairs);
@@ -1827,12 +1923,15 @@ function installXhrHook(ctx) {
         return I.Reflect.apply(proto.send, this, arguments);
       },
     };
-    for (const name of Object.keys(methods)) {
-      I.Reflect.defineProperty(xhr, name, { value: methods[name], writable: true, enumerable: false, configurable: true });
+    const names = Object.keys(methods);
+    for (let i = 0; i < names.length; i++) {
+      I.Reflect.defineProperty(xhr, names[i], { value: methods[names[i]], writable: true, enumerable: false, configurable: true });
     }
 
     const listen = (type, fn) => I.Reflect.apply(I.addEventListener, xhr, [type, fn]);
-    for (const type of ['error', 'abort', 'timeout']) {
+    const errorTypes = ['error', 'abort', 'timeout'];
+    for (let i = 0; i < errorTypes.length; i++) {
+      const type = errorTypes[i];
       listen(type, () => {
         state.error = type;
       });
@@ -1966,7 +2065,8 @@ function installConsoleHook({ win, now, record, json, levels, intrinsics = {} })
   let busy = false;
   let active = true;
 
-  for (const level of levels) {
+  for (let i = 0; i < levels.length; i++) {
+    const level = levels[i];
     const orig = target[level];
     if (typeof orig !== 'function') continue;
     originals.set(level, orig);
@@ -1998,9 +2098,10 @@ function installConsoleHook({ win, now, record, json, levels, intrinsics = {} })
     if (restored) return;
     restored = true;
     active = false;
-    for (const [level, orig] of originals) {
+    // Map#forEach, not for…of: a page may replace the array iterator (E4-IN2b).
+    originals.forEach((orig, level) => {
       if (target[level] === wrappers.get(level)) target[level] = orig;
-    }
+    });
     originals.clear();
     wrappers.clear();
     consoleHookActive.delete(win);
@@ -2213,7 +2314,8 @@ function createSelectorOf({ doc, intrinsics }) {
   function uniqueTestAttribute(el) {
     const all = call(I.getElementsByTagName, doc, '*');
     if (call(I.getCollectionLength, all) > SELECTOR_DATA_MAX_ELEMENTS) return null;
-    for (const name of SELECTOR_TEST_ATTRIBUTES) {
+    for (let i = 0; i < SELECTOR_TEST_ATTRIBUTES.length; i++) {
+      const name = SELECTOR_TEST_ATTRIBUTES[i];
       const value = call(I.getAttribute, el, name);
       if (value === null || value === undefined) continue;
       const sel = `${escape(tagOf(el))}[${name}="${escape(value)}"]`;
@@ -2301,6 +2403,7 @@ const { maskSecrets, redactRegExp, redactReplace } = __pds_m4;
 // Navigate URLs are masked (maskSecrets) before they reach a record; consecutive replaceState calls with no
 // other step in between are one step (search-as-you-type, AC-3.3).
 // Top-level helpers carry the `steps` prefix (D6: all page modules end up in one IIFE).
+// Index loops only, no for…of or array destructuring (E4-IN2): the page may replace Array.prototype[Symbol.iterator].
 
 
 const STEP_TEXT_MAX_CHARS = 80;
@@ -2543,7 +2646,9 @@ function installStepsHook({ win, doc: _doc, now, record, selectorOf, intrinsics 
     hashchange: (_event, t) => navigate('hashchange', t),
   };
   const listeners = [];
-  for (const type of Object.keys(handlers)) {
+  const types = Object.keys(handlers);
+  for (let i = 0; i < types.length; i++) {
+    const type = types[i];
     const handler = handlers[type];
     const listener = function (event) {
       try {
@@ -2559,7 +2664,9 @@ function installStepsHook({ win, doc: _doc, now, record, selectorOf, intrinsics 
   // History methods: the original runs exactly once (its exception propagates), the step comes after.
   const historyProto = stepsTry(() => I.History.prototype, null);
   const patched = [];
-  for (const name of ['pushState', 'replaceState']) {
+  const historyMethods = ['pushState', 'replaceState'];
+  for (let i = 0; i < historyMethods.length; i++) {
+    const name = historyMethods[i];
     const original = stepsTry(() => historyProto[name], null);
     if (typeof original !== 'function') continue;
     const hook = new I.Proxy(original, {
@@ -2592,9 +2699,14 @@ function installStepsHook({ win, doc: _doc, now, record, selectorOf, intrinsics 
     if (!active) return;
     active = false;
     try {
-      for (const [type, listener] of listeners) stepsTry(() => call(remove, win, type, listener, STEPS_LISTENER_OPTIONS));
+      for (let i = 0; i < listeners.length; i++) {
+        const type = listeners[i][0];
+        const listener = listeners[i][1];
+        stepsTry(() => call(remove, win, type, listener, STEPS_LISTENER_OPTIONS));
+      }
       // Restore guard (E1 H2): only put the original back while our Proxy is still in place.
-      for (const { name, original, hook } of patched) {
+      for (let i = 0; i < patched.length; i++) {
+        const { name, original, hook } = patched[i];
         stepsTry(() => {
           if (historyProto[name] === hook) historyProto[name] = original;
         });
@@ -2715,7 +2827,9 @@ function sameUrl(hookUrl, rtUrl) {
 function withSize(entry, sizeBytes) {
   const out = {};
   let placed = false;
-  for (const key of Object.keys(entry)) {
+  const keys = Object.keys(entry);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
     if (key === 'sizeBytes') continue;
     out[key] = entry[key];
     if (key === 'durationMs') {
@@ -2735,7 +2849,7 @@ function resourceKind(initiatorType, href) {
   if (initiatorType === 'fetch' || initiatorType === 'xmlhttprequest' || initiatorType === 'navigation') return null;
   const ext = extensionOf(href);
   if (ext) {
-    for (const [re, kind] of EXTENSION_KINDS) if (re.test(ext)) return kind;
+    for (let i = 0; i < EXTENSION_KINDS.length; i++) if (EXTENSION_KINDS[i][0].test(ext)) return EXTENSION_KINDS[i][1];
   }
   return (typeof initiatorType === 'string' && INITIATOR_KINDS[initiatorType]) || 'other';
 }
@@ -2790,7 +2904,8 @@ function correlateSizes(hookEntries, rtEntries, { docOrigin, intrinsics } = {}) 
   const order = mergeMap(records, (entry, index) => ({ entry, index }))
     .filter(({ entry }) => entry && (entry.type === 'fetch' || entry.type === 'xhr'))
     .sort((a, b) => (num(a.entry.t) ?? Infinity) - (num(b.entry.t) ?? Infinity));
-  for (const { entry, index } of order) {
+  for (let k = 0; k < order.length; k++) {
+    const { entry, index } = order[k];
     const t = num(entry.t);
     if (t === null) continue;
     for (let i = 0; i < candidates.length; i++) {
@@ -2822,12 +2937,14 @@ function mergeLoadErrors(records, loadErrors) {
   const out = mergeMap(Array.isArray(records) ? records : [], (e) => e && { ...e });
   const errors = (Array.isArray(loadErrors) ? loadErrors : []).filter((e) => e && typeof e.url === 'string');
   const added = [];
-  for (const err of errors) {
+  for (let e = 0; e < errors.length; e++) {
+    const err = errors[e];
     const t = round2(err.t);
     const url = str(err.url, MERGE_LIMITS.urlChars);
     const kind = typeof err.kind === 'string' && err.kind ? err.kind : 'other';
     let best = null;
-    for (const rec of out) {
+    for (let r = 0; r < out.length; r++) {
+      const rec = out[r];
       if (!rec || rec.type === 'fetch' || rec.type === 'xhr' || rec.error != null) continue;
       if (rec.type !== kind || rec.url !== url) continue;
       if (t !== null && rec.t !== null && rec.t > t + MERGE_LIMITS.matchBeforeMs) continue;
@@ -2916,7 +3033,9 @@ function resourcePlain(entry) {
 function resourceCopies(items) {
   const out = [];
   // A loop, not Array.prototype.map, which the page may replace (AC-3.6).
-  for (const e of Array.isArray(items) ? items : []) out.push(e && typeof e === 'object' ? { ...e } : e);
+  // Index loop: the page may replace the array iterator too (E4-IN2b).
+  const list = Array.isArray(items) ? items : [];
+  for (let i = 0; i < list.length; i++) out.push(list[i] && typeof list[i] === 'object' ? { ...list[i] } : list[i]);
   return out;
 }
 
@@ -2990,8 +3109,11 @@ function installResourceHooks({ win, now, record, enabled, intrinsics = {} }) {
   function handle(entries) {
     const made = [];
     if (!isOn()) return made;
-    const list = resourceTry(() => Array.from(entries), []);
-    for (const raw of list) {
+    // Index loop over the array-like list, not Array.from/for…of: the page may replace the iterator (E4-IN2b).
+    const list = resourceTry(() => entries || [], []);
+    const n = resourceTry(() => list.length >>> 0, 0);
+    for (let i = 0; i < n; i++) {
+      const raw = resourceTry(() => list[i], null);
       resourceTry(() => {
         const entry = resourcePlain(raw);
         if (RESOURCE_HOOK_INITIATORS.indexOf(entry.initiatorType) >= 0) {
@@ -3135,12 +3257,12 @@ function installFrameHooks({ win, doc, now, record, json, intrinsics = {}, depth
         installFrameHooks({ win: frameWin, doc: frameWin.document, now, record, json, intrinsics, depth: depth + 1, shared: ctx }),
       );
     }
-    for (const hook of hooks) {
-      const restoreHook = framesTry(hook, null);
+    for (let i = 0; i < hooks.length; i++) {
+      const restoreHook = framesTry(hooks[i], null);
       if (typeof restoreHook === 'function') restores.push(restoreHook);
     }
     state.restoreFrame = () => {
-      for (const restoreHook of restores) framesTry(restoreHook);
+      for (let i = 0; i < restores.length; i++) framesTry(restores[i]);
     };
   }
 
@@ -3157,6 +3279,13 @@ function installFrameHooks({ win, doc, now, record, json, intrinsics = {}, depth
     ctx.count += 1;
     // Already loaded (or about:blank that fired `load` synchronously on insertion) — hook now.
     hookFrame(el, state);
+  }
+
+  // Tracked frames as [el, state] pairs, read with Map#forEach: the page may replace the array iterator (E4-IN2b).
+  function trackedPairs() {
+    const pairs = [];
+    tracked.forEach((state, el) => { pairs.push([el, state]); });
+    return pairs;
   }
 
   function untrack(el, state) {
@@ -3176,7 +3305,9 @@ function installFrameHooks({ win, doc, now, record, json, intrinsics = {}, depth
   function onMutations(mutations) {
     if (!ctx.active) return;
     let removed = false;
-    for (const mutation of mutations) {
+    const n = framesTry(() => mutations.length >>> 0, 0);
+    for (let m = 0; m < n; m++) {
+      const mutation = mutations[m];
       if (mutation.removedNodes && mutation.removedNodes.length) removed = true;
       const added = mutation.addedNodes || [];
       for (let i = 0; i < added.length; i += 1) {
@@ -3184,8 +3315,9 @@ function installFrameHooks({ win, doc, now, record, json, intrinsics = {}, depth
       }
     }
     if (removed) {
-      for (const [el, state] of tracked) {
-        if (!framesTry(() => el.isConnected, true)) untrack(el, state);
+      const pairs = trackedPairs();
+      for (let i = 0; i < pairs.length; i++) {
+        if (!framesTry(() => pairs[i][0].isConnected, true)) untrack(pairs[i][0], pairs[i][1]);
       }
     }
   }
@@ -3206,7 +3338,8 @@ function installFrameHooks({ win, doc, now, record, json, intrinsics = {}, depth
     if (!shared) ctx.active = false;
     if (observer) framesTry(() => observer.disconnect());
     observer = null;
-    for (const [el, state] of [...tracked]) untrack(el, state);
+    const pairs = trackedPairs();
+    for (let i = 0; i < pairs.length; i++) untrack(pairs[i][0], pairs[i][1]);
   };
 }
 return Object.freeze({ FRAME_LIMITS: FRAME_LIMITS, installFrameHooks: installFrameHooks });
@@ -3242,6 +3375,15 @@ const VITALS_URL_MAX = 4000;
 const VITALS_NAME_MAX = 500;
 
 /** `items.map(fn)` as a loop: Array.prototype.map belongs to the page, which may replace it (AC-3.6). */
+// Array copy of an array-like (entry lists, `sources`, `scripts`) by index: spread and for…of use the array iterator,
+// which the page may replace (E4-IN2b).
+function vitalsList(items) {
+  const out = [];
+  const n = items ? items.length >>> 0 : 0;
+  for (let i = 0; i < n; i++) out.push(items[i]);
+  return out;
+}
+
 function vitalsMap(items, fn) {
   const out = [];
   for (let i = 0; i < items.length; i++) out.push(fn(items[i], i));
@@ -3268,7 +3410,8 @@ function clsFromShifts(entries) {
   let bestValue = 0;
   let current = [];
   let currentValue = 0;
-  for (const entry of shifts) {
+  for (let i = 0; i < shifts.length; i++) {
+    const entry = shifts[i];
     const first = current[0];
     const last = current[current.length - 1];
     if (current.length && entry.startTime - last.startTime < VITALS_CLS_GAP_MS
@@ -3295,14 +3438,18 @@ function clsFromShifts(entries) {
 // interactions → the longest; otherwise skip one of the longest per 50 interactions (~p98).
 function inpFromEvents(entries) {
   const longest = new Map();
-  for (const entry of entries || []) {
+  const list = vitalsList(entries);
+  for (let i = 0; i < list.length; i++) {
+    const entry = list[i];
     if (!entry || !(entry.interactionId > 0)) continue;
     const seen = longest.get(entry.interactionId);
     if (!seen || entry.duration > seen.duration) longest.set(entry.interactionId, entry);
   }
   const count = longest.size;
   if (count === 0) return null;
-  const candidates = [...longest.values()].sort((a, b) => b.duration - a.duration).slice(0, VITALS_INP_CANDIDATES);
+  const values = [];
+  longest.forEach((value) => { values.push(value); });
+  const candidates = values.sort((a, b) => b.duration - a.duration).slice(0, VITALS_INP_CANDIDATES);
   const entry = candidates[Math.min(candidates.length - 1, Math.floor(count / VITALS_INP_PER_SKIP))];
   return { value: entry.duration, entry, count };
 }
@@ -3332,7 +3479,7 @@ function topLongTasks(loafs, max = LONG_TASKS_MAX) {
     t: loaf.startTime,
     duration: loaf.duration,
     blockingDuration: loaf.blockingDuration,
-    scripts: vitalsMap([...(loaf.scripts || [])].slice(0, VITALS_SCRIPTS_MAX), (script) => ({
+    scripts: vitalsMap(vitalsList(loaf.scripts).slice(0, VITALS_SCRIPTS_MAX), (script) => ({
       url: vitalsCap(script.sourceURL, VITALS_URL_MAX),
       function: vitalsCap(script.sourceFunctionName, VITALS_NAME_MAX),
       invoker: vitalsCap(script.invoker, VITALS_NAME_MAX),
@@ -3340,12 +3487,12 @@ function topLongTasks(loafs, max = LONG_TASKS_MAX) {
     })),
   }));
 }
-return Object.freeze({ THRESHOLDS: THRESHOLDS, LONG_TASKS_MAX: LONG_TASKS_MAX, vitalsMap: vitalsMap, rate: rate, unavailable: unavailable, clsFromShifts: clsFromShifts, inpFromEvents: inpFromEvents, inpPhases: inpPhases, topLongTasks: topLongTasks });
+return Object.freeze({ THRESHOLDS: THRESHOLDS, LONG_TASKS_MAX: LONG_TASKS_MAX, vitalsList: vitalsList, vitalsMap: vitalsMap, rate: rate, unavailable: unavailable, clsFromShifts: clsFromShifts, inpFromEvents: inpFromEvents, inpPhases: inpPhases, topLongTasks: topLongTasks });
 })();
 
 // module: page/vitals.js
 const __pds_m14 = (function () {
-const { rate, unavailable, clsFromShifts, inpFromEvents, inpPhases, topLongTasks, vitalsMap, LONG_TASKS_MAX } = __pds_m13;
+const { rate, unavailable, clsFromShifts, inpFromEvents, inpPhases, topLongTasks, vitalsList, vitalsMap, LONG_TASKS_MAX } = __pds_m13;
 // Core Web Vitals observers for the MAIN-world recorder (design D1, E2-T1b, AC-5.1–5.6, AC-5.8).
 // PerformanceObserver with `buffered: true` on paint, largest-contentful-paint, layout-shift, event (+first-input) and
 // long-animation-frame; TTFB from Navigation Timing. Attribution (DOM nodes) is turned into selectors in the
@@ -3390,7 +3537,8 @@ function vitalsObsGetter(ctor, name) {
 // Shifts of the session window that is still open (the last one); only it can still grow.
 function vitalsObsTrailingWindow(shifts) {
   let current = [];
-  for (const shift of shifts) {
+  for (let i = 0; i < shifts.length; i++) {
+    const shift = shifts[i];
     const first = current[0];
     const last = current[current.length - 1];
     if (current.length && shift.startTime - last.startTime < 1000 && shift.startTime - first.startTime < 5000) current.push(shift);
@@ -3428,7 +3576,10 @@ function captureVitalsIntrinsics(win) {
 function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, options = {} }) {
   const I = { ...captureVitalsIntrinsics(win), ...intrinsics };
   const call = (fn, self, ...args) => I.apply(fn, self, args);
-  const types = new Set(I.PerformanceObserver ? I.supportedEntryTypes : []);
+  // Filled by index, not new Set(iterable): the page may replace the array iterator (E4-IN2b).
+  const types = new Set();
+  const supported = I.PerformanceObserver ? vitalsList(I.supportedEntryTypes) : [];
+  for (let i = 0; i < supported.length; i++) types.add(supported[i]);
   const since = typeof options.interactionsSince === 'number' && Number.isFinite(options.interactionsSince)
     ? options.interactionsSince
     : -Infinity;
@@ -3465,14 +3616,20 @@ function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, opt
     if (entry.hadRecentInput || typeof entry.value !== 'number' || !ok(entry.startTime)) return;
     const selectors = [];
     if (entry.value >= VITALS_OBS_SHIFT_MIN) {
-      for (const source of [...(entry.sources || [])].slice(0, VITALS_OBS_SOURCES_PER_SHIFT)) {
+      const sources = vitalsList(entry.sources).slice(0, VITALS_OBS_SOURCES_PER_SHIFT);
+      for (let i = 0; i < sources.length; i++) {
+        const source = sources[i];
         const sel = select(source && source.node);
         if (sel) selectors.push(sel);
       }
     }
     shifts.push({ startTime: entry.startTime, value: entry.value, hadRecentInput: false, selectors });
     if (shifts.length > VITALS_OBS_SHIFTS_MAX) {
-      const keep = new Set([...clsFromShifts(shifts).windowEntries, ...vitalsObsTrailingWindow(shifts)]);
+      const keep = new Set();
+      const windowEntries = clsFromShifts(shifts).windowEntries;
+      const trailing = vitalsObsTrailingWindow(shifts);
+      for (let i = 0; i < windowEntries.length; i++) keep.add(windowEntries[i]);
+      for (let i = 0; i < trailing.length; i++) keep.add(trailing[i]);
       shifts = shifts.filter((shift) => keep.has(shift)).slice(-VITALS_OBS_SHIFTS_MAX);
     }
   }
@@ -3494,7 +3651,9 @@ function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, opt
     });
     if (interactions.size > VITALS_OBS_INTERACTIONS_MAX) {
       let shortest = null;
-      for (const item of interactions.values()) if (!shortest || item.duration < shortest.duration) shortest = item;
+      interactions.forEach((item) => {
+        if (!shortest || item.duration < shortest.duration) shortest = item;
+      });
       interactions.delete(shortest.interactionId);
     }
   }
@@ -3505,7 +3664,7 @@ function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, opt
       startTime: entry.startTime,
       duration: entry.duration,
       blockingDuration: entry.blockingDuration,
-      scripts: vitalsMap([...(entry.scripts || [])].slice(0, 10), (s) => ({
+      scripts: vitalsMap(vitalsList(entry.scripts).slice(0, 10), (s) => ({
         sourceURL: s.sourceURL,
         sourceFunctionName: s.sourceFunctionName,
         invoker: s.invoker,
@@ -3527,11 +3686,15 @@ function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, opt
   ];
 
   function feed(handler, entries) {
-    for (const entry of entries || []) vitalsObsTry(() => entry && handler(entry));
+    const list = vitalsObsTry(() => vitalsList(entries), []);
+    for (let i = 0; i < list.length; i++) vitalsObsTry(() => list[i] && handler(list[i]));
   }
 
   const observers = [];
-  for (const [type, handler, extra] of observed) {
+  for (let i = 0; i < observed.length; i++) {
+    const type = observed[i][0];
+    const handler = observed[i][1];
+    const extra = observed[i][2];
     if (!types.has(type)) continue;
     vitalsObsTry(() => {
       const observer = new I.PerformanceObserver((list) => {
@@ -3589,8 +3752,10 @@ function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, opt
     const result = clsFromShifts(shifts);
     const sources = [];
     const ranked = result.windowEntries.slice().sort((a, b) => b.value - a.value);
-    for (const shift of ranked) {
-      for (const selector of shift.selectors) {
+    for (let i = 0; i < ranked.length; i++) {
+      const shift = ranked[i];
+      for (let j = 0; j < shift.selectors.length; j++) {
+        const selector = shift.selectors[j];
         if (sources.length < VITALS_CLS_SOURCES_MAX) {
           sources.push({ selector, value: Math.round(shift.value * 1000) / 1000, t: vitalsObsMs(shift.startTime) });
         }
@@ -3601,7 +3766,9 @@ function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, opt
 
   function inp(final) {
     if (!types.has('event') || !I.hasInteractionId) return unavailable('unsupported-browser');
-    const result = inpFromEvents([...interactions.values()]);
+    const values = [];
+    interactions.forEach((item) => { values.push(item); });
+    const result = inpFromEvents(values);
     if (!result) return unavailable('no-interaction');
     const { entry } = result;
     const phases = inpPhases(entry);
@@ -3622,7 +3789,10 @@ function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, opt
 
   function snapshot({ final = false } = {}) {
     if (active) {
-      for (const { observer, handler } of observers) feed(handler, vitalsObsTry(() => call(I.takeRecords, observer), []));
+      for (let i = 0; i < observers.length; i++) {
+        const { observer, handler } = observers[i];
+        feed(handler, vitalsObsTry(() => call(I.takeRecords, observer), []));
+      }
     }
     const finalized = final === true;
     const lcpExtra = {};
@@ -3641,7 +3811,8 @@ function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, opt
   function restore() {
     if (!active) return;
     // Pending records are taken first, so a stopped recorder keeps what was observed until now.
-    for (const { observer, handler } of observers) {
+    for (let i = 0; i < observers.length; i++) {
+      const { observer, handler } = observers[i];
       feed(handler, vitalsObsTry(() => call(I.takeRecords, observer), []));
       vitalsObsTry(() => call(I.disconnect, observer));
     }
@@ -3659,7 +3830,7 @@ const __pds_m15 = (function () {
 // Shared constants of the page recorder (E1 D5/D6). RECORDER_VERSION must equal `version` in
 // src/manifest.base.json (guarded by tests/unit/recorder.test.js), so a release has to run `npm run gen`.
 
-const RECORDER_VERSION = '0.5.0';
+const RECORDER_VERSION = '0.6.0';
 
 // Version of the MAIN <-> ISOLATED message protocol; 2 = `collect` result with steps, vitals, documentStatus
 // (E2 D8); 3 = dom.structure instead of outerHTML, forms `valueLength`/`fileCount`, console elements with
@@ -3740,14 +3911,18 @@ function recorderFinite(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-// Rough char size of the fields a hook did not pass through `json` (strings, header maps).
+// Rough char size of the fields a hook did not pass through `json` (strings, header maps). Index loops: on the
+// record path of masked entries, so a page-replaced Array.prototype[Symbol.iterator] must not drop them (E4-IN2).
 function recorderShallowChars(entry) {
   let chars = 0;
-  for (const key of Object.keys(entry)) {
+  const keys = Object.keys(entry);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
     const value = entry[key];
     if (typeof value === 'string') chars += value.length;
     else if (value && typeof value === 'object' && (key === 'requestHeaders' || key === 'responseHeaders')) {
-      for (const k of Object.keys(value)) chars += k.length + String(value[k]).length;
+      const names = Object.keys(value);
+      for (let j = 0; j < names.length; j++) chars += names[j].length + String(value[names[j]]).length;
     }
   }
   return chars + 64;
@@ -3807,7 +3982,8 @@ function createRecorder({ win, options = {} }) {
     : limits.documentChars;
   const buffers = {};
   const counts = {};
-  for (const section of RECORDER_SECTIONS) {
+  for (let i = 0; i < RECORDER_SECTIONS.length; i++) {
+    const section = RECORDER_SECTIONS[i];
     const maxChars = section === 'network' ? networkChars : limits.documentChars;
     buffers[section] = createBuffer({ maxItems: limits[section], maxChars });
     counts[section] = 0;
@@ -3888,12 +4064,13 @@ function createRecorder({ win, options = {} }) {
       while (bodyEntries.length && bodyChars + size > limits.responseBodyTotalChars) {
         const oldest = bodyEntries.shift();
         bodyChars -= oldest.size;
-        for (const key of RECORDER_ATTACH_FIELDS) delete oldest.entry[key];
+        for (let i = 0; i < RECORDER_ATTACH_FIELDS.length; i++) delete oldest.entry[RECORDER_ATTACH_FIELDS[i]];
         bodiesTruncated = true;
       }
       bodyChars += size;
       bodyEntries.push({ entry, size });
-      for (const key of RECORDER_ATTACH_FIELDS) {
+      for (let i = 0; i < RECORDER_ATTACH_FIELDS.length; i++) {
+        const key = RECORDER_ATTACH_FIELDS[i];
         if (key === 'responseBodyPreview') entry[key] = capped;
         else if (typeof fields[key] === 'boolean') entry[key] = fields[key] || capped !== preview;
       }
@@ -3913,11 +4090,12 @@ function createRecorder({ win, options = {} }) {
     limitTimer = null;
     const pending = restores;
     restores = [];
-    for (const restore of pending) recorderTry(restore);
+    for (let i = 0; i < pending.length; i++) recorderTry(pending[i]);
   }
 
   function clearBuffers() {
-    for (const section of RECORDER_SECTIONS) {
+    for (let i = 0; i < RECORDER_SECTIONS.length; i++) {
+      const section = RECORDER_SECTIONS[i];
       buffers[section].clear();
       counts[section] = 0;
     }
@@ -4004,8 +4182,8 @@ function createRecorder({ win, options = {} }) {
         return () => Reflect.apply(intrinsics.removeEventListener, doc, ['visibilitychange', onVisibility, true]);
       },
     ];
-    for (const installer of installers) {
-      const restore = recorderTry(installer, null);
+    for (let i = 0; i < installers.length; i++) {
+      const restore = recorderTry(installers[i], null);
       if (typeof restore === 'function') restores.push(restore);
     }
     configTimer = later(() => {
@@ -4035,7 +4213,8 @@ function createRecorder({ win, options = {} }) {
   // Raw buffer copies with `doc`; `network` without the Resource Timing adjustments (see snapshot()).
   function exportBuffers() {
     const out = { truncated: {}, counts: {} };
-    for (const section of RECORDER_SECTIONS) {
+    for (let i = 0; i < RECORDER_SECTIONS.length; i++) {
+      const section = RECORDER_SECTIONS[i];
       out[section] = recorderWithDoc(buffers[section].items(), docId);
       out.truncated[section] = buffers[section].truncated;
       out.counts[section] = counts[section];
@@ -4179,7 +4358,9 @@ function createChannelEnd({ side, doc, intrinsics, onMessage, onUnbound, setTime
     st.docListeners.push([type, fn]);
   }
   function unlistenDoc() {
-    for (const [type, fn] of st.docListeners) call(I.removeEventListener, doc, type, fn, true);
+    // Index loop: in MAIN the page may replace the array iterator (E4-IN2b).
+    const list = st.docListeners;
+    for (let i = 0; i < list.length; i++) call(I.removeEventListener, doc, list[i][0], list[i][1], true);
     st.docListeners = [];
   }
 
@@ -4399,9 +4580,18 @@ function collectorLimits(deps) {
   return { ...COLLECTOR_LIMITS, ...(deps && deps.limits) };
 }
 
+// Array copy of a NodeList/HTMLCollection/NamedNodeMap by index, not Array.from: the page may replace the
+// array iterator (E4-IN2b).
+function collectorList(arrayLike) {
+  const out = [];
+  const n = arrayLike ? arrayLike.length >>> 0 : 0;
+  for (let i = 0; i < n; i++) out.push(arrayLike[i]);
+  return out;
+}
+
 function getAttributes(el) {
   if (!el?.attributes) return {};
-  return Array.from(el.attributes).reduce((acc, attr) => {
+  return collectorList(el.attributes).reduce((acc, attr) => {
     acc[attr.name] = attr.value;
     return acc;
   }, {});
@@ -4497,7 +4687,7 @@ function collectDomSnapshot(win, doc, deps) {
   const limits = collectorLimits(deps);
   const intrinsics = deps.intrinsics || COLLECTOR_DOM_INTRINSICS;
   const structure = serializeDom(doc, { mode: 'structure', maxChars: limits.html, intrinsics });
-  const allElements = Array.from(doc.querySelectorAll('*'));
+  const allElements = collectorList(doc.querySelectorAll('*'));
 
   return {
     counts: {
@@ -4521,13 +4711,13 @@ function collectDomSnapshot(win, doc, deps) {
       charset: doc.characterSet,
       compatMode: doc.compatMode,
     },
-    meta: Array.from(doc.querySelectorAll('meta')).map((el) => getElementSummary(el, deps)),
+    meta: collectorList(doc.querySelectorAll('meta')).map((el) => getElementSummary(el, deps)),
     canonical: doc.querySelector('link[rel="canonical"]')?.href || null,
-    hreflangs: Array.from(doc.querySelectorAll('link[rel="alternate"][hreflang]')).map((el) => ({
+    hreflangs: collectorList(doc.querySelectorAll('link[rel="alternate"][hreflang]')).map((el) => ({
       hreflang: el.getAttribute('hreflang'),
       href: el.href,
     })),
-    scripts: Array.from(doc.scripts).map((el) => ({
+    scripts: collectorList(doc.scripts).map((el) => ({
       src: el.src || null,
       type: el.type || null,
       async: el.async,
@@ -4536,7 +4726,7 @@ function collectDomSnapshot(win, doc, deps) {
       id: el.id || null,
       attributes: getAttributes(el),
     })),
-    stylesheets: Array.from(doc.querySelectorAll('link[rel="stylesheet"], style')).map((el) => ({
+    stylesheets: collectorList(doc.querySelectorAll('link[rel="stylesheet"], style')).map((el) => ({
       tagName: el.tagName,
       href: el.getAttribute('href') || null,
       media: el.getAttribute('media') || null,
@@ -4544,7 +4734,7 @@ function collectDomSnapshot(win, doc, deps) {
       textLength: el.tagName === 'STYLE' ? (el.textContent || '').length : 0,
       attributes: getAttributes(el),
     })),
-    images: Array.from(doc.images).map((img) => ({
+    images: collectorList(doc.images).map((img) => ({
       src: img.currentSrc || img.src,
       naturalWidth: img.naturalWidth,
       naturalHeight: img.naturalHeight,
@@ -4554,7 +4744,7 @@ function collectDomSnapshot(win, doc, deps) {
       // Review F7: alt and title texts may name a person ("Avatar Jana Kowalskiego"); only their lengths are kept.
       altLength: (img.alt || '').length,
     })),
-    iframes: Array.from(doc.querySelectorAll('iframe')).map((el) => {
+    iframes: collectorList(doc.querySelectorAll('iframe')).map((el) => {
       const attributes = getAttributes(el);
       delete attributes.title;
       return {
@@ -4565,13 +4755,13 @@ function collectDomSnapshot(win, doc, deps) {
         attributes,
       };
     }),
-    forms: Array.from(doc.forms).map((form) => ({
+    forms: collectorList(doc.forms).map((form) => ({
       id: form.id || null,
       name: form.name || null,
       method: form.method || null,
       action: form.action || null,
       enctype: form.enctype || null,
-      elements: Array.from(form.elements).map((el) => ({
+      elements: collectorList(form.elements).map((el) => ({
         tagName: el.tagName,
         type: el.type || null,
         name: el.name || null,
@@ -4687,9 +4877,10 @@ const COLLECTOR_SECTIONS = [
 function collectPageState({ win, doc, safeSlice, limits, fullHtml = false, intrinsics }) {
   const deps = { safeSlice, limits, fullHtml: fullHtml === true, intrinsics };
   const result = { environment: null, dom: null, performance: null, storage: null, errors: [] };
-  for (const [section, collect] of COLLECTOR_SECTIONS) {
+  for (let i = 0; i < COLLECTOR_SECTIONS.length; i++) {
+    const section = COLLECTOR_SECTIONS[i][0];
     try {
-      result[section] = collect(win, doc, deps);
+      result[section] = COLLECTOR_SECTIONS[i][1](win, doc, deps);
     } catch (error) {
       result.errors.push({ section, error: (error && error.name) || 'Error' });
     }
@@ -4729,7 +4920,8 @@ function mainTry(fn, fallback) {
 function mainChangeMark(snapshot) {
   const counts = snapshot && snapshot.counts ? snapshot.counts : {};
   let total = 0;
-  for (const key of Object.keys(counts)) total += typeof counts[key] === 'number' ? counts[key] : 0;
+  const keys = Object.keys(counts);
+  for (let i = 0; i < keys.length; i++) total += typeof counts[keys[i]] === 'number' ? counts[keys[i]] : 0;
   return `${total}|${snapshot && snapshot.stopReason ? snapshot.stopReason : ''}`;
 }
 

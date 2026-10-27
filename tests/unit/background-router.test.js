@@ -167,8 +167,10 @@ function pageResult(docId, logs) {
 let env;
 
 // Same wiring as background.js top level, with the fake chrome and the real router.
-function setup({ granted = [] } = {}) {
+function setup({ granted = [], managed } = {}) {
   const { chrome, calls, fake } = createFakeChrome({ tabs: [{ id: TAB, url: PAGE_URL }], extensionId: EXTENSION_ID, granted });
+  // storage.managed (E4 D5): the fake helper has none; a test passes the policy reader it needs.
+  if (managed) chrome.storage.managed = { get: vi.fn(managed) };
   const inflight = new Set();
   const track = (promise) => {
     const p = Promise.resolve(promise);
@@ -255,7 +257,7 @@ describe('popup ↔ background through the real router', () => {
     expect(pkg.consoleLogs.map((l) => l.args[0])).toEqual(['Nie działa koszyk']);
     expect(pkg.notes).toContain('Section storage could not be collected (SecurityError).');
     // The fake tab is not active, so there is no screenshot (QA F-5: the saved text says so).
-    expect(env.last()).toMatchObject({ section: 'ready', statusText: `${MESSAGES.saved(download.args[0].filename)} ${MESSAGES.screenshotFailedSaved}` });
+    expect(env.last()).toMatchObject({ section: 'saved', savedFile: MESSAGES.savedFile(download.args[0].filename), savedShot: MESSAGES.screenshotFailedSaved });
     expect(await env.store.getRec()).toBeNull();
     expect(env.fake.registered.size).toBe(0);
     popup.destroy();
@@ -309,5 +311,82 @@ describe('popup ↔ background through the real router', () => {
     });
     expect(named('scripting.registerContentScripts')).toHaveLength(0);
     expect(env.fake.sessionData.has(KEYS.pending)).toBe(false);
+  });
+});
+
+describe('developer options from storage.managed (E4-D4d, AC-6.1, AC-6.3, AC-6.4)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ now: T0, toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const EMAIL = 'jan.kowalski@example.com';
+
+  // Nagrywaj → hello → Zapisz → download complete; returns the saved package and the collect messages sent to the page.
+  async function recordAndSave() {
+    const popup = env.openPopup();
+    await popup.init();
+    await popup.onRecord();
+    await env.settle();
+    const hello = await env.fromPage({ type: 'hello' });
+    env.page.docId = hello.docId;
+    env.page.logs = [`Kontakt: ${EMAIL}`];
+    await popup.onSave();
+    await env.settle();
+    const [download] = named('downloads.download');
+    env.fake.completeDownload(1, `C:\\Downloads\\${download.args[0].filename}`);
+    await env.settle();
+    popup.destroy();
+    const { pkg } = readZip(new Uint8Array(await env.blobs.at(-1).arrayBuffer()));
+    const collects = named('tabs.sendMessage').map((c) => c.args[1]).filter((m) => m.type === 'collect');
+    return { pkg, collects };
+  }
+
+  it('collect uses disabledRules from managed storage → redaction.disabledRules [email], email not masked', async () => {
+    setup({ granted: [PATTERN], managed: async () => ({ disabledRules: ['email'] }) });
+    const { pkg, collects } = await recordAndSave();
+    expect(pkg.redaction.disabledRules).toEqual(['email']);
+    expect(pkg.consoleLogs.map((l) => l.args[0])).toEqual([`Kontakt: ${EMAIL}`]);
+    expect(collects).toEqual([{ type: 'collect' }]);
+    expect(env.chrome.storage.managed.get).toHaveBeenCalledWith('disabledRules');
+  });
+
+  it('managed rejects (Firefox without a policy) → default rules, save succeeds', async () => {
+    setup({
+      granted: [PATTERN],
+      managed: async () => {
+        throw new Error('Managed storage manifest not found');
+      },
+    });
+    const { pkg } = await recordAndSave();
+    expect(pkg.redaction.disabledRules).toEqual([]);
+    expect(JSON.stringify(pkg)).not.toContain(EMAIL);
+  });
+
+  it('html-structure from policy → collect asks the page for full HTML', async () => {
+    setup({ granted: [PATTERN], managed: async () => ({ disabledRules: ['html-structure', 'jwt'] }) });
+    const { pkg, collects } = await recordAndSave();
+    expect(collects).toEqual([{ type: 'collect', options: { fullHtml: true } }]);
+    expect(pkg.redaction.disabledRules).toEqual(['html-structure']);
+  });
+
+  it('getDevOptions is read per collect, not kept in the module (a changed policy applies to the next save)', async () => {
+    let policy = { disabledRules: ['email'] };
+    setup({ granted: [PATTERN], managed: async () => policy });
+    expect((await recordAndSave()).pkg.redaction.disabledRules).toEqual(['email']);
+    policy = {};
+    env.calls.length = 0;
+    // The popup reads the policy too (AC-6.5); the save follows the policy of its own moment.
+    expect((await recordAndSave()).pkg.redaction.disabledRules).toEqual([]);
+  });
+
+  it('background never imports popup code and keeps no developer options at module level', async () => {
+    const code = await readFile(join(ROOT, 'src/background.js'), 'utf8');
+    const imports = [...code.matchAll(/^import .* from '([^']+)';$/gm)].map((m) => m[1]);
+    expect(imports.some((path) => path.includes('popup/'))).toBe(false);
+    expect(imports).toContain('./lib/dev-options.js');
+    expect(code).not.toMatch(/DEV_OPTIONS|devOptions:/);
   });
 });

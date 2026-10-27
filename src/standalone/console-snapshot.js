@@ -19,7 +19,7 @@ function serializeIsPlainObject(value) {
 function serializeCloneSourceValue(value) {
   if (Array.isArray(value)) {
     const out = [];
-    for (const item of value) out.push(serializeCloneSourceValue(item));
+    for (let i = 0; i < value.length; i++) out.push(serializeCloneSourceValue(value[i]));
     return out;
   }
   if (serializeIsPlainObject(value)) return deepMerge({}, value);
@@ -315,14 +315,14 @@ return Object.freeze({ deepMerge: deepMerge, safeSlice: safeSlice, toPlain: toPl
 
 // module: lib/redact-rules.js
 const __pds_m1 = (function () {
-// Redaction rules, `rulesVersion: 1` (E3 D3; skill privacy-redaction). Text-level functions used by redact.js in the
+// Redaction rules, `rulesVersion: 2` (E3 D3, E4 D9; skill privacy-redaction). Text-level functions used by redact.js in the
 // background, by the console fallback and, through mask-secrets.js, by the hooks in MAIN. Pure, synchronous,
 // idempotent, no DOM and no imports. Every regex is created once at module load (a redactRegExp pair) and is linear: no nested
 // quantifiers over overlapping classes, and runs start only at a run boundary (look-behind on the run class).
 // A masked value becomes `[redacted:<rule>]`; values that already are a marker are skipped, so a second pass
 // changes nothing and reports `applied: 0`.
 
-const RULES_VERSION = 1;
+const RULES_VERSION = 2;
 
 // Intrinsics captured at module load (AC-3.6): in MAIN the bundle loads on document_start, before page scripts,
 // and a page may later replace String.prototype.replace/split or RegExp.prototype members. Regexes are used only
@@ -349,7 +349,10 @@ class RedactRegExp extends RegExp {
     return RedactRegExp;
   }
 }
-for (const key of Reflect.ownKeys(REDACT_PROTO)) {
+// An index loop even at load (E4-IN2): an eslint-disable comment would be copied into bundles where the rule is off.
+const REDACT_PROTO_KEYS = Reflect.ownKeys(REDACT_PROTO);
+for (let i = 0; i < REDACT_PROTO_KEYS.length; i++) {
+  const key = REDACT_PROTO_KEYS[i];
   if (key !== 'constructor') Object.defineProperty(RedactRegExp.prototype, key, Object.getOwnPropertyDescriptor(REDACT_PROTO, key));
 }
 
@@ -451,10 +454,10 @@ const MARKER_START = redactRegExp(/^\[redacted:[a-z0-9_*-]+\]/);
 function secretKeyRule(name) {
   if (typeof name !== 'string' || name === '' || name.length > MASK_LIMITS.keyChars) return null;
   const key = redactLower(redactReplace(name, CAMEL_CASE, '$1_$2'));
-  for (const { token, re } of KEY_MATCHERS) if (redactTest(re, key)) return `key-${token}`;
+  for (let i = 0; i < KEY_MATCHERS.length; i++) if (redactTest(KEY_MATCHERS[i].re, key)) return `key-${KEY_MATCHERS[i].token}`;
   const lower = redactLower(name);
   if (redactTest(SESSION_SUFFIX, lower)) return 'key-session';
-  for (const token of WHOLE_KEYS) if (lower === token) return `key-${token}`;
+  for (let i = 0; i < WHOLE_KEYS.length; i++) if (lower === WHOLE_KEYS[i]) return `key-${WHOLE_KEYS[i]}`;
   return null;
 }
 
@@ -463,7 +466,7 @@ function urlKeyRule(name) {
   const rule = secretKeyRule(name);
   if (rule !== null || typeof name !== 'string') return rule;
   const lower = redactLower(name);
-  for (const token of URL_KEYS) if (lower === token) return `key-${token}`;
+  for (let i = 0; i < URL_KEYS.length; i++) if (lower === URL_KEYS[i]) return `key-${URL_KEYS[i]}`;
   return null;
 }
 
@@ -509,22 +512,40 @@ function ibanValid(iban) {
   const s = redactReplace(String(iban), SPACES, '');
   if (!redactTest(IBAN_SHAPE, s)) return false;
   const moved = redactSlice(s, 4) + redactSlice(s, 0, 4);
+  // Index loops over char codes (E4-IN2): the page may replace String.prototype[Symbol.iterator]. IBAN_SHAPE leaves ASCII only.
   let rest = 0;
-  for (const ch of moved) {
-    const code = ch.charCodeAt(0);
-    const value = code >= 65 ? String(code - 55) : ch;
-    for (const digit of value) rest = (rest * 10 + (digit.charCodeAt(0) - 48)) % 97;
+  for (let i = 0; i < moved.length; i++) {
+    const code = moved.charCodeAt(i);
+    // A letter is two digits (A = 10 … Z = 35), a digit is one.
+    if (code >= 65) rest = (rest * 100 + (code - 55)) % 97;
+    else rest = (rest * 10 + (code - 48)) % 97;
   }
   return rest === 1;
 }
 
 /** Shannon entropy in bits per character. */
 function shannon(text) {
-  const counts = new Map();
-  for (const ch of text) counts.set(ch, (counts.get(ch) || 0) + 1);
+  // Per code point, in first-seen order, without string or Map iterators (E4-IN2: the page may replace them).
+  const counts = Object.create(null);
+  const seen = [];
+  for (let i = 0; i < text.length; i++) {
+    let cp = text.charCodeAt(i);
+    if (cp >= 0xd800 && cp <= 0xdbff && i + 1 < text.length) {
+      const low = text.charCodeAt(i + 1);
+      if (low >= 0xdc00 && low <= 0xdfff) {
+        cp = (cp - 0xd800) * 0x400 + (low - 0xdc00) + 0x10000;
+        i++;
+      }
+    }
+    if (counts[cp] === undefined) {
+      counts[cp] = 0;
+      seen[seen.length] = cp;
+    }
+    counts[cp]++;
+  }
   let bits = 0;
-  for (const n of counts.values()) {
-    const p = n / text.length;
+  for (let i = 0; i < seen.length; i++) {
+    const p = counts[seen[i]] / text.length;
     bits -= p * Math.log2(p);
   }
   return bits;
@@ -540,6 +561,9 @@ const QUOTE = '(?:"|&quot;|&#0*34;|&#[xX]0*22;)';
 const QUOTED_KEY = redactRegExp(new RegExp(`(?<!\\\\)(\\\\*)(${QUOTE})([^"\\\\\\n&]{1,256})\\1\\2(\\s*:\\s*)`, 'g'));
 // `key: "value"` and `'key': "value"` (F3: JS objects, YAML), at any level of escaping of the value quote.
 const BARE_KEY = redactRegExp(new RegExp(`(?<![\\w.\\-[\\]"'])('?)([A-Za-z_][\\w.\\-[\\]]{0,255})\\1[ \\t]*:[ \\t]*(?=\\\\*${QUOTE})`, 'g'));
+// Prose after an unquoted `auth`/`session`/`key` (E4-IN1, PB-2): `auth: "Invalid credentials"` is a message, not a
+// secret. Only these whole key names and only ≥ 2 words of letters (no digits, no symbols), an optional final dot.
+const PROSE_VALUE = redactRegExp(/^\p{L}+(?: +\p{L}+)+\.?$/u);
 const QUOTE_AT = redactRegExp(new RegExp(QUOTE, 'y'));
 const BACKSLASHES_AT = redactRegExp(/\\*/y);
 // `"key": 123` / `true` / `false` (E3-IN2), also cut at the end of the text; null stays (nothing there).
@@ -566,11 +590,19 @@ const XML_ENTITY_OPEN_END = redactRegExp(new RegExp(`(${XML_LT})${XML_ENTITY_TAG
 const FORM_PAIR = redactRegExp(/(?<![A-Za-z0-9_.\-[\];])([A-Za-z0-9_.\-[\]]{1,256})=([^&#\s"'\\;,<>]+)/g);
 // `;key=value` (a path parameter like `;jsessionid=`, or a cookie list without spaces): the value also ends at `?` (F8).
 const PATH_PAIR = redactRegExp(/(?<=;)([A-Za-z0-9_.\-[\]]{1,256})=([^&#\s"'\\;,<>?]+)/g);
-// `key: value` (E3-IN2): unquoted or single-quoted key; the value ends at the line end, `,`, `;` or `}`.
-const COLON_PAIR = redactRegExp(/(?<![\w.\-[\]"'])('?)([A-Za-z_][\w.\-[\]]{0,255})\1[ \t]*:[ \t]*(?!\/\/)([^\s"\\,;}][^\n\r"\\,;}]*)/g);
+// `key: value` (E3-IN2): unquoted or single-quoted key; the value ends at the line end, `,`, `;` or `}`. A `"` may
+// stand before the key (E4-IN1: the key opens a JSON string, `{"log":"password: x"}`); a JSON key `"k":` has a `"`
+// before the `:` too, so it never matches here. The regex takes the key only and the value is read after a sensitive
+// key (E4-IN1b): the value of any other key is scanned for pairs too (`Error: password: x`, `user: jan token: t`).
+// A lone `'` may stand before the key too (E4-FIX2: `Failed 'token: x'`, a quoted message); `'k':` is the quoted key
+// form, and a key followed by `'` never reaches the `:`, so the position after an opening `'` cannot match it twice.
+const COLON_PAIR = redactRegExp(/(?<![\w.\-[\]])('?)([A-Za-z_][\w.\-[\]]{0,255})\1[ \t]*:[ \t]*(?!\/\/)(?=[^\s"\\,;}])/g);
+const COLON_VALUE_AT = redactRegExp(/[^\n\r"\\,;}]*/y);
+// `code=`/`ticket=` after `?`, `&`, `&amp;` or `#` in text (E4-IN3): a relative address (`/cb?code=`), a fragment, a
+// JSON-escaped `https:\/\/…?code=`. Not after `_` (`country_code=PL`) nor without `=` (`{"code":"PL"}`).
+const URL_KEY_IN_TEXT = redactRegExp(/(?<=[?&#]|&amp;)(code|ticket)=([^&#\s"'\\;,<>]+)/gi);
 // `Cookie: a=1; b=2` and `Set-Cookie: …`: a cookie list has `;` inside, so the value runs to the line end.
 const COOKIE_LINE = redactRegExp(/(?<![\w.\-[\]"'])('?)([\w.\-[\]]{0,200}cookie)\1[ \t]*:[ \t]*([^\s"\\][^\n\r"\\]*)/gi);
-const TRAILING_BLANKS = redactRegExp(/[ \t]+$/);
 
 // Length of the quote token (`"`, `&quot;`, `&#34;`, `&#x22;`) at `i`, 0 when there is none.
 function quoteLengthAt(text, i) {
@@ -619,6 +651,8 @@ function maskQuotedPairs(text, pair, bare, opts, count) {
     from = m.index + m[0].length;
     const rule = secretKeyRule(bare ? m[2] : m[3]);
     if (rule === null) continue;
+    const name = bare && m[1] === '' ? redactLower(m[2]) : '';
+    const prose = name === 'auth' || name === 'session' || name === 'key';
     const at = from;
     // A quoted key gives the quote the value must open with; after a bare key the value quote is read here.
     const level = bare ? redactExecAt(BACKSLASHES_AT, text, at)[0].length : m[1].length;
@@ -630,7 +664,7 @@ function maskQuotedPairs(text, pair, bare, opts, count) {
       const { end, closeLength } = quotedValueEnd(text, start, level, quote);
       const value = redactSlice(text, start, end);
       from = end + closeLength;
-      if (value === '' || redactTest(MARKER, value)) continue;
+      if (value === '' || redactTest(MARKER, value) || (prose && redactTest(PROSE_VALUE, value))) continue;
       count.n++;
       out += `${redactSlice(text, last, start)}[redacted:${rule}]`;
       last = end;
@@ -728,21 +762,67 @@ function maskPairs(whole, opts, count) {
     return `${key}=[redacted:${rule}]`;
   };
   out = redactReplace(redactReplace(out, FORM_PAIR, formPair), PATH_PAIR, formPair);
+  out = redactReplace(out, URL_KEY_IN_TEXT, (all, key, value) => {
+    if (redactTest(MARKER_START, value)) return all;
+    count.n++;
+    return `${key}=[redacted:key-${redactLower(key)}]`;
+  });
 
   if (opts.colonPairs) {
-    const colon = (all, _quote, key, value, offset, whole) => {
-      // `[redacted:key-code]:44:15` (a marker before a stack position) is not a `key: value` pair.
-      if (redactSlice(whole, Math.max(0, offset - 10), offset) === '[redacted:') return all;
-      const rule = secretKeyRule(key);
-      if (rule === null || redactTest(MARKER_START, value)) return all;
-      const secret = redactReplace(value, TRAILING_BLANKS, '');
-      if (secret === '' || redactTest(MARKER, secret)) return all;
-      count.n++;
-      return `${redactSlice(all, 0, all.length - value.length)}[redacted:${rule}]${redactSlice(value, secret.length)}`;
-    };
-    out = redactReplace(redactReplace(out, COOKIE_LINE, colon), COLON_PAIR, colon);
+    out = redactReplace(out, COOKIE_LINE, (all, _quote, key, value, offset, whole) => {
+      const masked = maskColonValue(whole, offset, key, value, count);
+      return masked === null ? all : `${redactSlice(all, 0, all.length - value.length)}${masked}`;
+    });
+    out = maskColonPairs(out, count);
   }
   return tail === null ? out : out + tail[0];
+}
+
+// `text` without its trailing spaces and tabs. A loop, not `/[ \t]+$/`: that regex retries from every blank of a long
+// run that does not reach the end, quadratic in the run length (E4-REREVIEW).
+function trimTrailingBlanks(text) {
+  let end = text.length;
+  while (end > 0 && (text[end - 1] === ' ' || text[end - 1] === '\t')) end--;
+  return end === text.length ? text : redactSlice(text, 0, end);
+}
+
+// The masked form of `value` after `key` at `offset` (the marker, then the trailing blanks), null when it stays.
+function maskColonValue(text, offset, key, value, count) {
+  // `[redacted:key-code]:44:15` (a marker before a stack position) is not a `key: value` pair.
+  if (redactSlice(text, Math.max(0, offset - 10), offset) === '[redacted:') return null;
+  const rule = secretKeyRule(key);
+  if (rule === null || redactTest(MARKER_START, value)) return null;
+  const secret = trimTrailingBlanks(value);
+  if (secret === '' || redactTest(MARKER, secret)) return null;
+  count.n++;
+  return `[redacted:${rule}]${redactSlice(value, secret.length)}`;
+}
+
+// `value` without its last `'` (and the blanks before it), when it ends with one.
+function closingQuoteDropped(value) {
+  const trimmed = trimTrailingBlanks(value);
+  return trimmed[trimmed.length - 1] === "'" ? trimTrailingBlanks(redactSlice(trimmed, 0, trimmed.length - 1)) : value;
+}
+
+// COLON_PAIR pairs. The search goes on right after the `:` of a key that stays, so a pair inside its value is found;
+// a masked value is skipped whole. The value is read only after a sensitive key, so the scan stays linear.
+function maskColonPairs(text, count) {
+  let out = '';
+  let last = 0;
+  let from = 0;
+  for (let m = redactExecAt(COLON_PAIR, text, from); m !== null; m = redactExecAt(COLON_PAIR, text, from)) {
+    from = m.index + m[0].length;
+    if (secretKeyRule(m[2]) === null) continue;
+    let value = redactExecAt(COLON_VALUE_AT, text, from)[0];
+    // `'token: x'`: the closing `'` of a message that opened before the key stays after the marker.
+    if (m[1] === '' && m.index > 0 && text[m.index - 1] === "'") value = closingQuoteDropped(value);
+    const masked = maskColonValue(text, m.index, m[2], value, count);
+    if (masked === null) continue;
+    out += `${redactSlice(text, last, from)}${masked}`;
+    last = from + value.length;
+    from = last;
+  }
+  return last === 0 ? text : out + redactSlice(text, last);
 }
 
 // ---- value patterns -----------------------------------------------------------------------------------------------
@@ -989,7 +1069,9 @@ function maskQuery(query, opts, count) {
 }
 
 function fragmentIsSensitive(fragment, opts) {
-  for (const pair of redactSplit(redactSlice(fragment, 1), FRAGMENT_SEPARATORS)) {
+  const pairs = redactSplit(redactSlice(fragment, 1), FRAGMENT_SEPARATORS);
+  for (let i = 0; i < pairs.length; i++) {
+    const pair = pairs[i];
     const eq = pair.indexOf('=');
     if (eq > 0 && pair.length > eq + 1 && urlKeyRule(decodeKey(redactSlice(pair, 0, eq))) !== null) return true;
   }
@@ -1009,7 +1091,10 @@ function maskUrl(url, opts) {
   if (url === '') return { text: url, applied: 0 };
   const o = { ...normalize(opts), phone: false };
   const count = { n: 0 };
-  const [, base = '', query = '', fragment = ''] = redactExec(URL_PARTS, url) || [];
+  const parts = redactExec(URL_PARTS, url);
+  const base = parts?.[1] ?? '';
+  const query = parts?.[2] ?? '';
+  const fragment = parts?.[3] ?? '';
   let path = redactReplace(base, PATH_PARAM, (all, key, value) => {
     if (value === '' || redactTest(MARKER, value)) return all;
     const rule = secretKeyRule(key);
@@ -1407,6 +1492,7 @@ const { maskSecrets, cutPreview, maskUrl, secretKeyRule, MASK_LIMITS, redactRegE
 // Redaction at the source (E3 D1, defence in depth; the background pass decides): values of request headers with a
 // sensitive name become `[redacted:key-<token>]` and the URL goes through the Always rules for URL fields, both
 // before anything reaches the buffer. The call of the page always gets its own, unchanged arguments.
+// Index loops only, no for…of, array destructuring or spread (E4-IN2): the page may replace Array.prototype[Symbol.iterator].
 
 
 const NETWORK_LIMITS = Object.freeze({
@@ -1533,11 +1619,14 @@ function makeTools(ctx) {
     };
     if (headers == null || typeof headers !== 'object') return out;
     if (Array.isArray(headers)) {
-      for (const pair of headers.slice(0, NETWORK_LIMITS.headers)) if (pair) add(pair[0], pair[1]);
+      const n = Math.min(headers.length, NETWORK_LIMITS.headers);
+      for (let i = 0; i < n; i++) if (headers[i]) add(headers[i][0], headers[i][1]);
     } else if (typeof headers.forEach === 'function') {
       headers.forEach((value, key) => add(key, value));
     } else {
-      for (const key of Object.keys(headers).slice(0, NETWORK_LIMITS.headers)) add(key, headers[key]);
+      const keys = Object.keys(headers);
+      const n = Math.min(keys.length, NETWORK_LIMITS.headers);
+      for (let i = 0; i < n; i++) add(keys[i], headers[keys[i]]);
     }
     return out;
   };
@@ -1550,7 +1639,8 @@ function makeTools(ctx) {
   };
 
   const contentTypeOf = (headers) => {
-    for (const key of Object.keys(headers || {})) if (key.toLowerCase() === 'content-type') return headers[key];
+    const keys = Object.keys(headers || {});
+    for (let i = 0; i < keys.length; i++) if (keys[i].toLowerCase() === 'content-type') return headers[keys[i]];
     return null;
   };
 
@@ -1647,12 +1737,15 @@ function readLimited(tools, stream, done) {
 // unexplained 0 is `unknown`. `statusUnavailable` is placed right after `status` (key order of the package schema).
 function markStatusUnavailable(entry, reason) {
   const keys = Object.keys(entry);
-  const tail = [];
-  for (const key of keys.slice(keys.indexOf('status') + 1)) tail.push([key, entry[key]]);
-  for (const [key] of tail) delete entry[key];
+  const values = [];
+  const from = keys.indexOf('status') + 1;
+  for (let i = from; i < keys.length; i++) {
+    values[i] = entry[keys[i]];
+    delete entry[keys[i]];
+  }
   entry.status = null;
   entry.statusUnavailable = reason;
-  for (const [key, value] of tail) entry[key] = value;
+  for (let i = from; i < keys.length; i++) entry[keys[i]] = values[i];
   entry.ok = null;
 }
 
@@ -1671,7 +1764,8 @@ function installFetchHook(ctx) {
   let active = true;
 
   const describe = (args) => {
-    const [input, init] = args;
+    const input = args[0];
+    const init = args[1];
     const req = isRequestLike(input) ? input : null;
     const hasInit = init !== null && typeof init === 'object';
     const rawMethod = (hasInit && init.method != null ? init.method : null) ?? (req ? req.method : 'GET');
@@ -1765,9 +1859,11 @@ function installFetchHook(ctx) {
 function parseResponseHeaders(raw, toObject) {
   if (typeof raw !== 'string' || !raw) return {};
   const pairs = [];
-  for (const line of redactSplit(raw.trim(), LINE_BREAKS)) {
+  const lines = redactSplit(raw.trim(), LINE_BREAKS);
+  for (let n = 0; n < lines.length; n++) {
+    const line = lines[n];
     const i = line.indexOf(':');
-    if (i > 0) pairs.push([line.slice(0, i).trim(), line.slice(i + 1).trim()]);
+    if (i > 0) pairs[pairs.length] = [line.slice(0, i).trim(), line.slice(i + 1).trim()];
     if (pairs.length >= NETWORK_LIMITS.headers) break;
   }
   return toObject(pairs);
@@ -1827,12 +1923,15 @@ function installXhrHook(ctx) {
         return I.Reflect.apply(proto.send, this, arguments);
       },
     };
-    for (const name of Object.keys(methods)) {
-      I.Reflect.defineProperty(xhr, name, { value: methods[name], writable: true, enumerable: false, configurable: true });
+    const names = Object.keys(methods);
+    for (let i = 0; i < names.length; i++) {
+      I.Reflect.defineProperty(xhr, names[i], { value: methods[names[i]], writable: true, enumerable: false, configurable: true });
     }
 
     const listen = (type, fn) => I.Reflect.apply(I.addEventListener, xhr, [type, fn]);
-    for (const type of ['error', 'abort', 'timeout']) {
+    const errorTypes = ['error', 'abort', 'timeout'];
+    for (let i = 0; i < errorTypes.length; i++) {
+      const type = errorTypes[i];
       listen(type, () => {
         state.error = type;
       });
@@ -1966,7 +2065,8 @@ function installConsoleHook({ win, now, record, json, levels, intrinsics = {} })
   let busy = false;
   let active = true;
 
-  for (const level of levels) {
+  for (let i = 0; i < levels.length; i++) {
+    const level = levels[i];
     const orig = target[level];
     if (typeof orig !== 'function') continue;
     originals.set(level, orig);
@@ -1998,9 +2098,10 @@ function installConsoleHook({ win, now, record, json, levels, intrinsics = {} })
     if (restored) return;
     restored = true;
     active = false;
-    for (const [level, orig] of originals) {
+    // Map#forEach, not for…of: a page may replace the array iterator (E4-IN2b).
+    originals.forEach((orig, level) => {
       if (target[level] === wrappers.get(level)) target[level] = orig;
-    }
+    });
     originals.clear();
     wrappers.clear();
     consoleHookActive.delete(win);
@@ -2213,7 +2314,8 @@ function createSelectorOf({ doc, intrinsics }) {
   function uniqueTestAttribute(el) {
     const all = call(I.getElementsByTagName, doc, '*');
     if (call(I.getCollectionLength, all) > SELECTOR_DATA_MAX_ELEMENTS) return null;
-    for (const name of SELECTOR_TEST_ATTRIBUTES) {
+    for (let i = 0; i < SELECTOR_TEST_ATTRIBUTES.length; i++) {
+      const name = SELECTOR_TEST_ATTRIBUTES[i];
       const value = call(I.getAttribute, el, name);
       if (value === null || value === undefined) continue;
       const sel = `${escape(tagOf(el))}[${name}="${escape(value)}"]`;
@@ -2301,6 +2403,7 @@ const { maskSecrets, redactRegExp, redactReplace } = __pds_m4;
 // Navigate URLs are masked (maskSecrets) before they reach a record; consecutive replaceState calls with no
 // other step in between are one step (search-as-you-type, AC-3.3).
 // Top-level helpers carry the `steps` prefix (D6: all page modules end up in one IIFE).
+// Index loops only, no for…of or array destructuring (E4-IN2): the page may replace Array.prototype[Symbol.iterator].
 
 
 const STEP_TEXT_MAX_CHARS = 80;
@@ -2543,7 +2646,9 @@ function installStepsHook({ win, doc: _doc, now, record, selectorOf, intrinsics 
     hashchange: (_event, t) => navigate('hashchange', t),
   };
   const listeners = [];
-  for (const type of Object.keys(handlers)) {
+  const types = Object.keys(handlers);
+  for (let i = 0; i < types.length; i++) {
+    const type = types[i];
     const handler = handlers[type];
     const listener = function (event) {
       try {
@@ -2559,7 +2664,9 @@ function installStepsHook({ win, doc: _doc, now, record, selectorOf, intrinsics 
   // History methods: the original runs exactly once (its exception propagates), the step comes after.
   const historyProto = stepsTry(() => I.History.prototype, null);
   const patched = [];
-  for (const name of ['pushState', 'replaceState']) {
+  const historyMethods = ['pushState', 'replaceState'];
+  for (let i = 0; i < historyMethods.length; i++) {
+    const name = historyMethods[i];
     const original = stepsTry(() => historyProto[name], null);
     if (typeof original !== 'function') continue;
     const hook = new I.Proxy(original, {
@@ -2592,9 +2699,14 @@ function installStepsHook({ win, doc: _doc, now, record, selectorOf, intrinsics 
     if (!active) return;
     active = false;
     try {
-      for (const [type, listener] of listeners) stepsTry(() => call(remove, win, type, listener, STEPS_LISTENER_OPTIONS));
+      for (let i = 0; i < listeners.length; i++) {
+        const type = listeners[i][0];
+        const listener = listeners[i][1];
+        stepsTry(() => call(remove, win, type, listener, STEPS_LISTENER_OPTIONS));
+      }
       // Restore guard (E1 H2): only put the original back while our Proxy is still in place.
-      for (const { name, original, hook } of patched) {
+      for (let i = 0; i < patched.length; i++) {
+        const { name, original, hook } = patched[i];
         stepsTry(() => {
           if (historyProto[name] === hook) historyProto[name] = original;
         });
@@ -2715,7 +2827,9 @@ function sameUrl(hookUrl, rtUrl) {
 function withSize(entry, sizeBytes) {
   const out = {};
   let placed = false;
-  for (const key of Object.keys(entry)) {
+  const keys = Object.keys(entry);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
     if (key === 'sizeBytes') continue;
     out[key] = entry[key];
     if (key === 'durationMs') {
@@ -2735,7 +2849,7 @@ function resourceKind(initiatorType, href) {
   if (initiatorType === 'fetch' || initiatorType === 'xmlhttprequest' || initiatorType === 'navigation') return null;
   const ext = extensionOf(href);
   if (ext) {
-    for (const [re, kind] of EXTENSION_KINDS) if (re.test(ext)) return kind;
+    for (let i = 0; i < EXTENSION_KINDS.length; i++) if (EXTENSION_KINDS[i][0].test(ext)) return EXTENSION_KINDS[i][1];
   }
   return (typeof initiatorType === 'string' && INITIATOR_KINDS[initiatorType]) || 'other';
 }
@@ -2790,7 +2904,8 @@ function correlateSizes(hookEntries, rtEntries, { docOrigin, intrinsics } = {}) 
   const order = mergeMap(records, (entry, index) => ({ entry, index }))
     .filter(({ entry }) => entry && (entry.type === 'fetch' || entry.type === 'xhr'))
     .sort((a, b) => (num(a.entry.t) ?? Infinity) - (num(b.entry.t) ?? Infinity));
-  for (const { entry, index } of order) {
+  for (let k = 0; k < order.length; k++) {
+    const { entry, index } = order[k];
     const t = num(entry.t);
     if (t === null) continue;
     for (let i = 0; i < candidates.length; i++) {
@@ -2822,12 +2937,14 @@ function mergeLoadErrors(records, loadErrors) {
   const out = mergeMap(Array.isArray(records) ? records : [], (e) => e && { ...e });
   const errors = (Array.isArray(loadErrors) ? loadErrors : []).filter((e) => e && typeof e.url === 'string');
   const added = [];
-  for (const err of errors) {
+  for (let e = 0; e < errors.length; e++) {
+    const err = errors[e];
     const t = round2(err.t);
     const url = str(err.url, MERGE_LIMITS.urlChars);
     const kind = typeof err.kind === 'string' && err.kind ? err.kind : 'other';
     let best = null;
-    for (const rec of out) {
+    for (let r = 0; r < out.length; r++) {
+      const rec = out[r];
       if (!rec || rec.type === 'fetch' || rec.type === 'xhr' || rec.error != null) continue;
       if (rec.type !== kind || rec.url !== url) continue;
       if (t !== null && rec.t !== null && rec.t > t + MERGE_LIMITS.matchBeforeMs) continue;
@@ -2916,7 +3033,9 @@ function resourcePlain(entry) {
 function resourceCopies(items) {
   const out = [];
   // A loop, not Array.prototype.map, which the page may replace (AC-3.6).
-  for (const e of Array.isArray(items) ? items : []) out.push(e && typeof e === 'object' ? { ...e } : e);
+  // Index loop: the page may replace the array iterator too (E4-IN2b).
+  const list = Array.isArray(items) ? items : [];
+  for (let i = 0; i < list.length; i++) out.push(list[i] && typeof list[i] === 'object' ? { ...list[i] } : list[i]);
   return out;
 }
 
@@ -2990,8 +3109,11 @@ function installResourceHooks({ win, now, record, enabled, intrinsics = {} }) {
   function handle(entries) {
     const made = [];
     if (!isOn()) return made;
-    const list = resourceTry(() => Array.from(entries), []);
-    for (const raw of list) {
+    // Index loop over the array-like list, not Array.from/for…of: the page may replace the iterator (E4-IN2b).
+    const list = resourceTry(() => entries || [], []);
+    const n = resourceTry(() => list.length >>> 0, 0);
+    for (let i = 0; i < n; i++) {
+      const raw = resourceTry(() => list[i], null);
       resourceTry(() => {
         const entry = resourcePlain(raw);
         if (RESOURCE_HOOK_INITIATORS.indexOf(entry.initiatorType) >= 0) {
@@ -3135,12 +3257,12 @@ function installFrameHooks({ win, doc, now, record, json, intrinsics = {}, depth
         installFrameHooks({ win: frameWin, doc: frameWin.document, now, record, json, intrinsics, depth: depth + 1, shared: ctx }),
       );
     }
-    for (const hook of hooks) {
-      const restoreHook = framesTry(hook, null);
+    for (let i = 0; i < hooks.length; i++) {
+      const restoreHook = framesTry(hooks[i], null);
       if (typeof restoreHook === 'function') restores.push(restoreHook);
     }
     state.restoreFrame = () => {
-      for (const restoreHook of restores) framesTry(restoreHook);
+      for (let i = 0; i < restores.length; i++) framesTry(restores[i]);
     };
   }
 
@@ -3157,6 +3279,13 @@ function installFrameHooks({ win, doc, now, record, json, intrinsics = {}, depth
     ctx.count += 1;
     // Already loaded (or about:blank that fired `load` synchronously on insertion) — hook now.
     hookFrame(el, state);
+  }
+
+  // Tracked frames as [el, state] pairs, read with Map#forEach: the page may replace the array iterator (E4-IN2b).
+  function trackedPairs() {
+    const pairs = [];
+    tracked.forEach((state, el) => { pairs.push([el, state]); });
+    return pairs;
   }
 
   function untrack(el, state) {
@@ -3176,7 +3305,9 @@ function installFrameHooks({ win, doc, now, record, json, intrinsics = {}, depth
   function onMutations(mutations) {
     if (!ctx.active) return;
     let removed = false;
-    for (const mutation of mutations) {
+    const n = framesTry(() => mutations.length >>> 0, 0);
+    for (let m = 0; m < n; m++) {
+      const mutation = mutations[m];
       if (mutation.removedNodes && mutation.removedNodes.length) removed = true;
       const added = mutation.addedNodes || [];
       for (let i = 0; i < added.length; i += 1) {
@@ -3184,8 +3315,9 @@ function installFrameHooks({ win, doc, now, record, json, intrinsics = {}, depth
       }
     }
     if (removed) {
-      for (const [el, state] of tracked) {
-        if (!framesTry(() => el.isConnected, true)) untrack(el, state);
+      const pairs = trackedPairs();
+      for (let i = 0; i < pairs.length; i++) {
+        if (!framesTry(() => pairs[i][0].isConnected, true)) untrack(pairs[i][0], pairs[i][1]);
       }
     }
   }
@@ -3206,7 +3338,8 @@ function installFrameHooks({ win, doc, now, record, json, intrinsics = {}, depth
     if (!shared) ctx.active = false;
     if (observer) framesTry(() => observer.disconnect());
     observer = null;
-    for (const [el, state] of [...tracked]) untrack(el, state);
+    const pairs = trackedPairs();
+    for (let i = 0; i < pairs.length; i++) untrack(pairs[i][0], pairs[i][1]);
   };
 }
 return Object.freeze({ FRAME_LIMITS: FRAME_LIMITS, installFrameHooks: installFrameHooks });
@@ -3242,6 +3375,15 @@ const VITALS_URL_MAX = 4000;
 const VITALS_NAME_MAX = 500;
 
 /** `items.map(fn)` as a loop: Array.prototype.map belongs to the page, which may replace it (AC-3.6). */
+// Array copy of an array-like (entry lists, `sources`, `scripts`) by index: spread and for…of use the array iterator,
+// which the page may replace (E4-IN2b).
+function vitalsList(items) {
+  const out = [];
+  const n = items ? items.length >>> 0 : 0;
+  for (let i = 0; i < n; i++) out.push(items[i]);
+  return out;
+}
+
 function vitalsMap(items, fn) {
   const out = [];
   for (let i = 0; i < items.length; i++) out.push(fn(items[i], i));
@@ -3268,7 +3410,8 @@ function clsFromShifts(entries) {
   let bestValue = 0;
   let current = [];
   let currentValue = 0;
-  for (const entry of shifts) {
+  for (let i = 0; i < shifts.length; i++) {
+    const entry = shifts[i];
     const first = current[0];
     const last = current[current.length - 1];
     if (current.length && entry.startTime - last.startTime < VITALS_CLS_GAP_MS
@@ -3295,14 +3438,18 @@ function clsFromShifts(entries) {
 // interactions → the longest; otherwise skip one of the longest per 50 interactions (~p98).
 function inpFromEvents(entries) {
   const longest = new Map();
-  for (const entry of entries || []) {
+  const list = vitalsList(entries);
+  for (let i = 0; i < list.length; i++) {
+    const entry = list[i];
     if (!entry || !(entry.interactionId > 0)) continue;
     const seen = longest.get(entry.interactionId);
     if (!seen || entry.duration > seen.duration) longest.set(entry.interactionId, entry);
   }
   const count = longest.size;
   if (count === 0) return null;
-  const candidates = [...longest.values()].sort((a, b) => b.duration - a.duration).slice(0, VITALS_INP_CANDIDATES);
+  const values = [];
+  longest.forEach((value) => { values.push(value); });
+  const candidates = values.sort((a, b) => b.duration - a.duration).slice(0, VITALS_INP_CANDIDATES);
   const entry = candidates[Math.min(candidates.length - 1, Math.floor(count / VITALS_INP_PER_SKIP))];
   return { value: entry.duration, entry, count };
 }
@@ -3332,7 +3479,7 @@ function topLongTasks(loafs, max = LONG_TASKS_MAX) {
     t: loaf.startTime,
     duration: loaf.duration,
     blockingDuration: loaf.blockingDuration,
-    scripts: vitalsMap([...(loaf.scripts || [])].slice(0, VITALS_SCRIPTS_MAX), (script) => ({
+    scripts: vitalsMap(vitalsList(loaf.scripts).slice(0, VITALS_SCRIPTS_MAX), (script) => ({
       url: vitalsCap(script.sourceURL, VITALS_URL_MAX),
       function: vitalsCap(script.sourceFunctionName, VITALS_NAME_MAX),
       invoker: vitalsCap(script.invoker, VITALS_NAME_MAX),
@@ -3340,12 +3487,12 @@ function topLongTasks(loafs, max = LONG_TASKS_MAX) {
     })),
   }));
 }
-return Object.freeze({ THRESHOLDS: THRESHOLDS, LONG_TASKS_MAX: LONG_TASKS_MAX, vitalsMap: vitalsMap, rate: rate, unavailable: unavailable, clsFromShifts: clsFromShifts, inpFromEvents: inpFromEvents, inpPhases: inpPhases, topLongTasks: topLongTasks });
+return Object.freeze({ THRESHOLDS: THRESHOLDS, LONG_TASKS_MAX: LONG_TASKS_MAX, vitalsList: vitalsList, vitalsMap: vitalsMap, rate: rate, unavailable: unavailable, clsFromShifts: clsFromShifts, inpFromEvents: inpFromEvents, inpPhases: inpPhases, topLongTasks: topLongTasks });
 })();
 
 // module: page/vitals.js
 const __pds_m14 = (function () {
-const { rate, unavailable, clsFromShifts, inpFromEvents, inpPhases, topLongTasks, vitalsMap, LONG_TASKS_MAX } = __pds_m13;
+const { rate, unavailable, clsFromShifts, inpFromEvents, inpPhases, topLongTasks, vitalsList, vitalsMap, LONG_TASKS_MAX } = __pds_m13;
 // Core Web Vitals observers for the MAIN-world recorder (design D1, E2-T1b, AC-5.1–5.6, AC-5.8).
 // PerformanceObserver with `buffered: true` on paint, largest-contentful-paint, layout-shift, event (+first-input) and
 // long-animation-frame; TTFB from Navigation Timing. Attribution (DOM nodes) is turned into selectors in the
@@ -3390,7 +3537,8 @@ function vitalsObsGetter(ctor, name) {
 // Shifts of the session window that is still open (the last one); only it can still grow.
 function vitalsObsTrailingWindow(shifts) {
   let current = [];
-  for (const shift of shifts) {
+  for (let i = 0; i < shifts.length; i++) {
+    const shift = shifts[i];
     const first = current[0];
     const last = current[current.length - 1];
     if (current.length && shift.startTime - last.startTime < 1000 && shift.startTime - first.startTime < 5000) current.push(shift);
@@ -3428,7 +3576,10 @@ function captureVitalsIntrinsics(win) {
 function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, options = {} }) {
   const I = { ...captureVitalsIntrinsics(win), ...intrinsics };
   const call = (fn, self, ...args) => I.apply(fn, self, args);
-  const types = new Set(I.PerformanceObserver ? I.supportedEntryTypes : []);
+  // Filled by index, not new Set(iterable): the page may replace the array iterator (E4-IN2b).
+  const types = new Set();
+  const supported = I.PerformanceObserver ? vitalsList(I.supportedEntryTypes) : [];
+  for (let i = 0; i < supported.length; i++) types.add(supported[i]);
   const since = typeof options.interactionsSince === 'number' && Number.isFinite(options.interactionsSince)
     ? options.interactionsSince
     : -Infinity;
@@ -3465,14 +3616,20 @@ function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, opt
     if (entry.hadRecentInput || typeof entry.value !== 'number' || !ok(entry.startTime)) return;
     const selectors = [];
     if (entry.value >= VITALS_OBS_SHIFT_MIN) {
-      for (const source of [...(entry.sources || [])].slice(0, VITALS_OBS_SOURCES_PER_SHIFT)) {
+      const sources = vitalsList(entry.sources).slice(0, VITALS_OBS_SOURCES_PER_SHIFT);
+      for (let i = 0; i < sources.length; i++) {
+        const source = sources[i];
         const sel = select(source && source.node);
         if (sel) selectors.push(sel);
       }
     }
     shifts.push({ startTime: entry.startTime, value: entry.value, hadRecentInput: false, selectors });
     if (shifts.length > VITALS_OBS_SHIFTS_MAX) {
-      const keep = new Set([...clsFromShifts(shifts).windowEntries, ...vitalsObsTrailingWindow(shifts)]);
+      const keep = new Set();
+      const windowEntries = clsFromShifts(shifts).windowEntries;
+      const trailing = vitalsObsTrailingWindow(shifts);
+      for (let i = 0; i < windowEntries.length; i++) keep.add(windowEntries[i]);
+      for (let i = 0; i < trailing.length; i++) keep.add(trailing[i]);
       shifts = shifts.filter((shift) => keep.has(shift)).slice(-VITALS_OBS_SHIFTS_MAX);
     }
   }
@@ -3494,7 +3651,9 @@ function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, opt
     });
     if (interactions.size > VITALS_OBS_INTERACTIONS_MAX) {
       let shortest = null;
-      for (const item of interactions.values()) if (!shortest || item.duration < shortest.duration) shortest = item;
+      interactions.forEach((item) => {
+        if (!shortest || item.duration < shortest.duration) shortest = item;
+      });
       interactions.delete(shortest.interactionId);
     }
   }
@@ -3505,7 +3664,7 @@ function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, opt
       startTime: entry.startTime,
       duration: entry.duration,
       blockingDuration: entry.blockingDuration,
-      scripts: vitalsMap([...(entry.scripts || [])].slice(0, 10), (s) => ({
+      scripts: vitalsMap(vitalsList(entry.scripts).slice(0, 10), (s) => ({
         sourceURL: s.sourceURL,
         sourceFunctionName: s.sourceFunctionName,
         invoker: s.invoker,
@@ -3527,11 +3686,15 @@ function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, opt
   ];
 
   function feed(handler, entries) {
-    for (const entry of entries || []) vitalsObsTry(() => entry && handler(entry));
+    const list = vitalsObsTry(() => vitalsList(entries), []);
+    for (let i = 0; i < list.length; i++) vitalsObsTry(() => list[i] && handler(list[i]));
   }
 
   const observers = [];
-  for (const [type, handler, extra] of observed) {
+  for (let i = 0; i < observed.length; i++) {
+    const type = observed[i][0];
+    const handler = observed[i][1];
+    const extra = observed[i][2];
     if (!types.has(type)) continue;
     vitalsObsTry(() => {
       const observer = new I.PerformanceObserver((list) => {
@@ -3589,8 +3752,10 @@ function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, opt
     const result = clsFromShifts(shifts);
     const sources = [];
     const ranked = result.windowEntries.slice().sort((a, b) => b.value - a.value);
-    for (const shift of ranked) {
-      for (const selector of shift.selectors) {
+    for (let i = 0; i < ranked.length; i++) {
+      const shift = ranked[i];
+      for (let j = 0; j < shift.selectors.length; j++) {
+        const selector = shift.selectors[j];
         if (sources.length < VITALS_CLS_SOURCES_MAX) {
           sources.push({ selector, value: Math.round(shift.value * 1000) / 1000, t: vitalsObsMs(shift.startTime) });
         }
@@ -3601,7 +3766,9 @@ function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, opt
 
   function inp(final) {
     if (!types.has('event') || !I.hasInteractionId) return unavailable('unsupported-browser');
-    const result = inpFromEvents([...interactions.values()]);
+    const values = [];
+    interactions.forEach((item) => { values.push(item); });
+    const result = inpFromEvents(values);
     if (!result) return unavailable('no-interaction');
     const { entry } = result;
     const phases = inpPhases(entry);
@@ -3622,7 +3789,10 @@ function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, opt
 
   function snapshot({ final = false } = {}) {
     if (active) {
-      for (const { observer, handler } of observers) feed(handler, vitalsObsTry(() => call(I.takeRecords, observer), []));
+      for (let i = 0; i < observers.length; i++) {
+        const { observer, handler } = observers[i];
+        feed(handler, vitalsObsTry(() => call(I.takeRecords, observer), []));
+      }
     }
     const finalized = final === true;
     const lcpExtra = {};
@@ -3641,7 +3811,8 @@ function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, opt
   function restore() {
     if (!active) return;
     // Pending records are taken first, so a stopped recorder keeps what was observed until now.
-    for (const { observer, handler } of observers) {
+    for (let i = 0; i < observers.length; i++) {
+      const { observer, handler } = observers[i];
       feed(handler, vitalsObsTry(() => call(I.takeRecords, observer), []));
       vitalsObsTry(() => call(I.disconnect, observer));
     }
@@ -3659,7 +3830,7 @@ const __pds_m15 = (function () {
 // Shared constants of the page recorder (E1 D5/D6). RECORDER_VERSION must equal `version` in
 // src/manifest.base.json (guarded by tests/unit/recorder.test.js), so a release has to run `npm run gen`.
 
-const RECORDER_VERSION = '0.5.0';
+const RECORDER_VERSION = '0.6.0';
 
 // Version of the MAIN <-> ISOLATED message protocol; 2 = `collect` result with steps, vitals, documentStatus
 // (E2 D8); 3 = dom.structure instead of outerHTML, forms `valueLength`/`fileCount`, console elements with
@@ -3740,14 +3911,18 @@ function recorderFinite(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-// Rough char size of the fields a hook did not pass through `json` (strings, header maps).
+// Rough char size of the fields a hook did not pass through `json` (strings, header maps). Index loops: on the
+// record path of masked entries, so a page-replaced Array.prototype[Symbol.iterator] must not drop them (E4-IN2).
 function recorderShallowChars(entry) {
   let chars = 0;
-  for (const key of Object.keys(entry)) {
+  const keys = Object.keys(entry);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
     const value = entry[key];
     if (typeof value === 'string') chars += value.length;
     else if (value && typeof value === 'object' && (key === 'requestHeaders' || key === 'responseHeaders')) {
-      for (const k of Object.keys(value)) chars += k.length + String(value[k]).length;
+      const names = Object.keys(value);
+      for (let j = 0; j < names.length; j++) chars += names[j].length + String(value[names[j]]).length;
     }
   }
   return chars + 64;
@@ -3807,7 +3982,8 @@ function createRecorder({ win, options = {} }) {
     : limits.documentChars;
   const buffers = {};
   const counts = {};
-  for (const section of RECORDER_SECTIONS) {
+  for (let i = 0; i < RECORDER_SECTIONS.length; i++) {
+    const section = RECORDER_SECTIONS[i];
     const maxChars = section === 'network' ? networkChars : limits.documentChars;
     buffers[section] = createBuffer({ maxItems: limits[section], maxChars });
     counts[section] = 0;
@@ -3888,12 +4064,13 @@ function createRecorder({ win, options = {} }) {
       while (bodyEntries.length && bodyChars + size > limits.responseBodyTotalChars) {
         const oldest = bodyEntries.shift();
         bodyChars -= oldest.size;
-        for (const key of RECORDER_ATTACH_FIELDS) delete oldest.entry[key];
+        for (let i = 0; i < RECORDER_ATTACH_FIELDS.length; i++) delete oldest.entry[RECORDER_ATTACH_FIELDS[i]];
         bodiesTruncated = true;
       }
       bodyChars += size;
       bodyEntries.push({ entry, size });
-      for (const key of RECORDER_ATTACH_FIELDS) {
+      for (let i = 0; i < RECORDER_ATTACH_FIELDS.length; i++) {
+        const key = RECORDER_ATTACH_FIELDS[i];
         if (key === 'responseBodyPreview') entry[key] = capped;
         else if (typeof fields[key] === 'boolean') entry[key] = fields[key] || capped !== preview;
       }
@@ -3913,11 +4090,12 @@ function createRecorder({ win, options = {} }) {
     limitTimer = null;
     const pending = restores;
     restores = [];
-    for (const restore of pending) recorderTry(restore);
+    for (let i = 0; i < pending.length; i++) recorderTry(pending[i]);
   }
 
   function clearBuffers() {
-    for (const section of RECORDER_SECTIONS) {
+    for (let i = 0; i < RECORDER_SECTIONS.length; i++) {
+      const section = RECORDER_SECTIONS[i];
       buffers[section].clear();
       counts[section] = 0;
     }
@@ -4004,8 +4182,8 @@ function createRecorder({ win, options = {} }) {
         return () => Reflect.apply(intrinsics.removeEventListener, doc, ['visibilitychange', onVisibility, true]);
       },
     ];
-    for (const installer of installers) {
-      const restore = recorderTry(installer, null);
+    for (let i = 0; i < installers.length; i++) {
+      const restore = recorderTry(installers[i], null);
       if (typeof restore === 'function') restores.push(restore);
     }
     configTimer = later(() => {
@@ -4035,7 +4213,8 @@ function createRecorder({ win, options = {} }) {
   // Raw buffer copies with `doc`; `network` without the Resource Timing adjustments (see snapshot()).
   function exportBuffers() {
     const out = { truncated: {}, counts: {} };
-    for (const section of RECORDER_SECTIONS) {
+    for (let i = 0; i < RECORDER_SECTIONS.length; i++) {
+      const section = RECORDER_SECTIONS[i];
       out[section] = recorderWithDoc(buffers[section].items(), docId);
       out.truncated[section] = buffers[section].truncated;
       out.counts[section] = counts[section];
@@ -4136,9 +4315,18 @@ function collectorLimits(deps) {
   return { ...COLLECTOR_LIMITS, ...(deps && deps.limits) };
 }
 
+// Array copy of a NodeList/HTMLCollection/NamedNodeMap by index, not Array.from: the page may replace the
+// array iterator (E4-IN2b).
+function collectorList(arrayLike) {
+  const out = [];
+  const n = arrayLike ? arrayLike.length >>> 0 : 0;
+  for (let i = 0; i < n; i++) out.push(arrayLike[i]);
+  return out;
+}
+
 function getAttributes(el) {
   if (!el?.attributes) return {};
-  return Array.from(el.attributes).reduce((acc, attr) => {
+  return collectorList(el.attributes).reduce((acc, attr) => {
     acc[attr.name] = attr.value;
     return acc;
   }, {});
@@ -4234,7 +4422,7 @@ function collectDomSnapshot(win, doc, deps) {
   const limits = collectorLimits(deps);
   const intrinsics = deps.intrinsics || COLLECTOR_DOM_INTRINSICS;
   const structure = serializeDom(doc, { mode: 'structure', maxChars: limits.html, intrinsics });
-  const allElements = Array.from(doc.querySelectorAll('*'));
+  const allElements = collectorList(doc.querySelectorAll('*'));
 
   return {
     counts: {
@@ -4258,13 +4446,13 @@ function collectDomSnapshot(win, doc, deps) {
       charset: doc.characterSet,
       compatMode: doc.compatMode,
     },
-    meta: Array.from(doc.querySelectorAll('meta')).map((el) => getElementSummary(el, deps)),
+    meta: collectorList(doc.querySelectorAll('meta')).map((el) => getElementSummary(el, deps)),
     canonical: doc.querySelector('link[rel="canonical"]')?.href || null,
-    hreflangs: Array.from(doc.querySelectorAll('link[rel="alternate"][hreflang]')).map((el) => ({
+    hreflangs: collectorList(doc.querySelectorAll('link[rel="alternate"][hreflang]')).map((el) => ({
       hreflang: el.getAttribute('hreflang'),
       href: el.href,
     })),
-    scripts: Array.from(doc.scripts).map((el) => ({
+    scripts: collectorList(doc.scripts).map((el) => ({
       src: el.src || null,
       type: el.type || null,
       async: el.async,
@@ -4273,7 +4461,7 @@ function collectDomSnapshot(win, doc, deps) {
       id: el.id || null,
       attributes: getAttributes(el),
     })),
-    stylesheets: Array.from(doc.querySelectorAll('link[rel="stylesheet"], style')).map((el) => ({
+    stylesheets: collectorList(doc.querySelectorAll('link[rel="stylesheet"], style')).map((el) => ({
       tagName: el.tagName,
       href: el.getAttribute('href') || null,
       media: el.getAttribute('media') || null,
@@ -4281,7 +4469,7 @@ function collectDomSnapshot(win, doc, deps) {
       textLength: el.tagName === 'STYLE' ? (el.textContent || '').length : 0,
       attributes: getAttributes(el),
     })),
-    images: Array.from(doc.images).map((img) => ({
+    images: collectorList(doc.images).map((img) => ({
       src: img.currentSrc || img.src,
       naturalWidth: img.naturalWidth,
       naturalHeight: img.naturalHeight,
@@ -4291,7 +4479,7 @@ function collectDomSnapshot(win, doc, deps) {
       // Review F7: alt and title texts may name a person ("Avatar Jana Kowalskiego"); only their lengths are kept.
       altLength: (img.alt || '').length,
     })),
-    iframes: Array.from(doc.querySelectorAll('iframe')).map((el) => {
+    iframes: collectorList(doc.querySelectorAll('iframe')).map((el) => {
       const attributes = getAttributes(el);
       delete attributes.title;
       return {
@@ -4302,13 +4490,13 @@ function collectDomSnapshot(win, doc, deps) {
         attributes,
       };
     }),
-    forms: Array.from(doc.forms).map((form) => ({
+    forms: collectorList(doc.forms).map((form) => ({
       id: form.id || null,
       name: form.name || null,
       method: form.method || null,
       action: form.action || null,
       enctype: form.enctype || null,
-      elements: Array.from(form.elements).map((el) => ({
+      elements: collectorList(form.elements).map((el) => ({
         tagName: el.tagName,
         type: el.type || null,
         name: el.name || null,
@@ -4424,9 +4612,10 @@ const COLLECTOR_SECTIONS = [
 function collectPageState({ win, doc, safeSlice, limits, fullHtml = false, intrinsics }) {
   const deps = { safeSlice, limits, fullHtml: fullHtml === true, intrinsics };
   const result = { environment: null, dom: null, performance: null, storage: null, errors: [] };
-  for (const [section, collect] of COLLECTOR_SECTIONS) {
+  for (let i = 0; i < COLLECTOR_SECTIONS.length; i++) {
+    const section = COLLECTOR_SECTIONS[i][0];
     try {
-      result[section] = collect(win, doc, deps);
+      result[section] = COLLECTOR_SECTIONS[i][1](win, doc, deps);
     } catch (error) {
       result.errors.push({ section, error: (error && error.name) || 'Error' });
     }
@@ -4436,14 +4625,93 @@ function collectPageState({ win, doc, safeSlice, limits, fullHtml = false, intri
 return Object.freeze({ COLLECTOR_LIMITS: COLLECTOR_LIMITS, getAttributes: getAttributes, textContentShort: textContentShort, getElementSummary: getElementSummary, collectEnvironment: collectEnvironment, collectDomSnapshot: collectDomSnapshot, getPerformanceSummary: getPerformanceSummary, getStorageSnapshot: getStorageSnapshot, collectPageState: collectPageState });
 })();
 
-// module: lib/package.js
+// module: lib/screenshot-notes.js
 const __pds_m18 = (function () {
+// Notes about the screenshot (E3 D6, E4 D8): the English texts that go to `notes`, and the one Polish line of the
+// summary computed back from the same texts (IN6, IN11). No new package field: the reason lives only in `notes`.
+// Pure: no chrome.*, no DOM, no clock. Bundled into the console fallback and the viewer through package.js / summary.js.
+
+const NOTE_TEXT_MAX = 200;
+// Frame counts come from the popup (`crossOriginFrames`) and ISOLATED (`crossOriginVisible`), both capped at 999.
+const FRAMES_MAX = 999;
+
+const cap = (value, max) => {
+  const text = String(value ?? '');
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+};
+
+const frames = (n) => `${n} frame${n === 1 ? '' : 's'} of other sites`;
+
+/** A whole number of frames that may appear in a note: 1..FRAMES_MAX, else null. */
+function frameCount(value) {
+  return Number.isInteger(value) && value >= 1 && value <= FRAMES_MAX ? value : null;
+}
+
+/** Notes about the screenshot that the background knows the reason of. */
+const SCREENSHOT_NOTES = Object.freeze({
+  // The reporter unticked the box (or the popup did not say why).
+  off: 'Screenshot not included (turned off by the reporter).',
+  // The popup turned it off by default and the reporter left it off (D8).
+  offFrames: (n) =>
+    `Screenshot not included: the page showed ${frames(n)}, so it was off by default and the reporter did not turn it on.`,
+  offCheckFailed:
+    'Screenshot not included: the page could not be checked for frames of other sites, so it was off by default and the reporter did not turn it on.',
+  // The image is in the package; frames of other origins are never masked (PB-1 = B).
+  framesVisible: (n) => `The screenshot shows ${frames(n)}; ${n === 1 ? 'it is' : 'they are'} not covered.`,
+  notHidden: (reason) => `No screenshot: form fields could not be hidden (${cap(reason, NOTE_TEXT_MAX)}).`,
+});
+
+// Only the digits of a note are read back; any other text of a note never reaches the Polish line.
+const OFF_FRAMES = /^Screenshot not included: the page showed (\d{1,3}) frames? of other sites, so it was off by default/;
+const FRAMES_VISIBLE = /^The screenshot shows (\d{1,3}) frames? of other sites; (?:it is|they are) not covered\.$/;
+const NOT_HIDDEN = 'No screenshot: form fields could not be hidden (';
+
+// Polish plural of „okienko innego serwisu”: 1 / 2–4 (not 12–14) / the rest.
+function windowsOfOtherSites(n) {
+  if (n === 1) return '1 okienko innego serwisu, nie jest zakryte';
+  const few = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14);
+  return `${n} ${few ? 'okienka' : 'okienek'} innych serwisów, nie są zakryte`;
+}
+
+const LINE = 'Zrzut ekranu: ';
+
+/**
+ * The screenshot line of the summary's privacy section, in Polish (D2, D8). Reads `screenshots` and `notes` only.
+ * @param {{ screenshots?: unknown[], notes?: unknown[] }} snapshot
+ * @returns {string}
+ */
+function describeScreenshot(snapshot) {
+  const notes = Array.isArray(snapshot?.notes) ? snapshot.notes.filter((n) => typeof n === 'string') : [];
+  const included = Array.isArray(snapshot?.screenshots) && snapshot.screenshots.length > 0;
+  if (included) {
+    for (const note of notes) {
+      const count = frameCount(Number(FRAMES_VISIBLE.exec(note)?.[1]));
+      if (count !== null) return `${LINE}jest; widać na nim ${windowsOfOtherSites(count)}`;
+    }
+    return `${LINE}jest`;
+  }
+  for (const note of notes) {
+    if (note === SCREENSHOT_NOTES.off) return `${LINE}wyłączony przez zgłaszającego`;
+    if (note === SCREENSHOT_NOTES.offCheckFailed) return `${LINE}wyłączony automatycznie — nie udało się sprawdzić strony`;
+    const count = frameCount(Number(OFF_FRAMES.exec(note)?.[1]));
+    if (count !== null) return `${LINE}wyłączony automatycznie — na stronie były okienka innych serwisów (${count})`;
+    if (note.startsWith(NOT_HIDDEN)) return `${LINE}brak — nie udało się zakryć pól formularzy`;
+  }
+  return `${LINE}brak — powód w Uwagach`;
+}
+return Object.freeze({ FRAMES_MAX: FRAMES_MAX, frameCount: frameCount, SCREENSHOT_NOTES: SCREENSHOT_NOTES, describeScreenshot: describeScreenshot });
+})();
+
+// module: lib/package.js
+const __pds_m19 = (function () {
 const { maskSecrets, cutPreview } = __pds_m4;
+const { SCREENSHOT_NOTES, frameCount } = __pds_m18;
 // Assembles the v4 snapshot package (docs/snapshot-schema.md, design E1 D12, E2 D9, E3 D10) from the current document's
 // `collect` result, the per-document snapshots flushed on `pagehide` (D4) and the background's screenshot (E2 D5).
 // The result is NOT redacted yet: export.js redacts it, fits the size budget and writes the zip (E3 D8); the screenshot
 // bytes travel beside the package (`assembleParts`), never inside it.
-// Pure: no chrome.*, no DOM, no clock. Bundled into the console fallback too, so it imports only mask-secrets.js.
+// Pure: no chrome.*, no DOM, no clock. Bundled into the console fallback too, so it imports only mask-secrets.js and
+// screenshot-notes.js.
 
 
 const SCHEMA_VERSION = 4;
@@ -4471,11 +4739,7 @@ const FULL_HTML_PACKAGE_BYTES = 10485760;
 // The one image of the package (E3 D7): its entry in the zip.
 const SCREENSHOT_FILE = 'screenshot.jpg';
 
-/** Notes of a missing screenshot that the background knows the reason of (E3-IN1c). */
-const SCREENSHOT_NOTES = Object.freeze({
-  off: 'Screenshot not included (turned off by the reporter).',
-  notHidden: (reason) => `No screenshot: form fields could not be hidden (${cap(reason, NOTE_TEXT_MAX)}).`,
-});
+// Notes about the screenshot (E3-IN1c, E4 D8) live in screenshot-notes.js; re-exported for existing imports.
 
 const PAGE_SECTIONS = ['environment', 'performance', 'storage', 'dom'];
 const NOTE_URL_MAX = 300;
@@ -4703,6 +4967,14 @@ function describeCounts(counts) {
   return RECORD_KEYS.map((key) => `${counts[key]} ${LABELS[key]}`).join(', ');
 }
 
+// Why the screenshot was off (E4 D8): only the known reasons; anything else is the reporter's switch.
+function screenshotOffNote(meta) {
+  if (meta.screenshotOffReason === 'frameCheckFailed') return SCREENSHOT_NOTES.offCheckFailed;
+  const count = frameCount(meta.crossOriginFrames);
+  if (meta.screenshotOffReason === 'frames' && count !== null) return SCREENSHOT_NOTES.offFrames(count);
+  return SCREENSHOT_NOTES.off;
+}
+
 /**
  * The v4 package (not redacted) and the screenshot that goes beside it as `screenshot.jpg`.
  * @param {object} input
@@ -4711,11 +4983,14 @@ function describeCounts(counts) {
  *           currentMissingReason?: 'loadedAfterStop',
  *           screenshots?: { epochMs: number, mime: string, width: number, height: number, bytes: number, dataUrl: string,
  *                           reason?: 'save', maskedFields?: number }[],
- *           screenshotOff?: boolean, maskFailure?: string, screenshotNote?: string,
+ *           screenshotOff?: boolean, screenshotOffReason?: 'reporter'|'frames'|'frameCheckFailed', crossOriginFrames?: number,
+ *           maskFailure?: string, screenshotNote?: string, framesVisible?: number,
  *           fullHtml?: boolean }} input.meta  `currentMissingReason`: why `current` is null, when known
  *           (`loadedAfterStop`: the tab has no recorder because it was loaded after the time limit stopped the recording).
  *           `screenshots`: `shot`s of `captureScreenshot` (epoch ms); why there is none (goes to `notes`): `screenshotOff`
- *           (the reporter's switch), `maskFailure` (fields could not be hidden: the reason), else `screenshotNote`.
+ *           (the reporter's switch; `screenshotOffReason` + `crossOriginFrames` 1..999 say why the popup left it off, E4 D8),
+ *           `maskFailure` (fields could not be hidden: the reason), else `screenshotNote`. `framesVisible` 1..999: frames of
+ *           other sites shown on the included image (a note, IN11).
  *           `fullHtml`: the developer turned on full HTML (`dom.fullHtml` kept, `limits.packageBytes` 10 MB)
  * @param {object|null} input.current  parsed `collect` result of the current document, or null when unavailable;
  *           besides the v2 fields it may carry `steps`, `vitals`, `documentStatus`, `truncated.responseBodies`
@@ -4871,12 +5146,15 @@ function assembleParts({ meta, current, priorDocs = [], docs = [] }) {
     ? { screenshots: [], dataUrl: null }
     : screenshotsOf(meta.screenshots, limits, ordered[shotIndex] ?? null, shotIndex);
   if (!screenshots.length) {
-    if (shotOff) notes.push(SCREENSHOT_NOTES.off);
+    if (shotOff) notes.push(screenshotOffNote(meta));
     else if (maskFailed) notes.push(SCREENSHOT_NOTES.notHidden(meta.maskFailure));
     else if (typeof meta.screenshotNote === 'string' && meta.screenshotNote !== '') notes.push(cap(meta.screenshotNote, NOTE_TEXT_MAX));
     else if (source === 'console') notes.push('Screenshots are not available without the extension.');
     else if (Array.isArray(meta.screenshots) && meta.screenshots.length) notes.push('No screenshot: the image could not be included.');
     else notes.push('No screenshot: none was taken.');
+  } else {
+    const visible = frameCount(meta.framesVisible);
+    if (visible !== null) notes.push(SCREENSHOT_NOTES.framesVisible(visible));
   }
 
   const failed = (r) => (typeof r.status === 'number' && r.status >= 400) || (r.error !== null && r.error !== undefined);
@@ -4926,7 +5204,7 @@ return Object.freeze({ SCHEMA_VERSION: SCHEMA_VERSION, RECORD_KEYS: RECORD_KEYS,
 })();
 
 // module: lib/sha256.js
-const __pds_m19 = (function () {
+const __pds_m20 = (function () {
 // SHA-256 in plain JS (E3 D4): synchronous, so redact() stays a pure synchronous function, and identical in the
 // service worker, the event page, Node and the console fallback on `http:` pages (no secure context, no subtle
 // crypto the page could replace). Input is a string, hashed as UTF-8. No imports, no DOM.
@@ -5022,9 +5300,9 @@ return Object.freeze({ sha256Hex: sha256Hex, shortHash: shortHash });
 })();
 
 // module: lib/redact-page.js
-const __pds_m20 = (function () {
+const __pds_m21 = (function () {
 const { secretKeyRule } = __pds_m1;
-const { shortHash } = __pds_m19;
+const { shortHash } = __pds_m20;
 // Redaction of the page sections (E3 D2, D4): storage, cookies, DOM, environment, performance. Works on the copy made
 // by redact() and the context of createRedactionContext() (redact.js); replaces the four sections of `pkg` in place.
 // Pure and synchronous: no DOM, no chrome.*. Idempotent: cookies already listed and forms already carrying
@@ -5032,6 +5310,7 @@ const { shortHash } = __pds_m19;
 
 const MARKER = /^\[redacted:[a-z0-9_*-]+\]$/;
 const FORM_VALUE = '[redacted:form-value]';
+const HTML_STRUCTURE = '[redacted:html-structure]';
 // The v3 collector replaced password/hidden values with this plain marker; its length says nothing.
 const V3_REDACTED = '[redacted]';
 
@@ -5109,9 +5388,15 @@ function redactStorage(storage, ctx) {
 
 // ---- DOM ----------------------------------------------------------------------------------------------------------
 
-const INPUT_TAG = /<input\b[^>]*>/gi;
+// A tag runs to the first `>` outside a quoted attribute (`<input data-x="a>b" value="S1">`, E4-REREVIEW). An unclosed
+// quote or tag runs to the end of the text, so every match succeeds from its first `<input`/`<textarea`: no retry from
+// the next one, the scan stays linear.
+const TAG_REST = String.raw`(?:[^>"']|"[^"]*(?:"|$)|'[^']*(?:'|$))*(?:>|$)`;
+const INPUT_TAG = new RegExp(String.raw`<input\b${TAG_REST}`, 'gi');
 const VALUE_ATTRIBUTE = /(\svalue\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi;
-const TEXTAREA = /(<textarea\b[^>]*>)([^<]*)(<\/textarea>)/gi;
+// Textarea content is text up to `</textarea` (any case), tags inside included (`<textarea>S3 <b></textarea>`); an
+// unclosed textarea runs to the end, as in the browser.
+const TEXTAREA = new RegExp(String.raw`(<textarea\b${TAG_REST})([\s\S]*?)(<\/textarea(?=[\s/>])|$)`, 'gi');
 
 // Full HTML (developer option, v3 outerHTML): `value` of inputs and textarea content → form-value, then the text pass.
 function redactHtml(html, ctx) {
@@ -5152,12 +5437,34 @@ function redactMetaAttributes(map, ctx) {
   return out;
 }
 
+// `<iframe srcdoc>` is the whole HTML of the frame, texts and field values included (QA E4 F-2): like the page HTML it
+// becomes the html-structure marker; only with html-structure off (dom.fullHtml) it is kept, as fullHtml (redactHtml).
+function redactFrameAttributes(map, ctx) {
+  if (!isObject(map)) return attributes(map, ctx);
+  const out = {};
+  for (const key of Object.keys(map)) {
+    const value = map[key];
+    if (key.toLowerCase() !== 'srcdoc' || typeof value !== 'string' || value === '') {
+      put(out, key, attributes({ [key]: value }, ctx)[key]);
+    } else if (ctx.disabledRules.includes('html-structure')) {
+      put(out, key, redactHtml(value, ctx));
+    } else if (MARKER.test(value)) {
+      put(out, key, value);
+    } else {
+      ctx.applied++;
+      put(out, key, HTML_STRUCTURE);
+    }
+  }
+  return out;
+}
+
 // Element summary (meta, scripts, stylesheets, iframes, images): addresses as URLs, attribute maps by key.
-function redactElement(el, ctx, meta = false) {
+function redactElement(el, ctx, kind = null) {
+  const map = kind === 'meta' ? redactMetaAttributes : kind === 'iframe' ? redactFrameAttributes : attributes;
   return ctx.fields(el, {
     src: ctx.urlValue,
     href: ctx.urlValue,
-    attributes: (map) => (meta ? redactMetaAttributes(map, ctx) : attributes(map, ctx)),
+    attributes: (value) => map(value, ctx),
   });
 }
 
@@ -5184,13 +5491,13 @@ function redactDom(dom, ctx) {
   const list = (fn) => (items) => ctx.list(items, fn);
   return ctx.fields(dom, {
     html: (html) => ctx.fields(html, { outerHTML: (text) => redactHtml(text, ctx) }),
-    meta: list((el) => redactElement(el, ctx, true)),
+    meta: list((el) => redactElement(el, ctx, 'meta')),
     canonical: ctx.urlValue,
     hreflangs: list((el) => ctx.fields(el, { href: ctx.urlValue })),
     scripts: list((el) => redactElement(el, ctx)),
     stylesheets: list((el) => redactElement(el, ctx)),
     images: list((el) => redactElement(el, ctx)),
-    iframes: list((el) => redactElement(el, ctx)),
+    iframes: list((el) => redactElement(el, ctx, 'iframe')),
     forms: list((form) => ctx.fields(form, {
       action: ctx.urlValue,
       elements: list((el) => redactFormElement(el, ctx)),
@@ -5255,9 +5562,9 @@ return Object.freeze({ utf8Length: utf8Length, parseCookies: parseCookies, redac
 })();
 
 // module: lib/redact.js
-const __pds_m21 = (function () {
+const __pds_m22 = (function () {
 const { RULES_VERSION, DEFAULT_RULES, MASK_LIMITS, secretKeyRule, maskText, maskUrl, redactRegExp, redactExec, redactTest, redactSlice } = __pds_m1;
-const { redactPageSections } = __pds_m20;
+const { redactPageSections } = __pds_m21;
 // Redaction of a whole package (E3 D1, D2): the deciding pass, run in the background on the assembled package and
 // in the console fallback. Pure and synchronous: no DOM, no chrome.*, no clock. Idempotent: values that already are
 // a marker are skipped, so a second pass returns an equal object and `applied: 0`.
@@ -5295,24 +5602,32 @@ const isScalar = (value) => typeof value === 'string' || typeof value === 'numbe
 function namedPairRule(map) {
   if (!Object.prototype.hasOwnProperty.call(map, 'value')) return null;
   for (const field of ['name', 'key']) {
-    const rule = typeof map[field] === 'string' ? secretKeyRule(map[field]) : null;
+    // A marker (`{ key: '[redacted:key-key]' }` after a first pass) names nothing (idempotence).
+    const name = map[field];
+    const rule = typeof name === 'string' && name.indexOf(MARKER_PREFIX) === -1 ? secretKeyRule(name) : null;
     if (rule !== null) return rule;
   }
   return null;
 }
 
-// A console argument that names the next one (review E3 N9, N10): one token without white space (`'password'`), or any
-// text ending in `:`/`=` (`'password:'`, `'Enter token ='`); the separator is dropped before secretKeyRule. A marker is
-// never a key (it was a value).
+// A console argument that names the next one (review E3 N9, N10; E4-IN5): one token without white space (`'password'`),
+// any text ending in `:`/`=` (`'password:'`, `'Enter token ='`; the separator is dropped before secretKeyRule), or a
+// sentence whose last word is a key, optionally followed by `is`/`jest` (`'Your password is'`). Text holding a marker is
+// never a key: it was a value, and `[redacted:key-token]` would name the next argument in a second pass (idempotence).
 const ARG_KEY_SEPARATOR = redactRegExp(/\s*[:=]\s*$/);
 const ARG_ONE_TOKEN = redactRegExp(/^\S+$/);
 const ARG_MARKER = redactRegExp(/^\[redacted:[a-z0-9_*-]+\]$/);
+const ARG_COPULA = redactRegExp(/\s+(?:is|jest)\s*$/i);
+const ARG_LAST_WORD = redactRegExp(/(?:^|\s)([A-Za-z_][\w.-]*)$/);
 
 function argKeyRule(value) {
-  if (typeof value !== 'string' || value.length > MASK_LIMITS.keyChars + 8 || redactTest(ARG_MARKER, value)) return null;
+  if (typeof value !== 'string' || value.length > MASK_LIMITS.keyChars + 8 || value.indexOf(MARKER_PREFIX) !== -1) return null;
   const separator = redactExec(ARG_KEY_SEPARATOR, value);
   if (separator !== null) return secretKeyRule(redactSlice(value, 0, separator.index));
-  return redactTest(ARG_ONE_TOKEN, value) ? secretKeyRule(value) : null;
+  if (redactTest(ARG_ONE_TOKEN, value)) return secretKeyRule(value);
+  const copula = redactExec(ARG_COPULA, value);
+  const last = redactExec(ARG_LAST_WORD, copula === null ? value : redactSlice(value, 0, copula.index));
+  return last === null ? null : secretKeyRule(last[1]);
 }
 
 // Sets an own property, also for the key `__proto__` (a storage key or a JSON key from the page).
@@ -5431,15 +5746,16 @@ function createRedactionContext(options) {
     },
 
     /**
-     * A list read as key/value pairs (review E3 N9, N13): a scalar after a key (argKeyRule) is masked with the rule of
-     * that key. A masked value that is a key itself names the next item (`'[Auth]', 'Token:', t`: fail-closed chain).
+     * A list read as key/value pairs (review E3 N9, N13): an item after a key (argKeyRule) is masked with the rule of
+     * that key, a container as a whole (E4-IN5, Q-4). A masked value that is a key itself names the next item
+     * (`'[Auth]', 'Token:', t`: fail-closed chain).
      */
     pairs(list, where = NONE) {
       const out = new Array(list.length);
       let rule = null;
       for (let i = 0; i < list.length; i++) {
         const item = list[i];
-        out[i] = rule !== null && isScalar(item) ? ctx.forced(item, rule) : ctx.deep(item, where);
+        out[i] = rule !== null ? ctx.forced(item, rule) : ctx.deep(item, where);
         rule = argKeyRule(item);
       }
       return out;
@@ -5493,57 +5809,109 @@ function redactNetwork(entry, ctx) {
 }
 
 // Console arguments as key/value pairs (review E3 N9, N13, N14): `('login', 'jan', 'password:', pw)` — every argument
-// that is a key (argKeyRule) masks the next one when it is a scalar; keys in a row form a chain; nested arrays alike.
+// that is a key (argKeyRule) masks the next one; keys in a row form a chain; nested arrays alike. A long entry
+// `{ truncated, preview }` keeps its other fields as user data; the preview is read token by token (E4-IN4).
 function redactConsoleArgs(args, ctx) {
-  if (isObject(args) && typeof args.preview === 'string') return ctx.deep({ ...args, preview: maskPreviewPairs(args.preview, ctx) }, CONSOLE);
-  return ctx.deep(args, CONSOLE);
+  if (!isObject(args) || typeof args.preview !== 'string') return ctx.deep(args, CONSOLE);
+  const out = {};
+  for (const key of Object.keys(args)) put(out, key, key === 'preview' ? redactJsonPreview(args.preview, ctx) : ctx.deep(args[key], CONSOLE));
+  return out;
 }
 
 const isDigit = (ch) => ch >= '0' && ch <= '9';
 const isScalarChar = (ch) => isDigit(ch) || (ch >= 'a' && ch <= 'z') || ch === '-' || ch === '+' || ch === '.' || ch === 'E';
 
-// The same pairs (and chains) in the JSON text of a long entry `{ truncated, preview }` (`["password:","x",…`), in every array of it,
-// also when the text ends inside the value. One linear scan: strings (with escapes), scalars and brackets; object
-// members are left to the text pass (`"key": value`). A masked scalar becomes a quoted marker.
-function maskPreviewPairs(text, ctx) {
+// Value of a JSON string literal without its quotes (`raw`), or null when it does not decode.
+function decodeLiteral(raw) {
+  try {
+    const value = JSON.parse(`"${raw}"`);
+    return typeof value === 'string' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+// `{"name":"password","value":…}` (namedPairRule of ctx.keyed) in an object frame of redactJsonPreview: a sensitive value
+// of `name`/`key` gives the rule of a later `value` key. A stream knows only a name read before `value`; `key` is itself
+// a key word, so its value may be masked as well (a false positive the full arguments do not have).
+function namePair(frame, value) {
+  if ((frame.name === 'name' || frame.name === 'key') && value !== null && value.length <= MASK_LIMITS.keyChars
+    && value.indexOf(MARKER_PREFIX) === -1) {
+    frame.pair = frame.pair ?? secretKeyRule(value);
+  }
+}
+
+/**
+ * The JSON text of a long console entry (`["password:","x",…`, cut at `entryChars`) redacted token by token (E4-IN4),
+ * with the rules of the full arguments: in arrays the pairs of ctx.pairs, in objects the key rule of ctx.keyed; a
+ * value after a key is masked, a container as a whole. Every other string literal is decoded, goes through the text
+ * pass and is encoded again (an unclosed one at the cut as it is); a number too. Brackets, separators and unchanged
+ * literals are copied, so the text parses like the original up to the cut; `ctx.applied` counts the replacements.
+ */
+function redactJsonPreview(text, ctx) {
   const n = text.length;
+  // Frames: { array, force: rule of the container or null, rule: rule for the next value, key: an object expects a key,
+  // name: the last key read, pair: rule of a sensitive `name`/`key` value for a later `value` key (namedPairRule) }.
   const stack = [];
   let out = '';
   let last = 0;
-  const replace = (start, end, marker) => {
-    out += redactSlice(text, last, start) + marker;
+  const replace = (start, end, replacement) => {
+    out += redactSlice(text, last, start) + replacement;
     last = end;
-    ctx.applied++;
   };
   for (let i = 0; i < n; i++) {
     const ch = text[i];
     const top = stack.length > 0 ? stack[stack.length - 1] : null;
+    const rule = top === null ? null : top.force ?? top.rule;
     if (ch === '"') {
       let j = i + 1;
       while (j < n && text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
       const end = Math.min(j, n);
-      if (top !== null && top.array) {
-        if (top.pending !== null) {
-          const value = redactSlice(text, i + 1, end);
-          if (value !== '' && !redactTest(ARG_MARKER, value)) replace(i + 1, end, `[redacted:${top.pending}]`);
-          // A masked key names the next item (review E3 N13).
-          top.pending = end - i - 1 <= MASK_LIMITS.keyChars + 8 ? argKeyRule(value) : null;
-        } else {
-          top.pending = end - i - 1 <= MASK_LIMITS.keyChars + 8 ? argKeyRule(redactSlice(text, i + 1, end)) : null;
+      const closed = j < n;
+      const raw = redactSlice(text, i + 1, end);
+      const value = closed ? decodeLiteral(raw) : null;
+      if (top !== null && !top.array && top.key) {
+        // An object key: kept as it is; it gives the rule of the value (keyed), `value` after a sensitive name the pair rule.
+        const keyRule = value === null || value.length > MASK_LIMITS.keyChars ? null : secretKeyRule(value);
+        top.rule = top.force ?? keyRule ?? (value === 'value' ? top.pair : null);
+        top.name = value;
+        top.key = false;
+      } else if (rule !== null) {
+        if (raw !== '' && !redactTest(ARG_MARKER, raw)) {
+          replace(i + 1, end, `[redacted:${rule}]`);
+          ctx.applied++;
         }
+        if (top.array) top.rule = argKeyRule(value ?? raw);
+        else namePair(top, value);
+      } else {
+        const masked = ctx.text(value ?? raw, CONSOLE);
+        if (masked !== (value ?? raw)) replace(i, closed ? end + 1 : end, value === null && !closed ? `"${masked}` : JSON.stringify(masked));
+        if (top !== null && top.array) top.rule = argKeyRule(value ?? raw);
+        else if (top !== null) namePair(top, value);
       }
       i = end;
     } else if (ch === '[' || ch === '{') {
-      if (top !== null) top.pending = null;
-      stack.push({ array: ch === '[', pending: null });
+      if (top !== null && top.array) top.rule = null;
+      stack.push({ array: ch === '[', force: rule, rule: null, key: ch === '{', name: null, pair: null });
     } else if (ch === ']' || ch === '}') {
       stack.pop();
-    } else if (top !== null && top.array && isScalarChar(ch)) {
+    } else if (ch === ',') {
+      if (top !== null && !top.array) {
+        top.key = true;
+        top.rule = null;
+      }
+    } else if (isScalarChar(ch)) {
       let j = i + 1;
       while (j < n && isScalarChar(text[j])) j++;
       const token = redactSlice(text, i, j);
-      if (top.pending !== null && token !== 'null') replace(i, j, `"[redacted:${top.pending}]"`);
-      top.pending = null;
+      if (token !== 'null' && rule !== null) {
+        replace(i, j, `"[redacted:${rule}]"`);
+        ctx.applied++;
+      } else if (token !== 'null') {
+        const masked = ctx.text(token, CONSOLE);
+        if (masked !== token) replace(i, j, JSON.stringify(masked));
+      }
+      if (top !== null && top.array) top.rule = null;
       i = j - 1;
     }
   }
@@ -5646,7 +6014,7 @@ return Object.freeze({ MARKER_PREFIX: MARKER_PREFIX, resolveDisabledRules: resol
 })();
 
 // module: lib/budget.js
-const __pds_m22 = (function () {
+const __pds_m23 = (function () {
 const { cutPreview } = __pds_m4;
 // Package size budget (design E3 D8, E3-S2, AC-6.1–6.3): the size is measured for real (compressed, by the injected
 // `measure`), then data is cut in a fixed order — least useful first — towards a character target derived from the
@@ -5990,21 +6358,529 @@ async function fitBudget(pkg, { measure, limitBytes, maxJsonChars, reserveBytes 
 return Object.freeze({ BUDGET_LIMITS: BUDGET_LIMITS, cutText: cutText, cutHtml: cutHtml, recount: recount, fitBudget: fitBudget });
 })();
 
+// module: lib/snapshot-query.js
+const __pds_m24 = (function () {
+// Record queries over a package (design E4 D1, E4-T1a): absolute and relative time, steps, error groups, failed and
+// filtered network requests, one timeline. One source for summary.md, the viewer and the MCP server (AC-5.3).
+// Reads defensively: a missing or wrongly typed field is "no data", never an exception (any schema version ≥ 2 shape;
+// v1 is migrated before it gets here). Pure: no chrome.*, no DOM, no clock. Syntax follows the src/page generator rules.
+
+const QUERY_LIMITS = Object.freeze({
+  // Characters kept of a message built from a console argument (also the error grouping key).
+  messageChars: 1000,
+  // Stack characters scanned for the first frame.
+  stackScanChars: 4000,
+  // Characters kept of a file name in a frame.
+  frameFileChars: 200,
+  // A JSON-string argument longer than this is not parsed, only unquoted.
+  jsonParseChars: 8192,
+});
+
+const STATUS_CLASSES = ['2xx', '3xx', '4xx', '5xx'];
+// Timeline order of records at the same instant: a document boundary first.
+const KIND_RANK = { document: 0, step: 1, request: 2, error: 3 };
+
+function isObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function list(s, key) {
+  return isObject(s) && Array.isArray(s[key]) ? s[key] : [];
+}
+
+function cap(text, max) {
+  return text.length > max ? text.slice(0, max) : text;
+}
+
+// The document a record belongs to: by index when ids follow indices (always in v2+), otherwise by id.
+function documentOf(s, docId) {
+  const docs = list(s, 'documents');
+  const byIndex = Number.isInteger(docId) ? docs[docId] : undefined;
+  if (isObject(byIndex) && byIndex.id === docId) return byIndex;
+  for (const d of docs) if (isObject(d) && d.id === docId) return d;
+  return null;
+}
+
+/** Recording start (epoch ms): `recordingStartedAt`, else the first document's `timeOrigin`, else null. */
+function recordingStartMs(s) {
+  if (!isObject(s)) return null;
+  if (typeof s.recordingStartedAt === 'string') {
+    const ms = Date.parse(s.recordingStartedAt);
+    if (Number.isFinite(ms)) return ms;
+  }
+  const first = list(s, 'documents')[0];
+  return isObject(first) && Number.isFinite(first.timeOrigin) ? first.timeOrigin : null;
+}
+
+/** Epoch ms of a record: its own document's `timeOrigin` + `t`; null when either is unknown. */
+function absTime(s, rec) {
+  if (!isObject(rec) || !Number.isFinite(rec.t)) return null;
+  const doc = documentOf(s, rec.doc);
+  return doc && Number.isFinite(doc.timeOrigin) ? doc.timeOrigin + rec.t : null;
+}
+
+function relFromAt(start, at) {
+  return start === null || at === null ? null : (at - start) / 1000;
+}
+
+/** Seconds from the recording start to the record; null when unknown. */
+function relSeconds(s, rec) {
+  return relFromAt(recordingStartMs(s), absTime(s, rec));
+}
+
+function errorLike(value) {
+  return isObject(value) && typeof value.message === 'string';
+}
+
+function errorText(value) {
+  return typeof value.name === 'string' && value.name !== '' ? `${value.name}: ${value.message}` : value.message;
+}
+
+// A console argument as text: strings were serialized as JSON strings (v2+), objects may be errors or cut previews.
+function argText(arg) {
+  if (typeof arg === 'string') {
+    const first = arg[0];
+    if ((first === '"' || first === '{') && arg.length <= QUERY_LIMITS.jsonParseChars) {
+      try {
+        const parsed = JSON.parse(arg);
+        if (typeof parsed === 'string') return parsed;
+        if (errorLike(parsed)) return errorText(parsed);
+      } catch {
+        // not JSON; the raw text
+      }
+    } else if (first === '"' && arg.length > QUERY_LIMITS.jsonParseChars) {
+      return arg.slice(1, QUERY_LIMITS.messageChars + 1);
+    }
+    return arg;
+  }
+  if (errorLike(arg)) return errorText(arg);
+  if (isObject(arg) && arg.truncated === true && typeof arg.preview === 'string') return arg.preview;
+  if (arg === undefined) return '';
+  try {
+    return String(JSON.stringify(arg) ?? '');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Text of a console entry: its first argument (string, unwrapped JSON string, error, cut preview), capped. A long entry
+ * keeps `{ truncated, preview }` in place of the list (E4-FIX2): its preview is the text.
+ */
+function consoleText(entry) {
+  if (!isObject(entry)) return '';
+  if (isObject(entry.args) && entry.args.truncated === true) return typeof entry.args.preview === 'string' ? cap(entry.args.preview, QUERY_LIMITS.messageChars) : '';
+  if (!Array.isArray(entry.args) || !entry.args.length) return '';
+  return cap(argText(entry.args[0]), QUERY_LIMITS.messageChars);
+}
+
+function fileOf(location) {
+  const noQuery = location.replace(/[?#].*$/, '');
+  const parts = noQuery.split('/');
+  let name = parts[parts.length - 1];
+  if (name === '' && parts.length > 1) name = parts[parts.length - 2];
+  return cap(name || noQuery, QUERY_LIMITS.frameFileChars);
+}
+
+// `location:line:col` → `file:line:col`; null when the text has no line and column.
+function frameOf(location) {
+  const m = /^(.*):(\d+):(\d+)$/.exec(location.trim());
+  return m && m[1] !== '' ? `${fileOf(m[1])}:${m[2]}:${m[3]}` : null;
+}
+
+/**
+ * First stack frame as `file:line:col` (V8 `at fn (loc)` / `at loc`, Firefox `fn@loc`); else the `fallback`
+ * `{ filename, lineno, colno }`; else null.
+ */
+function firstFrame(stack, fallback) {
+  if (typeof stack === 'string') {
+    const lines = stack.slice(0, QUERY_LIMITS.stackScanChars).split('\n');
+    for (const raw of lines) {
+      const line = raw.trim();
+      let frame = null;
+      if (line.startsWith('at ')) {
+        const paren = /\(([^()]*)\)$/.exec(line);
+        frame = frameOf(paren ? paren[1] : line.slice(3));
+      } else if (line.includes('@')) {
+        frame = frameOf(line.slice(line.indexOf('@') + 1));
+      }
+      if (frame) return frame;
+    }
+  }
+  if (isObject(fallback) && typeof fallback.filename === 'string' && fallback.filename !== '' && Number.isFinite(fallback.lineno)) {
+    const col = Number.isFinite(fallback.colno) ? fallback.colno : 0;
+    return `${fileOf(fallback.filename)}:${fallback.lineno}:${col}`;
+  }
+  return null;
+}
+
+function byAt(a, b) {
+  if (a.at === b.at) return 0;
+  if (a.at === null) return 1;
+  if (b.at === null) return -1;
+  return a.at - b.at;
+}
+
+/**
+ * Runtime errors and console entries with `level: "error"`, chronological (unknown time last, stable):
+ * `[{ kind: 'runtime'|'console', doc, t, at, rel, message, frame, stack }]`.
+ */
+function errorEvents(s) {
+  const start = recordingStartMs(s);
+  const out = [];
+  for (const e of list(s, 'runtimeErrors')) {
+    if (!isObject(e)) continue;
+    const at = absTime(s, e);
+    out.push({
+      kind: 'runtime', doc: e.doc, t: e.t, at, rel: relFromAt(start, at),
+      message: typeof e.message === 'string' ? cap(e.message, QUERY_LIMITS.messageChars) : '',
+      frame: firstFrame(e.stack, e),
+      stack: typeof e.stack === 'string' ? e.stack : null,
+    });
+  }
+  for (const e of list(s, 'consoleLogs')) {
+    if (!isObject(e) || e.level !== 'error') continue;
+    const at = absTime(s, e);
+    const arg = Array.isArray(e.args) ? e.args[0] : undefined;
+    // The error's own stack (where it was thrown) before the stack of the console call.
+    const stack = errorLike(arg) && typeof arg.stack === 'string' ? arg.stack : typeof e.stack === 'string' ? e.stack : null;
+    out.push({
+      kind: 'console', doc: e.doc, t: e.t, at, rel: relFromAt(start, at),
+      message: consoleText(e),
+      frame: firstFrame(stack) ?? firstFrame(e.stack),
+      stack,
+    });
+  }
+  return out.sort(byAt);
+}
+
+/** Epoch ms of the first error (runtime or console); null when none has a known time. */
+function firstErrorAt(s) {
+  let first = null;
+  for (const e of errorEvents(s)) if (e.at !== null && (first === null || e.at < first)) first = e.at;
+  return first;
+}
+
+function stepItem(step, at, rel) {
+  const label = typeof step.text === 'string' && step.text !== '' ? step.text : typeof step.selector === 'string' ? step.selector : null;
+  const item = { rel, at, type: typeof step.type === 'string' ? step.type : null, label, doc: step.doc, t: step.t };
+  if (typeof step.url === 'string') item.url = step.url;
+  return item;
+}
+
+// All steps as items, chronological (stable).
+function allSteps(s) {
+  const start = recordingStartMs(s);
+  const items = [];
+  for (const step of list(s, 'steps')) {
+    if (!isObject(step)) continue;
+    const at = absTime(s, step);
+    items.push(stepItem(step, at, relFromAt(start, at)));
+  }
+  return items.sort(byAt);
+}
+
+// Last step with a known time strictly before `at`; null when none.
+function lastStepBefore(steps, at) {
+  if (at === null) return null;
+  let found = null;
+  for (const step of steps) {
+    if (step.at === null || step.at >= at) continue;
+    if (found === null || step.at >= found.at) found = step;
+  }
+  return found;
+}
+
+/**
+ * Last `last` steps: `{ items: [{ rel, at, type, label, url?, doc, t, beforeFirstError }], total }`. Only the last step
+ * before the first error has `beforeFirstError: true`.
+ */
+function stepList(s, { last = 20 } = {}) {
+  const steps = allSteps(s);
+  const marked = lastStepBefore(steps, firstErrorAt(s));
+  const shown = last >= steps.length ? steps : steps.slice(steps.length - Math.max(0, last));
+  return { items: shown.map((step) => ({ ...step, beforeFirstError: step === marked })), total: steps.length };
+}
+
+/**
+ * Errors grouped by message in order of first occurrence:
+ * `{ groups: [{ message, count, firstRel, firstAt, frame, stack, stepBefore }], more }` (`more` = groups not shown).
+ */
+function errorGroups(s, { limit = 10 } = {}) {
+  const groups = new Map();
+  for (const e of errorEvents(s)) {
+    const group = groups.get(e.message);
+    if (group) group.count++;
+    else groups.set(e.message, { message: e.message, count: 1, firstRel: e.rel, firstAt: e.at, frame: e.frame, stack: e.stack, stepBefore: null });
+  }
+  const all = [...groups.values()];
+  const shown = all.slice(0, Math.max(0, limit));
+  if (shown.length) {
+    const steps = allSteps(s);
+    for (const g of shown) g.stepBefore = lastStepBefore(steps, g.firstAt);
+  }
+  return { groups: shown, more: all.length - shown.length };
+}
+
+/** Failed request: `status` ≥ 400 or any `error` (same rule as budget.js and package.js overview). */
+function isFailedRequest(e) {
+  return (typeof e?.status === 'number' && e.status >= 400) || (e?.error !== null && e?.error !== undefined);
+}
+
+/** `2xx`|`3xx`|`4xx`|`5xx` by status, `error` without a status but with an error, else `unknown`. */
+function statusClass(e) {
+  const status = e?.status;
+  if (typeof status === 'number' && status >= 200 && status < 600) return STATUS_CLASSES[Math.floor(status / 100) - 2];
+  if (e?.error !== null && e?.error !== undefined) return 'error';
+  return 'unknown';
+}
+
+/** First `limit` failed requests in package order: `{ items: [{ index, entry, at, rel }], total, more }`. */
+function failedRequests(s, { limit = 20 } = {}) {
+  const start = recordingStartMs(s);
+  const items = [];
+  let total = 0;
+  list(s, 'network').forEach((entry, index) => {
+    if (!isObject(entry) || !isFailedRequest(entry)) return;
+    total++;
+    if (items.length < limit) {
+      const at = absTime(s, entry);
+      items.push({ index, entry, at, rel: relFromAt(start, at) });
+    }
+  });
+  return { items, total, more: total - items.length };
+}
+
+function rangeOf(range) {
+  if (Array.isArray(range)) return { min: range[0], max: range[1] };
+  return isObject(range) ? { min: range.min, max: range.max } : null;
+}
+
+/**
+ * Network entries matching every given filter: `statusClass`, `statusRange` (`[min, max]` or `{ min, max }`, inclusive),
+ * `failedOnly`, `type` (exact), `method` and `urlContains` (case-insensitive).
+ * `{ items: [{ index, entry }], total }` — `total` = entries in `list` (for "N z M").
+ */
+function filterNetwork(list, { statusClass: cls, statusRange, failedOnly, type, method, urlContains } = {}) {
+  const entries = Array.isArray(list) ? list : [];
+  const range = rangeOf(statusRange);
+  const min = range && Number.isFinite(range.min) ? range.min : -Infinity;
+  const max = range && Number.isFinite(range.max) ? range.max : Infinity;
+  const wantMethod = typeof method === 'string' && method !== '' ? method.toUpperCase() : null;
+  const fragment = typeof urlContains === 'string' && urlContains !== '' ? urlContains.toLowerCase() : null;
+  const items = [];
+  for (let index = 0; index < entries.length; index++) {
+    const entry = entries[index];
+    if (!isObject(entry)) continue;
+    if (cls && statusClass(entry) !== cls) continue;
+    if (range && !(typeof entry.status === 'number' && entry.status >= min && entry.status <= max)) continue;
+    if (failedOnly && !isFailedRequest(entry)) continue;
+    if (typeof type === 'string' && type !== '' && entry.type !== type) continue;
+    if (wantMethod && (typeof entry.method !== 'string' || entry.method.toUpperCase() !== wantMethod)) continue;
+    if (fragment && (typeof entry.url !== 'string' || !entry.url.toLowerCase().includes(fragment))) continue;
+    items.push({ index, entry });
+  }
+  return { items, total: entries.length };
+}
+
+/**
+ * Steps, errors, failed requests and document boundaries (`{ kind: 'document', doc, url, at, rel }`) sorted by `at`
+ * (unknown time last; at the same instant: document, step, request, error).
+ */
+function timeline(s) {
+  const start = recordingStartMs(s);
+  const items = [];
+  for (const d of list(s, 'documents')) {
+    if (!isObject(d) || !Number.isFinite(d.timeOrigin)) continue;
+    items.push({ kind: 'document', doc: d.id, url: typeof d.url === 'string' ? d.url : null, at: d.timeOrigin, rel: relFromAt(start, d.timeOrigin) });
+  }
+  for (const step of allSteps(s)) items.push({ kind: 'step', ...step });
+  for (const e of errorEvents(s)) items.push({ ...e, kind: 'error', source: e.kind });
+  for (const r of failedRequests(s, { limit: Infinity }).items) items.push({ kind: 'request', doc: r.entry.doc, ...r });
+  return items.sort((a, b) => byAt(a, b) || KIND_RANK[a.kind] - KIND_RANK[b.kind]);
+}
+return Object.freeze({ QUERY_LIMITS: QUERY_LIMITS, recordingStartMs: recordingStartMs, absTime: absTime, relSeconds: relSeconds, consoleText: consoleText, firstFrame: firstFrame, errorEvents: errorEvents, firstErrorAt: firstErrorAt, stepList: stepList, errorGroups: errorGroups, isFailedRequest: isFailedRequest, statusClass: statusClass, failedRequests: failedRequests, filterNetwork: filterNetwork, timeline: timeline });
+})();
+
+// module: lib/snapshot-metrics.js
+const __pds_m25 = (function () {
+// Page metrics of a package (design E4 D1, E4-T1c): Core Web Vitals per document with rating or the reason they are
+// unavailable (never a made-up 0), slowest network entries, cookies and `truncated` flags. Shared by summary.md, the
+// viewer and the MCP server. Reads defensively; pure: no chrome.*, no DOM, no clock. Syntax follows the src/page
+// generator rules.
+
+const METRIC_NAMES = Object.freeze(['TTFB', 'FCP', 'LCP', 'CLS', 'INP']);
+
+const RATING_PL = Object.freeze({
+  good: 'dobrze',
+  'needs-improvement': 'do poprawy',
+  poor: 'słabo',
+});
+
+// Codes from src/page/vitals.js and docs/snapshot-schema.md; an unknown code is shown as the code itself by the caller.
+const REASON_PL = Object.freeze({
+  'unsupported-browser': 'przeglądarka tego nie mierzy',
+  'no-interaction': 'brak interakcji',
+  'hidden-at-start': 'karta była w tle przy otwarciu strony',
+  'no-data': 'brak danych',
+  'cross-origin': 'zasób z innej domeny',
+  unknown: 'nieznany powód',
+});
+
+function isObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function list(s, key) {
+  return isObject(s) && Array.isArray(s[key]) ? s[key] : [];
+}
+
+function urlOfDoc(s, docId) {
+  for (const d of list(s, 'documents')) if (isObject(d) && d.id === docId) return typeof d.url === 'string' ? d.url : null;
+  return null;
+}
+
+// One metric: available only with a finite numeric value; otherwise the recorded reason or `unknown`.
+function metricOf(raw) {
+  if (isObject(raw) && raw.available === true && typeof raw.value === 'number' && Number.isFinite(raw.value)) {
+    return { available: true, value: raw.value, rating: Object.hasOwn(RATING_PL, raw.rating) ? raw.rating : null, entry: raw };
+  }
+  const reason = isObject(raw) && raw.available === false && typeof raw.reason === 'string' && raw.reason !== '' ? raw.reason : 'unknown';
+  return { available: false, reason };
+}
+
+/**
+ * CWV of the last `last` documents (package order):
+ * `{ docs: [{ doc, url, metrics: { TTFB|FCP|LCP|CLS|INP: { available: true, value, rating, entry } | { available: false, reason } },
+ * longTasks }], more }` (`more` = earlier documents not shown; `entry` = the raw metric with its attribution).
+ */
+function vitalsByDoc(s, { last = 5 } = {}) {
+  const all = list(s, 'vitals').filter(isObject);
+  const shown = last >= all.length ? all : all.slice(all.length - Math.max(0, last));
+  const docs = shown.map((v) => {
+    const metrics = {};
+    for (const name of METRIC_NAMES) metrics[name] = metricOf(v[name]);
+    return { doc: v.doc ?? null, url: urlOfDoc(s, v.doc), metrics, longTasks: isObject(v.longTasks) ? v.longTasks : null };
+  });
+  return { docs, more: all.length - shown.length };
+}
+
+/**
+ * The `n` network entries with the largest `durationMs` (ties: package order), without sorting the whole list:
+ * `[{ durationMs, type, sizeBytes, url, index }]`.
+ */
+function slowestResources(s, n = 5) {
+  const top = [];
+  if (!(n > 0)) return top;
+  const network = list(s, 'network');
+  for (let index = 0; index < network.length; index++) {
+    const e = network[index];
+    if (!isObject(e) || typeof e.durationMs !== 'number' || !Number.isFinite(e.durationMs)) continue;
+    if (top.length >= n && e.durationMs <= top[top.length - 1].durationMs) continue;
+    let at = top.length;
+    while (at > 0 && top[at - 1].durationMs < e.durationMs) at--;
+    top.splice(at, 0, {
+      durationMs: e.durationMs,
+      type: typeof e.type === 'string' ? e.type : null,
+      sizeBytes: typeof e.sizeBytes === 'number' && Number.isFinite(e.sizeBytes) ? e.sizeBytes : null,
+      url: typeof e.url === 'string' ? e.url : null,
+      index,
+    });
+    if (top.length > n) top.pop();
+  }
+  return top;
+}
+
+/** `{ count, totalBytes, truncatedKeys }` — cookies in the package, `storage.cookiesTotalBytes`, keys of `truncated` that are `true`. */
+function cookieInfo(s) {
+  const storage = isObject(s) && isObject(s.storage) ? s.storage : {};
+  const cookies = Array.isArray(storage.cookies) ? storage.cookies : [];
+  const total = storage.cookiesTotalBytes;
+  const truncated = isObject(s) && isObject(s.truncated) ? s.truncated : {};
+  return {
+    count: cookies.length,
+    totalBytes: typeof total === 'number' && Number.isFinite(total) ? total : null,
+    truncatedKeys: Object.keys(truncated).filter((key) => truncated[key] === true),
+  };
+}
+
+/** Per metric the last available value in the package: `{ TTFB: { value, rating, doc } | null, … }`. */
+function lastVitals(s) {
+  const all = list(s, 'vitals').filter(isObject);
+  const out = {};
+  for (const name of METRIC_NAMES) {
+    out[name] = null;
+    for (let i = all.length - 1; i >= 0; i--) {
+      const m = metricOf(all[i][name]);
+      if (m.available) {
+        out[name] = { value: m.value, rating: m.rating, doc: all[i].doc ?? null };
+        break;
+      }
+    }
+  }
+  return out;
+}
+return Object.freeze({ METRIC_NAMES: METRIC_NAMES, RATING_PL: RATING_PL, REASON_PL: REASON_PL, vitalsByDoc: vitalsByDoc, slowestResources: slowestResources, cookieInfo: cookieInfo, lastVitals: lastVitals });
+})();
+
 // module: lib/summary.js
-const __pds_m23 = (function () {
-// `summary.md` of the package (design E3 D11): a short Polish overview for the developer, built ONLY from the already
-// redacted snapshot object (never from raw data) and only from the fields read below. Minimal in E3; E4 extends it.
-// Pure: no chrome.*, no DOM. Bundled into the console fallback through export.js.
+const __pds_m26 = (function () {
+const { stepList, errorGroups, failedRequests } = __pds_m24;
+const { METRIC_NAMES, RATING_PL, REASON_PL, vitalsByDoc, slowestResources, cookieInfo } = __pds_m25;
+const { describeScreenshot } = __pds_m18;
+// `summary.md` of the package (design E3 D11, E4 D2): a Polish overview for the developer with a fixed section order,
+// built ONLY from the already redacted snapshot object (never from raw data). The same text is shown by the viewer and
+// returned by the MCP server (AC-5.3), so it reads only JSON-able fields and treats `undefined`/`NaN` as missing.
+// Markdown safety (AC-3.8): every value that comes from the page sits in an inline code span with an adaptive fence,
+// on one line, cut to its field limit, never at the start of a line.
+// Pure: no chrome.*, no DOM, no clock. Bundled into the console fallback through export.js and into the viewer.
 
 const SUMMARY_LIMITS = Object.freeze({
+  // The whole text (fitSummary): UTF-8 bytes and lines.
+  maxBytes: 16384,
+  maxLines: 200,
+  // Items per section.
+  steps: 20,
+  errorGroups: 10,
+  failedRequests: 20,
+  documents: 5,
+  slowest: 5,
   notes: 10,
-  // Every value is put on one line and cut to this many characters.
-  lineChars: 500,
   disabledRules: 20,
+  // Characters per value (before the code span fence).
+  url: 160,
+  message: 160,
+  selector: 80,
+  stepText: 40,
+  note: 160,
+  userAgent: 160,
+  short: 40,
 });
 
 const UNKNOWN_HOST = 'nieznana strona';
-const MAX_SECTIONS_SHOWN = 1000;
+const STEP_BEFORE_ERROR = ' ← ostatni krok przed pierwszym błędem';
+const CUT = '(skrócono)';
+// Sections trimmed by fitSummary, in this order; `start` drops the oldest items first.
+const TRIM_ORDER = ['Uwagi', 'Najwolniejsze zasoby', 'Środowisko', 'Kroki', 'Nieudane zapytania'];
+
+// Values matching these patterns are shown as they are; anything else goes into a code span.
+const HOST_RE = /^[A-Za-z0-9.:[\]-]{1,253}$/;
+const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+const VERSION_RE = /^[0-9A-Za-z.+-]{1,32}$/;
+const WORD_RE = /^[A-Za-z][A-Za-z0-9-]{0,39}$/;
+const FILE_RE = /^[A-Za-z0-9._-]{1,64}$/;
+
+function isObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function finite(value) {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function count(value) {
+  return Number.isInteger(value) && value >= 0 ? value : 0;
+}
 
 // Polish plural: 1 → one, 2–4 (but not 12–14) → few, otherwise many.
 function plural(n, one, few, many) {
@@ -6014,115 +6890,336 @@ function plural(n, one, few, many) {
   return units >= 2 && units <= 4 && (tens < 12 || tens > 14) ? few : many;
 }
 
-function count(value) {
-  return Number.isInteger(value) && value >= 0 ? value : 0;
+// The one number formatter (D2): decimal comma, no "-0".
+function num(value, digits = 0) {
+  const fixed = value.toFixed(digits);
+  return (/^-0(?:\.0*)?$/.test(fixed) ? fixed.slice(1) : fixed).replace('.', ',');
 }
 
-function isObject(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
+const ms = (value) => `${num(value)} ms`;
+const seconds = (rel) => (finite(rel) ? `${num(rel, 1)} s` : '? s');
+
+function size(bytes) {
+  if (bytes < 1024) return `${num(bytes)} B`;
+  if (bytes < 1024 * 1024) return `${num(bytes / 1024)} KB`;
+  return `${num(bytes / (1024 * 1024), 1)} MB`;
 }
 
-// One line, capped: a value can never start a heading or a new list item.
-function text(value) {
-  const s = String(value ?? '').replace(/[\r\n\u2028\u2029]+/g, ' ').trim();
-  return s.length > SUMMARY_LIMITS.lineChars ? `${s.slice(0, SUMMARY_LIMITS.lineChars)}…` : s;
+// Line breaks (also U+2028/2029), other control characters and bidi overrides.
+function unsafe(c) {
+  return c < 0x20 || (c >= 0x7f && c <= 0x9f) || c === 0x2028 || c === 0x2029 || (c >= 0x202a && c <= 0x202e) || (c >= 0x2066 && c <= 0x2069);
 }
 
-function hostOf(snapshot) {
-  const hostname = snapshot.environment?.location?.hostname;
-  if (typeof hostname === 'string' && hostname !== '') return text(hostname);
-  const docs = Array.isArray(snapshot.documents) ? snapshot.documents : [];
+// One line (a run of unsafe characters becomes one space), cut to `max` characters (never inside a surrogate pair).
+function oneLine(value, max) {
+  const raw = String(value ?? '');
+  let line = '';
+  let from = 0;
+  for (let i = 0; i <= raw.length; i++) {
+    if (i < raw.length && !unsafe(raw.charCodeAt(i))) continue;
+    if (i > from) line += `${line === '' ? '' : ' '}${raw.slice(from, i)}`;
+    from = i + 1;
+  }
+  const text = line.trim();
+  if (text.length <= max) return text;
+  const code = text.charCodeAt(max - 1);
+  const end = code >= 0xd800 && code <= 0xdbff ? max - 1 : max;
+  return `${text.slice(0, end)}…`;
+}
+
+// Inline code span: the fence is one backtick longer than the longest run in the value; a value that starts or ends with
+// a backtick is padded with a space. Inside a code span CommonMark renders no HTML, links or emphasis.
+function code(value, max) {
+  const text = oneLine(value, max);
+  if (text === '') return '(pusto)';
+  let longest = 0;
+  let run = 0;
+  for (let i = 0; i < text.length; i++) {
+    run = text[i] === '`' ? run + 1 : 0;
+    if (run > longest) longest = run;
+  }
+  const fence = '`'.repeat(longest + 1);
+  const pad = text[0] === '`' || text[text.length - 1] === '`' ? ' ' : '';
+  return `${fence}${pad}${text}${pad}${fence}`;
+}
+
+function plain(value, pattern, max) {
+  return typeof value === 'string' && pattern.test(value) ? value : code(value, max);
+}
+
+function hostOf(s) {
+  const hostname = s.environment?.location?.hostname;
+  if (typeof hostname === 'string' && hostname !== '') return plain(hostname, HOST_RE, SUMMARY_LIMITS.url);
+  const docs = Array.isArray(s.documents) ? s.documents : [];
   for (let i = docs.length - 1; i >= 0; i--) {
+    if (typeof docs[i]?.url !== 'string') continue;
     try {
-      const host = new URL(docs[i]?.url).hostname;
-      if (host) return text(host);
+      const host = new URL(docs[i].url).hostname;
+      if (host) return plain(host, HOST_RE, SUMMARY_LIMITS.url);
     } catch {
-      // not a URL; try the previous document
+      // not an address; try the previous document
     }
   }
   return UNKNOWN_HOST;
 }
 
-function environmentLines(env) {
-  if (!isObject(env)) return [];
-  const lines = [];
+function headerLines(s, failedTotal) {
+  const o = isObject(s.overview) ? s.overview : {};
+  const shot = o.screenshot === true || (Array.isArray(s.screenshots) && s.screenshots.length > 0);
+  const collected = typeof s.collectedAt === 'string' && s.collectedAt !== '' ? plain(s.collectedAt, ISO_RE, SUMMARY_LIMITS.short) : '(czas nieznany)';
+  const version = typeof s.extensionVersion === 'string' && s.extensionVersion !== '' ? plain(s.extensionVersion, VERSION_RE, SUMMARY_LIMITS.short) : '?';
+  const schema = Number.isInteger(s.schemaVersion) ? s.schemaVersion : '?';
+  return [
+    `# Paczka diagnostyczna — ${hostOf(s)}`,
+    [
+      `Zapisano ${collected}`, `rozszerzenie ${version}`, `schemat ${schema}`,
+      `źródło: ${s.source === 'console' ? 'skrypt w konsoli' : 'rozszerzenie'}`,
+      `błędy JS ${count(o.runtimeErrors)}`, `błędy konsoli ${count(o.consoleErrors)}`, `nieudane zapytania ${failedTotal}`,
+      `kroki ${count(o.steps)}`, `słabe metryki ${count(o.poorVitals)}`, `zrzut: ${shot ? 'tak' : 'nie'}`,
+    ].join(' · '),
+  ];
+}
+
+// A section: fixed `head` and `tail` lines around `items`, which fitSummary may drop (from `trim`: 'start' | 'end').
+function section(title, { head = [], items = [], tail = [], trim = null } = {}) {
+  return { title, head, items, tail, trim, cut: false };
+}
+
+function empty(title, reason) {
+  return section(title, { head: [`brak — ${reason}`] });
+}
+
+function environmentSection(env) {
+  const title = 'Środowisko';
+  if (!isObject(env)) return empty(title, 'paczka nie ma danych o środowisku');
+  const items = [];
   const href = env.location?.href;
-  if (typeof href === 'string' && href !== '') lines.push(`- Adres: ${text(href)}`);
+  if (typeof href === 'string' && href !== '') items.push(`- Adres: ${code(href, SUMMARY_LIMITS.url)}`);
   const ua = env.navigator?.userAgent;
-  if (typeof ua === 'string' && ua !== '') lines.push(`- Przeglądarka: ${text(ua)}`);
+  if (typeof ua === 'string' && ua !== '') items.push(`- Przeglądarka: ${code(ua, SUMMARY_LIMITS.userAgent)}`);
   const vp = env.viewport;
-  if (isObject(vp) && Number.isFinite(vp.innerWidth) && Number.isFinite(vp.innerHeight)) {
-    const dpr = Number.isFinite(vp.devicePixelRatio) ? `, DPR ${vp.devicePixelRatio}` : '';
-    lines.push(`- Okno: ${vp.innerWidth}×${vp.innerHeight}${dpr}`);
+  if (isObject(vp) && finite(vp.innerWidth) && finite(vp.innerHeight)) {
+    const dpr = finite(vp.devicePixelRatio) ? `, DPR ${String(Number(vp.devicePixelRatio.toFixed(2))).replace('.', ',')}` : '';
+    items.push(`- Okno: ${num(vp.innerWidth)}×${num(vp.innerHeight)}${dpr}`);
   }
   const lang = env.navigator?.language;
-  if (typeof lang === 'string' && lang !== '') lines.push(`- Język: ${text(lang)}`);
-  return lines;
+  if (typeof lang === 'string' && lang !== '') items.push(`- Język: ${code(lang, SUMMARY_LIMITS.short)}`);
+  return items.length ? section(title, { items, trim: 'end' }) : empty(title, 'paczka nie ma danych o środowisku');
 }
 
-function overviewLines(overview) {
-  if (!isObject(overview)) return [];
-  return [
-    `- Błędy JavaScript: ${count(overview.runtimeErrors)}`,
-    `- Błędy w konsoli: ${count(overview.consoleErrors)}`,
-    `- Nieudane zapytania: ${count(overview.failedRequests)}`,
-    `- Kroki: ${count(overview.steps)}`,
-    `- Słabe metryki (poor): ${count(overview.poorVitals)}`,
-    `- Zrzut ekranu: ${overview.screenshot === true ? 'tak' : 'nie'}`,
-  ];
+function stepBody(step, textLabels) {
+  const parts = [seconds(step.rel), step.type === null ? '?' : plain(step.type, WORD_RE, SUMMARY_LIMITS.short)];
+  if (step.label !== null) parts.push(code(step.label, textLabels.has(step.label) ? SUMMARY_LIMITS.stepText : SUMMARY_LIMITS.selector));
+  else if (typeof step.url === 'string') parts.push(code(step.url, SUMMARY_LIMITS.url));
+  return parts.join(' · ');
 }
 
-function privacyLines(redaction) {
-  if (!isObject(redaction)) return ['Brak informacji o maskowaniu.'];
-  const masked = isObject(redaction.masked) ? redaction.masked : {};
-  const values = Object.values(masked).map(count).filter((n) => n > 0);
-  const total = values.reduce((sum, n) => sum + n, 0);
-  const sections = Math.min(values.length, MAX_SECTIONS_SHOWN);
-  const rules = Number.isInteger(redaction.rulesVersion) ? redaction.rulesVersion : '?';
-  const lines = [
-    `Zamaskowano ${total} ${plural(total, 'wartość', 'wartości', 'wartości')} w ${sections} ${plural(sections, 'sekcji', 'sekcjach', 'sekcjach')} (reguły v${rules}). Hasła, tokeny i dane logowania nie są w tym pliku.`,
-  ];
-  const disabled = Array.isArray(redaction.disabledRules)
-    ? redaction.disabledRules.filter((r) => typeof r === 'string' && r !== '').slice(0, SUMMARY_LIMITS.disabledRules)
-    : [];
-  if (disabled.length) lines.push(`Wyłączone przez developera: ${text(disabled.join(', '))}.`);
-  return lines;
+function stepsSection(s, stepBeforeError) {
+  const title = 'Kroki';
+  const { items, total } = stepList(s, { last: SUMMARY_LIMITS.steps });
+  if (!total) return empty(title, 'nie zarejestrowano kroków');
+  // A step label is cut as a text (40) when it is the text of some step, else as a selector (80).
+  const textLabels = new Set();
+  for (const step of s.steps) if (typeof step?.text === 'string' && step.text !== '') textLabels.add(step.text);
+  const lines = items.map((step) => `- ${stepBody(step, textLabels)}${step.beforeFirstError ? STEP_BEFORE_ERROR : ''}`);
+  const tail = [];
+  if (stepBeforeError && !items.some((step) => step.beforeFirstError)) {
+    tail.push(`- Ostatni krok przed pierwszym błędem (wcześniej niż lista): ${stepBody(stepBeforeError, textLabels)}`);
+  }
+  return section(title, { head: [`Ostatnie ${items.length} z ${total}:`], items: lines, tail, trim: 'start' });
+}
+
+function errorsSection(groups, more) {
+  const title = 'Błędy';
+  if (!groups.length) return empty(title, 'nie zarejestrowano błędów');
+  const head = groups.map((g) => {
+    const since = finite(g.firstRel) ? `od ${seconds(g.firstRel)} · ` : '';
+    const frame = typeof g.frame === 'string' ? ` · ${code(g.frame, SUMMARY_LIMITS.message)}` : '';
+    return `- ${g.count}× ${since}${code(g.message, SUMMARY_LIMITS.message)}${frame}`;
+  });
+  if (more > 0) head.push(`- i ${more} ${plural(more, 'grupa', 'grupy', 'grup')} więcej`);
+  return section(title, { head });
+}
+
+function requestLine({ entry }) {
+  const method = typeof entry.method === 'string' && entry.method !== '' ? code(entry.method, SUMMARY_LIMITS.short) : '?';
+  const address = typeof entry.url === 'string' && entry.url !== '' ? code(entry.url, SUMMARY_LIMITS.url) : '(brak adresu)';
+  let result;
+  if (finite(entry.status) && entry.status >= 400) result = num(entry.status);
+  else result = typeof entry.error === 'string' && entry.error !== '' ? `błąd: ${code(entry.error, SUMMARY_LIMITS.message)}` : 'błąd';
+  const duration = finite(entry.durationMs) ? ` (${ms(entry.durationMs)})` : '';
+  return `- ${method} ${address} → ${result}${duration}`;
+}
+
+function failedSection(s, failed, total) {
+  const title = `Nieudane zapytania (${total})`;
+  if (!failed.items.length) {
+    const any = Array.isArray(s.network) && s.network.length > 0;
+    return empty(title, any ? 'wszystkie zapytania się udały' : 'nie zarejestrowano zapytań');
+  }
+  const tail = failed.more > 0 ? [`- i ${failed.more} więcej`] : [];
+  return section(title, { items: failed.items.map(requestLine), tail, trim: 'end' });
+}
+
+function metricText(name, m) {
+  if (!m.available) {
+    const reason = Object.hasOwn(REASON_PL, m.reason) ? REASON_PL[m.reason] : code(m.reason, SUMMARY_LIMITS.short);
+    return `${name} niedostępne — ${reason}`;
+  }
+  const value = name === 'CLS' ? num(m.value, 2) : ms(m.value);
+  return `${name} ${value}${m.rating ? ` (${RATING_PL[m.rating]})` : ''}`;
+}
+
+function vitalsSection(s) {
+  const title = 'CWV';
+  const { docs, more } = vitalsByDoc(s, { last: SUMMARY_LIMITS.documents });
+  if (!docs.length) return empty(title, 'nie zmierzono metryk');
+  const head = docs.map((d) => {
+    const label = typeof d.url === 'string' && d.url !== '' ? code(d.url, SUMMARY_LIMITS.url) : `dokument ${Number.isInteger(d.doc) ? d.doc : '?'}`;
+    return `- ${label}: ${METRIC_NAMES.map((name) => metricText(name, d.metrics[name])).join(' · ')}`;
+  });
+  if (more > 0) head.push(`- i ${more} ${plural(more, 'dokument', 'dokumenty', 'dokumentów')} wcześniej`);
+  return section(title, { head });
+}
+
+function slowestSection(s) {
+  const title = 'Najwolniejsze zasoby';
+  const top = slowestResources(s, SUMMARY_LIMITS.slowest);
+  if (!top.length) return empty(title, 'nie zarejestrowano zapytań');
+  const items = top.map((r) => {
+    const type = r.type === null ? '?' : plain(r.type, WORD_RE, SUMMARY_LIMITS.short);
+    const bytes = r.sizeBytes === null ? 'rozmiar nieznany' : size(r.sizeBytes);
+    const address = r.url === null || r.url === '' ? '(brak adresu)' : code(r.url, SUMMARY_LIMITS.url);
+    return `- ${ms(r.durationMs)} · ${type} · ${bytes} · ${address}`;
+  });
+  return section(title, { items, trim: 'end' });
+}
+
+function cookiesSection(s) {
+  const title = 'Ciasteczka i rozmiar';
+  const info = cookieInfo(s);
+  const hasStorage = isObject(s.storage);
+  if (!hasStorage && !info.truncatedKeys.length) return empty(title, 'paczka nie ma danych o ciasteczkach');
+  const head = [];
+  if (hasStorage) head.push(`- Ciasteczka: ${info.count}${info.totalBytes === null ? '' : `, razem ${size(info.totalBytes)}`}`);
+  const cut = info.truncatedKeys.map((key) => plain(key, WORD_RE, SUMMARY_LIMITS.short)).join(', ');
+  head.push(`- Ucięte przez limity: ${cut || 'nic'}`);
+  return section(title, { head });
+}
+
+function privacySection(s) {
+  const head = [];
+  const redaction = s.redaction;
+  if (isObject(redaction)) {
+    const masked = isObject(redaction.masked) ? redaction.masked : {};
+    const values = Object.values(masked).map(count).filter((n) => n > 0);
+    const total = values.reduce((sum, n) => sum + n, 0);
+    const sections = values.length;
+    const rules = Number.isInteger(redaction.rulesVersion) ? redaction.rulesVersion : '?';
+    head.push(`- Zamaskowano ${total} ${plural(total, 'wartość', 'wartości', 'wartości')} w ${sections} `
+      + `${plural(sections, 'sekcji', 'sekcjach', 'sekcjach')} (reguły v${rules}). Hasła, tokeny i dane logowania nie są w tym pliku.`);
+    const disabled = Array.isArray(redaction.disabledRules)
+      ? redaction.disabledRules.filter((r) => typeof r === 'string' && r !== '').slice(0, SUMMARY_LIMITS.disabledRules)
+      : [];
+    if (disabled.length) {
+      head.push(`- Wyłączone przez developera: ${disabled.map((r) => plain(r, WORD_RE, SUMMARY_LIMITS.short)).join(', ')}.`);
+    }
+  } else {
+    head.push('- Brak informacji o maskowaniu.');
+  }
+  head.push(`- ${describeScreenshot(s)}`);
+  return section('Prywatność', { head });
+}
+
+function notesSection(s) {
+  const notes = (Array.isArray(s.notes) ? s.notes : []).filter((n) => typeof n === 'string' && n !== '').slice(0, SUMMARY_LIMITS.notes);
+  if (!notes.length) return empty('Uwagi', 'paczka nie ma uwag');
+  return section('Uwagi', { items: notes.map((n) => `- ${code(n, SUMMARY_LIMITS.note)}`), trim: 'end' });
+}
+
+function footerLine(s) {
+  const shot = (Array.isArray(s.screenshots) ? s.screenshots : []).find((x) => typeof x?.file === 'string' && x.file !== '');
+  return shot ? `Pełne dane: snapshot.json; obraz: ${plain(shot.file, FILE_RE, SUMMARY_LIMITS.short)}.` : 'Pełne dane: snapshot.json.';
+}
+
+function render(header, sections, footer) {
+  const out = [...header, ''];
+  for (const sec of sections) {
+    out.push(`## ${sec.title}`, '', ...sec.head);
+    if (sec.cut && sec.trim === 'start') out.push(CUT);
+    out.push(...sec.items);
+    if (sec.cut && sec.trim === 'end') out.push(CUT);
+    out.push(...sec.tail, '');
+  }
+  out.push(footer);
+  return `${out.join('\n')}\n`;
+}
+
+function utf8Bytes(text) {
+  let n = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c < 0x80) n += 1;
+    else if (c < 0x800) n += 2;
+    else if (c >= 0xd800 && c <= 0xdbff) {
+      n += 4;
+      i++;
+    } else n += 3;
+  }
+  return n;
+}
+
+function fits(text) {
+  return text.split('\n').length <= SUMMARY_LIMITS.maxLines && utf8Bytes(text) <= SUMMARY_LIMITS.maxBytes;
+}
+
+// Guard (D2): over the byte or line limit, drop items of the trimmable sections in TRIM_ORDER, marking each cut section
+// with "(skrócono)". The header, Błędy, CWV and Prywatność are never touched.
+function fitSummary(header, sections, footer) {
+  let text = render(header, sections, footer);
+  for (const title of TRIM_ORDER) {
+    if (fits(text)) break;
+    const sec = sections.find((x) => x.title === title || x.title.startsWith(`${title} (`));
+    while (sec && sec.items.length && !fits(text)) {
+      if (sec.trim === 'start') sec.items.shift();
+      else sec.items.pop();
+      sec.cut = true;
+      text = render(header, sections, footer);
+    }
+  }
+  return text;
 }
 
 /**
- * @param {object} snapshot  the REDACTED package object (after budget and `redaction` were set)
- * @returns {string} Markdown, Polish, ends with a newline
+ * @param {object} snapshot  the REDACTED package object (after budget and `redaction` were set), or the parsed snapshot.json
+ * @returns {string} Markdown, Polish, ends with a newline; ≤ 16 KB and ≤ 200 lines; the same for the object and its JSON copy
  */
 function buildSummary(snapshot) {
   const s = isObject(snapshot) ? snapshot : {};
-  const out = [`# Paczka diagnostyczna — ${hostOf(s)}`, ''];
-  const head = [];
-  if (typeof s.collectedAt === 'string' && s.collectedAt !== '') head.push(`- Zapisano: ${text(s.collectedAt)}`);
-  const version = typeof s.extensionVersion === 'string' && s.extensionVersion !== '' ? text(s.extensionVersion) : '?';
-  head.push(`- Wersja rozszerzenia: ${version}, schemat paczki: ${Number.isInteger(s.schemaVersion) ? s.schemaVersion : '?'}`);
-  head.push(`- Źródło: ${s.source === 'console' ? 'skrypt w konsoli' : 'rozszerzenie'}`);
-  out.push(...head, '');
-
+  const failed = failedRequests(s, { limit: SUMMARY_LIMITS.failedRequests });
+  const failedTotal = isObject(s.overview) && Number.isInteger(s.overview.failedRequests) && s.overview.failedRequests >= 0
+    ? s.overview.failedRequests
+    : failed.total;
+  const errors = errorGroups(s, { limit: SUMMARY_LIMITS.errorGroups });
+  const stepBeforeError = errors.groups.length ? errors.groups[0].stepBefore : null;
   const sections = [
-    ['Środowisko', environmentLines(s.environment)],
-    ['Przegląd', overviewLines(s.overview)],
-    ['Prywatność', privacyLines(s.redaction)],
-    ['Uwagi', (Array.isArray(s.notes) ? s.notes : []).slice(0, SUMMARY_LIMITS.notes).map((n) => `- ${text(n)}`)],
+    environmentSection(s.environment),
+    stepsSection(s, stepBeforeError),
+    errorsSection(errors.groups, errors.more),
+    failedSection(s, failed, failedTotal),
+    vitalsSection(s),
+    slowestSection(s),
+    cookiesSection(s),
+    privacySection(s),
+    notesSection(s),
   ];
-  for (const [title, lines] of sections) {
-    if (!lines.length) continue;
-    out.push(`## ${title}`, '', ...lines, '');
-  }
-
-  const shot = (Array.isArray(s.screenshots) ? s.screenshots : []).find((x) => typeof x?.file === 'string' && x.file !== '');
-  out.push(shot ? `Pełne dane: snapshot.json; obraz: ${text(shot.file)}.` : 'Pełne dane: snapshot.json.');
-  return `${out.join('\n')}\n`;
+  return fitSummary(headerLines(s, failedTotal), sections, footerLine(s));
 }
 return Object.freeze({ SUMMARY_LIMITS: SUMMARY_LIMITS, buildSummary: buildSummary });
 })();
 
 // module: lib/zip.js
-const __pds_m24 = (function () {
+const __pds_m27 = (function () {
 // Minimal ZIP writer for the package container (design E3 D7): PKZIP 2.0, local headers + central directory + EOCD,
 // method 8 (deflate) through the native CompressionStream('deflate-raw') or method 0 (stored), CRC32, UTF-8 names
 // (flag bit 11), DOS date/time from the local clock. No ZIP64, no data descriptor, no extra fields, no encryption:
@@ -6316,7 +7413,7 @@ return Object.freeze({ ZIP_LIMITS: ZIP_LIMITS, crc32: crc32, deflateRaw: deflate
 })();
 
 // module: lib/file-name.js
-const __pds_m25 = (function () {
+const __pds_m28 = (function () {
 // Package file name (design E3 D7, AC-1.1): `snapshot-<host>-<YYYYMMDD-HHMMSS>.zip`.
 // `host` = hostname of the recorded origin (no port, lower case, characters outside [a-z0-9.-] → '-', none → 'local');
 // the time is the reporter's local clock (the same fields as the DOS time in the zip). Pure: no chrome.*, no DOM.
@@ -6353,14 +7450,14 @@ return Object.freeze({ snapshotFileName: snapshotFileName });
 })();
 
 // module: lib/export.js
-const __pds_m26 = (function () {
-const { assembleParts, SCREENSHOT_FILE } = __pds_m18;
-const { redact, countMarkers, resolveDisabledRules } = __pds_m21;
+const __pds_m29 = (function () {
+const { assembleParts, SCREENSHOT_FILE } = __pds_m19;
+const { redact, countMarkers, resolveDisabledRules } = __pds_m22;
 const { RULES_VERSION } = __pds_m1;
-const { fitBudget, cutHtml, cutText, BUDGET_LIMITS } = __pds_m22;
-const { buildSummary } = __pds_m23;
-const { createZip, deflateRaw, fromBase64 } = __pds_m24;
-const { snapshotFileName } = __pds_m25;
+const { fitBudget, cutHtml, cutText, BUDGET_LIMITS } = __pds_m23;
+const { buildSummary } = __pds_m26;
+const { createZip, deflateRaw, fromBase64 } = __pds_m27;
+const { snapshotFileName } = __pds_m28;
 // Export pipeline of the package (design E3 D1, D7, D8): one module for the background and the console fallback.
 //   assemble (package.js) → first cut to ≤ 10 MB of JSON (budget.js, whole entries only) → redact (redact.js)
 //   → size budget with real compression (budget.js) → `redaction` block from the markers present → snapshot.json
@@ -6594,8 +7691,8 @@ const { createRecorder, isInstalled } = __pds_m16;
 const { collectPageState } = __pds_m17;
 const { safeSlice } = __pds_m0;
 const { RECORDER_VERSION } = __pds_m15;
-const { assembleParts } = __pds_m18;
-const { exportAssembled } = __pds_m26;
+const { assembleParts } = __pds_m19;
+const { exportAssembled } = __pds_m29;
 // Entry of the console fallback (E1-T7, US-7; E3-T9): bundled by scripts/gen-content.mjs into
 // src/standalone/console-snapshot.js, which a developer pastes into DevTools when the extension is not installed.
 // Same recorder and collector as the extension; there is no background, so it records from the paste on,

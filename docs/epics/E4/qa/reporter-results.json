@@ -1,0 +1,468 @@
+{
+ "1-ready": {
+  "ok": true,
+  "state": {
+   "sections": [
+    "ready"
+   ],
+   "status": "",
+   "statusClass": "",
+   "savedFile": "",
+   "savedInstruction": "Wyślij ten plik osobie, która poprosiła Cię o zgłoszenie — jako załącznik e-maila lub w zgłoszeniu.",
+   "savedShot": "",
+   "savedMissing": "",
+   "since": "",
+   "note": "",
+   "screenshotNote": "",
+   "disclosure": [
+    "adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu",
+    "kroki: co klikasz i na jakich stronach — bez treści, które wpisujesz",
+    "logi konsoli i błędy",
+    "zapytania sieciowe strony: adresy, nagłówki i wysyłana treść oraz adresy wczytanych plików",
+    "fragmenty odpowiedzi serwera, gdy coś się nie uda",
+    "struktura strony bez tekstów i bez wartości wpisanych w formularze",
+    "zrzut ekranu w chwili zapisu (możesz go wyłączyć) — pola formularzy tej strony są na nim zakryte, ale formularze osadzone z innych serwisów (np. płatność, logowanie) mogą być widoczne",
+    "nazwy i rozmiary ciasteczek oraz dane zapisane przez stronę"
+   ],
+   "scrollH": 700,
+   "innerH": 510,
+   "innerW": 390,
+   "saveBottom": 0,
+   "showBottom": 0,
+   "recordBottom": 502,
+   "buttons": [
+    "Nagrywaj"
+   ]
+  },
+  "ms": 1087
+ },
+ "2-record": {
+  "ok": true,
+  "since": "Nagrywam od 09:50:24",
+  "clickToRecordingMs": 38,
+  "clicks": "Nagrywaj (1)",
+  "ms": 654
+ },
+ "3-recording-screen": {
+  "ok": true,
+  "state": {
+   "sections": [
+    "recording"
+   ],
+   "status": "",
+   "statusClass": "",
+   "savedFile": "",
+   "savedInstruction": "Wyślij ten plik osobie, która poprosiła Cię o zgłoszenie — jako załącznik e-maila lub w zgłoszeniu.",
+   "savedShot": "",
+   "savedMissing": "",
+   "since": "Nagrywam od 09:50:24",
+   "note": "",
+   "screenshotNote": "",
+   "disclosure": [
+    "adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu",
+    "kroki: co klikasz i na jakich stronach — bez treści, które wpisujesz",
+    "logi konsoli i błędy",
+    "zapytania sieciowe strony: adresy, nagłówki i wysyłana treść oraz adresy wczytanych plików",
+    "fragmenty odpowiedzi serwera, gdy coś się nie uda",
+    "struktura strony bez tekstów i bez wartości wpisanych w formularze",
+    "zrzut ekranu w chwili zapisu (możesz go wyłączyć) — pola formularzy tej strony są na nim zakryte, ale formularze osadzone z innych serwisów (np. płatność, logowanie) mogą być widoczne",
+    "nazwy i rozmiary ciasteczek oraz dane zapisane przez stronę"
+   ],
+   "scrollH": 179,
+   "innerH": 179,
+   "innerW": 360,
+   "saveBottom": 163.359375,
+   "showBottom": 0,
+   "recordBottom": 0,
+   "buttons": [
+    "Zapisz paczkę"
+   ]
+  },
+  "ms": 1057
+ },
+ "4-save": {
+  "ok": true,
+  "fileName": "snapshot-127.0.0.1-20261027-095025.zip",
+  "savedAfterMs": 870,
+  "entries": [
+   "snapshot.json",
+   "summary.md",
+   "screenshot.jpg"
+  ],
+  "zipBytes": 21954,
+  "ms": 1342
+ },
+ "5-saved-screen": {
+  "ok": true,
+  "state": {
+   "sections": [
+    "saved"
+   ],
+   "status": "",
+   "statusClass": "",
+   "savedFile": "Plik: snapshot-127.0.0.1-20261027-095025.zip",
+   "savedInstruction": "Wyślij ten plik osobie, która poprosiła Cię o zgłoszenie — jako załącznik e-maila lub w zgłoszeniu.",
+   "savedShot": "",
+   "savedMissing": "",
+   "since": "",
+   "note": "",
+   "screenshotNote": "",
+   "disclosure": [
+    "adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu",
+    "kroki: co klikasz i na jakich stronach — bez treści, które wpisujesz",
+    "logi konsoli i błędy",
+    "zapytania sieciowe strony: adresy, nagłówki i wysyłana treść oraz adresy wczytanych plików",
+    "fragmenty odpowiedzi serwera, gdy coś się nie uda",
+    "struktura strony bez tekstów i bez wartości wpisanych w formularze",
+    "zrzut ekranu w chwili zapisu (możesz go wyłączyć) — pola formularzy tej strony są na nim zakryte, ale formularze osadzone z innych serwisów (np. płatność, logowanie) mogą być widoczne",
+    "nazwy i rozmiary ciasteczek oraz dane zapisane przez stronę"
+   ],
+   "scrollH": 244,
+   "innerH": 243,
+   "innerW": 360,
+   "saveBottom": 0,
+   "showBottom": 227.546875,
+   "recordBottom": 0,
+   "buttons": [
+    "Pokaż plik",
+    "Nowe nagranie"
+   ]
+  },
+  "ms": 1037
+ },
+ "6-show-file-existing": {
+  "ok": true,
+  "state": {
+   "sections": [
+    "saved"
+   ],
+   "status": "",
+   "statusClass": "",
+   "savedFile": "Plik: snapshot-127.0.0.1-20261027-095025.zip",
+   "savedInstruction": "Wyślij ten plik osobie, która poprosiła Cię o zgłoszenie — jako załącznik e-maila lub w zgłoszeniu.",
+   "savedShot": "",
+   "savedMissing": "",
+   "since": "",
+   "note": "",
+   "screenshotNote": "",
+   "disclosure": [
+    "adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu",
+    "kroki: co klikasz i na jakich stronach — bez treści, które wpisujesz",
+    "logi konsoli i błędy",
+    "zapytania sieciowe strony: adresy, nagłówki i wysyłana treść oraz adresy wczytanych plików",
+    "fragmenty odpowiedzi serwera, gdy coś się nie uda",
+    "struktura strony bez tekstów i bez wartości wpisanych w formularze",
+    "zrzut ekranu w chwili zapisu (możesz go wyłączyć) — pola formularzy tej strony są na nim zakryte, ale formularze osadzone z innych serwisów (np. płatność, logowanie) mogą być widoczne",
+    "nazwy i rozmiary ciasteczek oraz dane zapisane przez stronę"
+   ],
+   "scrollH": 244,
+   "innerH": 243,
+   "innerW": 360,
+   "saveBottom": 0,
+   "showBottom": 227.546875,
+   "recordBottom": 0,
+   "buttons": [
+    "Pokaż plik",
+    "Nowe nagranie"
+   ]
+  },
+  "ms": 1733
+ },
+ "7-show-file-deleted": {
+  "ok": true,
+  "state": {
+   "sections": [
+    "saved"
+   ],
+   "status": "",
+   "statusClass": "",
+   "savedFile": "Plik: snapshot-127.0.0.1-20261027-095025.zip",
+   "savedInstruction": "Wyślij ten plik osobie, która poprosiła Cię o zgłoszenie — jako załącznik e-maila lub w zgłoszeniu.",
+   "savedShot": "",
+   "savedMissing": "Nie znaleziono pliku. Zapisz paczkę ponownie.",
+   "since": "",
+   "note": "",
+   "screenshotNote": "",
+   "disclosure": [
+    "adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu",
+    "kroki: co klikasz i na jakich stronach — bez treści, które wpisujesz",
+    "logi konsoli i błędy",
+    "zapytania sieciowe strony: adresy, nagłówki i wysyłana treść oraz adresy wczytanych plików",
+    "fragmenty odpowiedzi serwera, gdy coś się nie uda",
+    "struktura strony bez tekstów i bez wartości wpisanych w formularze",
+    "zrzut ekranu w chwili zapisu (możesz go wyłączyć) — pola formularzy tej strony są na nim zakryte, ale formularze osadzone z innych serwisów (np. płatność, logowanie) mogą być widoczne",
+    "nazwy i rozmiary ciasteczek oraz dane zapisane przez stronę"
+   ],
+   "scrollH": 272,
+   "innerH": 271,
+   "innerW": 360,
+   "saveBottom": 0,
+   "showBottom": 255.734375,
+   "recordBottom": 0,
+   "buttons": [
+    "Pokaż plik",
+    "Nowe nagranie"
+   ]
+  },
+  "ms": 2342
+ },
+ "8-other-tab-recording": {
+  "ok": true,
+  "stateA": {
+   "sections": [
+    "saved"
+   ],
+   "status": "Trwa nagrywanie w innej karcie. Kliknięcie „Nagrywaj” zakończy je bez zapisu.",
+   "statusClass": "",
+   "savedFile": "Plik: snapshot-127.0.0.1-20261027-095025.zip",
+   "savedInstruction": "Wyślij ten plik osobie, która poprosiła Cię o zgłoszenie — jako załącznik e-maila lub w zgłoszeniu.",
+   "savedShot": "",
+   "savedMissing": "Nie znaleziono pliku. Zapisz paczkę ponownie.",
+   "since": "",
+   "note": "",
+   "screenshotNote": "",
+   "disclosure": [
+    "adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu",
+    "kroki: co klikasz i na jakich stronach — bez treści, które wpisujesz",
+    "logi konsoli i błędy",
+    "zapytania sieciowe strony: adresy, nagłówki i wysyłana treść oraz adresy wczytanych plików",
+    "fragmenty odpowiedzi serwera, gdy coś się nie uda",
+    "struktura strony bez tekstów i bez wartości wpisanych w formularze",
+    "zrzut ekranu w chwili zapisu (możesz go wyłączyć) — pola formularzy tej strony są na nim zakryte, ale formularze osadzone z innych serwisów (np. płatność, logowanie) mogą być widoczne",
+    "nazwy i rozmiary ciasteczek oraz dane zapisane przez stronę"
+   ],
+   "scrollH": 315,
+   "innerH": 315,
+   "innerW": 360,
+   "saveBottom": 0,
+   "showBottom": 299.328125,
+   "recordBottom": 0,
+   "buttons": [
+    "Pokaż plik",
+    "Nowe nagranie"
+   ]
+  },
+  "stateB": {
+   "sections": [
+    "recording"
+   ],
+   "status": "",
+   "statusClass": "",
+   "savedFile": "",
+   "savedInstruction": "Wyślij ten plik osobie, która poprosiła Cię o zgłoszenie — jako załącznik e-maila lub w zgłoszeniu.",
+   "savedShot": "",
+   "savedMissing": "",
+   "since": "Nagrywam od 09:50:32",
+   "note": "",
+   "screenshotNote": "",
+   "disclosure": [
+    "adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu",
+    "kroki: co klikasz i na jakich stronach — bez treści, które wpisujesz",
+    "logi konsoli i błędy",
+    "zapytania sieciowe strony: adresy, nagłówki i wysyłana treść oraz adresy wczytanych plików",
+    "fragmenty odpowiedzi serwera, gdy coś się nie uda",
+    "struktura strony bez tekstów i bez wartości wpisanych w formularze",
+    "zrzut ekranu w chwili zapisu (możesz go wyłączyć) — pola formularzy tej strony są na nim zakryte, ale formularze osadzone z innych serwisów (np. płatność, logowanie) mogą być widoczne",
+    "nazwy i rozmiary ciasteczek oraz dane zapisane przez stronę"
+   ],
+   "scrollH": 179,
+   "innerH": 179,
+   "innerW": 360,
+   "saveBottom": 163.359375,
+   "showBottom": 0,
+   "recordBottom": 0,
+   "buttons": [
+    "Zapisz paczkę"
+   ]
+  },
+  "stateC": {
+   "sections": [
+    "ready"
+   ],
+   "status": "Trwa nagrywanie w innej karcie. Kliknięcie „Nagrywaj” zakończy je bez zapisu.",
+   "statusClass": "",
+   "savedFile": "",
+   "savedInstruction": "Wyślij ten plik osobie, która poprosiła Cię o zgłoszenie — jako załącznik e-maila lub w zgłoszeniu.",
+   "savedShot": "",
+   "savedMissing": "",
+   "since": "",
+   "note": "",
+   "screenshotNote": "",
+   "disclosure": [
+    "adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu",
+    "kroki: co klikasz i na jakich stronach — bez treści, które wpisujesz",
+    "logi konsoli i błędy",
+    "zapytania sieciowe strony: adresy, nagłówki i wysyłana treść oraz adresy wczytanych plików",
+    "fragmenty odpowiedzi serwera, gdy coś się nie uda",
+    "struktura strony bez tekstów i bez wartości wpisanych w formularze",
+    "zrzut ekranu w chwili zapisu (możesz go wyłączyć) — pola formularzy tej strony są na nim zakryte, ale formularze osadzone z innych serwisów (np. płatność, logowanie) mogą być widoczne",
+    "nazwy i rozmiary ciasteczek oraz dane zapisane przez stronę"
+   ],
+   "scrollH": 744,
+   "innerH": 510,
+   "innerW": 390,
+   "saveBottom": 0,
+   "showBottom": 0,
+   "recordBottom": 502,
+   "buttons": [
+    "Nagrywaj"
+   ]
+  },
+  "ms": 3967
+ },
+ "9-new-recording": {
+  "ok": true,
+  "state": {
+   "sections": [
+    "ready"
+   ],
+   "status": "",
+   "statusClass": "",
+   "savedFile": "",
+   "savedInstruction": "Wyślij ten plik osobie, która poprosiła Cię o zgłoszenie — jako załącznik e-maila lub w zgłoszeniu.",
+   "savedShot": "",
+   "savedMissing": "",
+   "since": "",
+   "note": "",
+   "screenshotNote": "",
+   "disclosure": [
+    "adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu",
+    "kroki: co klikasz i na jakich stronach — bez treści, które wpisujesz",
+    "logi konsoli i błędy",
+    "zapytania sieciowe strony: adresy, nagłówki i wysyłana treść oraz adresy wczytanych plików",
+    "fragmenty odpowiedzi serwera, gdy coś się nie uda",
+    "struktura strony bez tekstów i bez wartości wpisanych w formularze",
+    "zrzut ekranu w chwili zapisu (możesz go wyłączyć) — pola formularzy tej strony są na nim zakryte, ale formularze osadzone z innych serwisów (np. płatność, logowanie) mogą być widoczne",
+    "nazwy i rozmiary ciasteczek oraz dane zapisane przez stronę"
+   ],
+   "scrollH": 700,
+   "innerH": 510,
+   "innerW": 390,
+   "saveBottom": 0,
+   "showBottom": 0,
+   "recordBottom": 502,
+   "buttons": [
+    "Nagrywaj"
+   ]
+  },
+  "ms": 1496
+ },
+ "10-restricted-chrome-url": {
+  "ok": true,
+  "state": {
+   "sections": [],
+   "status": "Na tej stronie nie da się zapisać paczki. Otwórz stronę, na której widzisz problem, i kliknij ponownie.",
+   "statusClass": "error",
+   "savedFile": "",
+   "savedInstruction": "Wyślij ten plik osobie, która poprosiła Cię o zgłoszenie — jako załącznik e-maila lub w zgłoszeniu.",
+   "savedShot": "",
+   "savedMissing": "",
+   "since": "",
+   "note": "",
+   "screenshotNote": "",
+   "disclosure": [
+    "adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu",
+    "kroki: co klikasz i na jakich stronach — bez treści, które wpisujesz",
+    "logi konsoli i błędy",
+    "zapytania sieciowe strony: adresy, nagłówki i wysyłana treść oraz adresy wczytanych plików",
+    "fragmenty odpowiedzi serwera, gdy coś się nie uda",
+    "struktura strony bez tekstów i bez wartości wpisanych w formularze",
+    "zrzut ekranu w chwili zapisu (możesz go wyłączyć) — pola formularzy tej strony są na nim zakryte, ale formularze osadzone z innych serwisów (np. płatność, logowanie) mogą być widoczne",
+    "nazwy i rozmiary ciasteczek oraz dane zapisane przez stronę"
+   ],
+   "scrollH": 104,
+   "innerH": 104,
+   "innerW": 360,
+   "saveBottom": 0,
+   "showBottom": 0,
+   "recordBottom": 0,
+   "buttons": []
+  },
+  "ms": 1048
+ },
+ "11-double-record": {
+  "ok": true,
+  "state": {
+   "sections": [
+    "recording"
+   ],
+   "status": "",
+   "statusClass": "",
+   "savedFile": "",
+   "savedInstruction": "Wyślij ten plik osobie, która poprosiła Cię o zgłoszenie — jako załącznik e-maila lub w zgłoszeniu.",
+   "savedShot": "",
+   "savedMissing": "",
+   "since": "Nagrywam od 09:50:38",
+   "note": "",
+   "screenshotNote": "",
+   "disclosure": [
+    "adresy odwiedzonych podstron tej witryny, adres strony, z której na nią przyszedłeś, oraz dane przeglądarki i ekranu",
+    "kroki: co klikasz i na jakich stronach — bez treści, które wpisujesz",
+    "logi konsoli i błędy",
+    "zapytania sieciowe strony: adresy, nagłówki i wysyłana treść oraz adresy wczytanych plików",
+    "fragmenty odpowiedzi serwera, gdy coś się nie uda",
+    "struktura strony bez tekstów i bez wartości wpisanych w formularze",
+    "zrzut ekranu w chwili zapisu (możesz go wyłączyć) — pola formularzy tej strony są na nim zakryte, ale formularze osadzone z innych serwisów (np. płatność, logowanie) mogą być widoczne",
+    "nazwy i rozmiary ciasteczek oraz dane zapisane przez stronę"
+   ],
+   "scrollH": 179,
+   "innerH": 179,
+   "innerW": 360,
+   "saveBottom": 163.359375,
+   "showBottom": 0,
+   "recordBottom": 0,
+   "buttons": [
+    "Zapisz paczkę"
+   ]
+  },
+  "ms": 2267
+ },
+ "20-pkg-iterator": {
+  "ok": true,
+  "fileName": "snapshot-127.0.0.1-20261027-095042.zip",
+  "savedAfterMs": 117,
+  "summaryLines": 52,
+  "summaryBytes": 1775,
+  "rules": {
+   "rulesVersion": 2,
+   "disabledRules": [],
+   "masked": {
+    "documents": 1,
+    "steps": 1,
+    "runtimeErrors": 2,
+    "network": 3,
+    "consoleLogs": 1,
+    "environment": 2
+   }
+  },
+  "ms": 2044
+ },
+ "21-pkg-privacy": {
+  "ok": true,
+  "fileName": "snapshot-127.0.0.1-20261027-095044.zip",
+  "savedAfterMs": 111,
+  "redaction": {
+   "rulesVersion": 2,
+   "disabledRules": [],
+   "masked": {
+    "network": 4,
+    "consoleLogs": 2,
+    "performance": 1,
+    "storage": 1
+   }
+  },
+  "zipBytes": 2,
+  "ms": 1867
+ },
+ "22-pkg-iterator-keep": {
+  "ok": true,
+  "fileName": "snapshot-127.0.0.1-20261027-095046.zip",
+  "ms": 1868
+ },
+ "23-pkg-network": {
+  "ok": true,
+  "fileName": "snapshot-127.0.0.1-20261027-095049.zip",
+  "summaryLines": 55,
+  "ms": 3000
+ }
+}

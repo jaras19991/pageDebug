@@ -4,7 +4,7 @@ import { JSDOM } from 'jsdom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createFakeChrome } from './helpers/fake-chrome.js';
 import { createController, DOWNLOAD_TIMEOUT_MS, RESPONSE_TIMEOUT_MS } from '../../src/popup/controller.js';
-import { applyModel } from '../../src/popup/view.js';
+import { applyModel, wasTouched } from '../../src/popup/view.js';
 import { MESSAGES } from '../../src/popup/messages.js';
 
 const HTML_PATH = fileURLToPath(new URL('../../src/popup/popup.html', import.meta.url));
@@ -80,6 +80,7 @@ function setup({ url = URL_WEB, tab, fileAccess, firefox = false, permissionAnsw
   };
   const models = [];
   let uuid = 0;
+  const logError = vi.fn();
   const controller = createController({
     runtime: chrome.runtime,
     permissions: chrome.permissions,
@@ -91,13 +92,13 @@ function setup({ url = URL_WEB, tab, fileAccess, firefox = false, permissionAnsw
     Blob,
     randomUUID: () => `req-${++uuid}`,
     render: (model) => models.push(model),
-    logError: vi.fn(),
+    logError,
   });
   const sent = (type) =>
     calls.filter((c) => c.name === 'runtime.sendMessage' && (!type || c.args[0].type === type)).map((c) => c.args[0]);
   const named = (name) => calls.filter((c) => c.name === name);
   const changed = () => chrome.storage.session.onChanged.dispatch({ 'pds:rec': {} });
-  return { controller, chrome, calls, fake, bg, models, last: () => models.at(-1), urlApi, sent, named, changed };
+  return { controller, chrome, calls, fake, bg, models, last: () => models.at(-1), urlApi, sent, named, changed, logError };
 }
 
 afterEach(() => {
@@ -479,7 +480,7 @@ describe('popup controller: Zapisz paczkę', () => {
     t.bg.status = idle({ lastSaved: { fileName: realName, downloadId: 1 } });
     t.changed();
     await flush();
-    expect(t.last()).toMatchObject({ section: 'ready', statusText: MESSAGES.saved(realName), isError: false });
+    expect(t.last()).toMatchObject({ section: 'saved', savedFile: MESSAGES.savedFile(realName), statusText: '', isError: false });
     expect(t.urlApi.revokeObjectURL).toHaveBeenCalledWith('blob:chrome-extension://pds/1');
   });
 
@@ -633,7 +634,8 @@ describe('popup controller: Zapisz paczkę', () => {
   it('save sends includeScreenshot from checkbox (true default, false when unchecked) (AC-2.1)', async () => {
     const t = await recordingPopup();
     await t.controller.onSave({ includeScreenshot: false });
-    expect(t.sent('collect').at(-1)).toEqual({ type: 'collect', tabId: 7, includeScreenshot: false });
+    // No frame check answer here: unticked by the fail-closed default, said so to the background (E4 D8).
+    expect(t.sent('collect').at(-1)).toEqual({ type: 'collect', tabId: 7, includeScreenshot: false, screenshotOffReason: 'frameCheckFailed' });
 
     // Same wiring as popup.js, on the real popup.html: checked once the page has no frames of other sites
     // (N6 fail-closed), the reporter's choice is sent.
@@ -642,7 +644,7 @@ describe('popup controller: Zapisz paczkę', () => {
     const { document } = new JSDOM(html).window;
     applyModel(document, u.last());
     const box = document.getElementById('includeScreenshot');
-    const click = () => u.controller.onSave({ includeScreenshot: box.checked });
+    const click = () => u.controller.onSave({ includeScreenshot: box.checked, screenshotTouched: wasTouched(box) });
     await click();
     expect(u.sent('collect').at(-1)).toEqual({ type: 'collect', tabId: 7, includeScreenshot: true });
     box.click();
@@ -652,7 +654,7 @@ describe('popup controller: Zapisz paczkę', () => {
     await flush();
     applyModel(document, u.last());
     await click();
-    expect(u.sent('collect').at(-1)).toEqual({ type: 'collect', tabId: 7, includeScreenshot: false });
+    expect(u.sent('collect').at(-1)).toEqual({ type: 'collect', tabId: 7, includeScreenshot: false, screenshotOffReason: 'reporter' });
   });
 
   it('zipBase64 becomes application/zip Blob with the background file name (AC-1.1)', async () => {
@@ -751,7 +753,8 @@ describe('popup controller: screenshot default with cross-origin frames (store r
     const { document } = new JSDOM(html).window;
     applyModel(document, t.last());
     await t.controller.onSave({ includeScreenshot: document.getElementById('includeScreenshot').checked });
-    expect(t.sent('collect').at(-1)).toEqual({ type: 'collect', tabId: 7, includeScreenshot: false });
+    // Unticked by the pending check, not by the reporter (E4 D8).
+    expect(t.sent('collect').at(-1)).toEqual({ type: 'collect', tabId: 7, includeScreenshot: false, screenshotOffReason: 'frameCheckFailed' });
     answer({ ok: true, crossOriginFrames: 0 });
     await flush();
     expect(t.last()).toMatchObject({ screenshotDefault: true, screenshotNote: '' });
@@ -817,7 +820,7 @@ describe('popup controller: screenshot default with cross-origin frames (store r
   });
 });
 
-describe('popup controller: "Zapisano" says when the file has no screenshot (QA F-5)', () => {
+describe('popup controller: the saved screen says when the file has no screenshot (QA F-5, E4 D7)', () => {
   async function savedWith(screenshot) {
     const t = setup({ handlers: { collect: () => ({ ok: true, zipBase64: ZIP_BASE64, fileName: FILE_NAME, packageBytes: 11, screenshot }) } });
     t.bg.status = recording();
@@ -831,12 +834,252 @@ describe('popup controller: "Zapisano" says when the file has no screenshot (QA 
   }
 
   it.each([
-    ['included', MESSAGES.saved(FILE_NAME)],
-    [undefined, MESSAGES.saved(FILE_NAME)],
-    ['unknown', MESSAGES.saved(FILE_NAME)],
-    ['off', `${MESSAGES.saved(FILE_NAME)} ${MESSAGES.screenshotOffSaved}`],
-    ['failed', `${MESSAGES.saved(FILE_NAME)} ${MESSAGES.screenshotFailedSaved}`],
-  ])('screenshot %s → %s', async (screenshot, text) => {
-    expect(await savedWith(screenshot)).toMatchObject({ section: 'ready', statusText: text, isError: false });
+    ['included', ''],
+    [undefined, ''],
+    ['unknown', ''],
+    ['off', MESSAGES.screenshotOffSaved],
+    ['failed', MESSAGES.screenshotFailedSaved],
+  ])('screenshot %s → "%s"', async (screenshot, text) => {
+    expect(await savedWith(screenshot)).toMatchObject({ section: 'saved', savedFile: MESSAGES.savedFile(FILE_NAME), savedShot: text, isError: false });
+  });
+});
+
+// E4 D7: the saved screen comes from the background's lastSaved of this tab (state idle), until "Nagrywaj".
+describe('popup controller: saved screen and "Pokaż plik" (E4 D7)', () => {
+  const LAST = { fileName: FILE_NAME, downloadId: 1, at: STARTED_AT };
+
+  async function savedPopup({ item = { id: 1, state: 'complete', exists: true }, show } = {}) {
+    const t = setup();
+    t.bg.status = idle({ lastSaved: LAST });
+    t.chrome.downloads.search = vi.fn(async (query) => {
+      t.calls.push({ name: 'downloads.search', args: [query] });
+      return item ? [item] : [];
+    });
+    t.chrome.downloads.show = vi.fn(show ?? (() => undefined));
+    await t.controller.init();
+    await flush();
+    return t;
+  }
+
+  it('after save outcome and on reopen with lastSaved → saved section with file name, instruction, showFile (AC-1.1, AC-1.6)', async () => {
+    const t = setup({ handlers: { collect: () => ({ ok: true, zipBase64: ZIP_BASE64, fileName: FILE_NAME, packageBytes: 11, screenshot: 'off' }) } });
+    t.bg.status = recording();
+    await t.controller.init();
+    t.bg.status = recording({ state: 'saving' });
+    await t.controller.onSave({ includeScreenshot: false, screenshotTouched: true });
+    const realName = 'snapshot-shop.example.com-20260122-140321 (1).zip';
+    t.bg.status = idle({ lastSaved: { fileName: realName, downloadId: 1, at: STARTED_AT } });
+    t.changed();
+    await flush();
+    expect(t.last()).toMatchObject({
+      section: 'saved',
+      savedFile: MESSAGES.savedFile(realName),
+      savedShot: MESSAGES.screenshotOffSaved,
+      savedMissing: '',
+      statusText: '',
+      isError: false,
+    });
+    const { document } = new JSDOM(html).window;
+    applyModel(document, t.last());
+    expect(document.getElementById('saved').hidden).toBe(false);
+    expect(document.getElementById('ready').hidden).toBe(true);
+    expect(document.getElementById('recording').hidden).toBe(true);
+    expect(document.getElementById('savedFile').textContent).toBe(MESSAGES.savedFile(realName));
+    expect(document.getElementById('savedInstruction').textContent).toBe(MESSAGES.savedInstruction);
+    expect(document.getElementById('showFile').textContent).toBe(MESSAGES.showFile);
+    t.controller.destroy();
+
+    // Reopened: the same screen from lastSaved alone; the screenshot suffix is not kept (D7).
+    const r = await savedPopup();
+    expect(r.last()).toMatchObject({ section: 'saved', savedFile: MESSAGES.savedFile(FILE_NAME), savedShot: '', savedMissing: '' });
+    // Rendering the screen asks downloads.search once, so Chrome starts checking the file.
+    expect(r.named('downloads.search').map((c) => c.args[0])).toEqual([{ id: 1 }]);
+  });
+
+  it('newRecording shows ready locally; reopen without Nagrywaj → saved again (AC-1.6)', async () => {
+    const t = await savedPopup();
+    const before = t.sent().length;
+    t.controller.onNewRecording();
+    expect(t.last()).toMatchObject({ section: 'ready', buttons: { record: true }, statusText: '' });
+    expect(t.sent()).toHaveLength(before); // nothing sent to the background
+    t.changed();
+    await flush();
+    expect(t.last().section).toBe('ready');
+    t.controller.destroy();
+
+    const r = await savedPopup();
+    expect(r.last().section).toBe('saved');
+  });
+
+  it('newRecording then a refused consent keeps ready with the error; a new save shows the saved screen again', async () => {
+    const t = await savedPopup();
+    t.controller.onNewRecording();
+    t.fake.permissionAnswer = false;
+    await t.controller.onRecord();
+    expect(t.last()).toMatchObject({ section: 'ready', statusText: MESSAGES.permissionDenied, isError: true });
+
+    t.fake.permissionAnswer = true;
+    t.bg.start = () => {
+      t.bg.status = recording(); // the background clears lastSaved on a successful start (D4d)
+      return { ok: true };
+    };
+    await t.controller.onRecord();
+    expect(t.last().section).toBe('recording');
+    t.bg.status = recording({ state: 'saving' });
+    await t.controller.onSave({ includeScreenshot: true });
+    t.bg.status = idle({ lastSaved: { fileName: 'b.zip', downloadId: 1, at: STARTED_AT } });
+    t.changed();
+    await flush();
+    expect(t.last()).toMatchObject({ section: 'saved', savedFile: MESSAGES.savedFile('b.zip') });
+  });
+
+  it('showFile: search then show(downloadId of lastSaved)', async () => {
+    const t = await savedPopup();
+    t.calls.length = 0;
+    await t.controller.onShowFile();
+    expect(t.named('downloads.search').map((c) => c.args[0])).toEqual([{ id: 1 }]);
+    expect(t.chrome.downloads.show).toHaveBeenCalledWith(1);
+    expect(t.last()).toMatchObject({ section: 'saved', savedMissing: '' });
+  });
+
+  it.each([
+    ['exists false', { item: { id: 1, state: 'complete', exists: false } }],
+    ['missing item', { item: null }],
+    ['not complete', { item: { id: 1, state: 'interrupted', exists: true } }],
+    ['show rejects', { show: () => Promise.reject(new Error('Download file not found')) }],
+    ['show throws', { show: () => { throw new Error('Invalid download id'); } }],
+    ['show false (Firefox)', { show: () => Promise.resolve(false) }],
+  ])('showFile: %s → fileMissing, no logError, no throw (AC-1.2)', async (_name, opts) => {
+    const t = await savedPopup(opts);
+    await expect(t.controller.onShowFile()).resolves.toBeUndefined();
+    expect(t.logError).not.toHaveBeenCalled();
+    expect(t.last()).toMatchObject({ section: 'saved', savedMissing: MESSAGES.fileMissing });
+    const { document } = new JSDOM(html).window;
+    applyModel(document, t.last());
+    expect(document.getElementById('savedMissing').textContent).toBe(MESSAGES.fileMissing);
+  });
+
+  it('showFile: search rejecting → fileMissing, show not called', async () => {
+    const t = await savedPopup();
+    t.chrome.downloads.search = vi.fn(() => Promise.reject(new Error('boom')));
+    await t.controller.onShowFile();
+    expect(t.chrome.downloads.show).not.toHaveBeenCalled();
+    expect(t.last().savedMissing).toBe(MESSAGES.fileMissing);
+  });
+
+  it('downloads.onChanged exists false for this id shows fileMissing at once; other ids are ignored', async () => {
+    const t = await savedPopup();
+    t.chrome.downloads.onChanged.dispatch({ id: 2, exists: { previous: true, current: false } });
+    expect(t.last().savedMissing).toBe('');
+    t.chrome.downloads.onChanged.dispatch({ id: 1, exists: { previous: true, current: false } });
+    expect(t.last().savedMissing).toBe(MESSAGES.fileMissing);
+    t.controller.destroy();
+  });
+
+  it('a stale exists true at the click (spike S1): show is called, a check shortly after still reports the missing file', async () => {
+    vi.useFakeTimers();
+    const item = { id: 1, state: 'complete', exists: true };
+    const t = await savedPopup({ item });
+    await t.controller.onShowFile();
+    expect(t.chrome.downloads.show).toHaveBeenCalledWith(1);
+    expect(t.last().savedMissing).toBe('');
+    item.exists = false; // Chrome's file check finished after our search
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(t.last().savedMissing).toBe(MESSAGES.fileMissing);
+  });
+
+  it('saved model contains only fileName from data (trap values, ?token= URL) (AC-2.2)', async () => {
+    const t = setup();
+    t.bg.status = idle({
+      lastSaved: { fileName: FILE_NAME, downloadId: 1, at: STARTED_AT, url: 'https://shop.example.com/?token=SECRET123', html: '<img src=x onerror=alert(1)>' },
+      otherOrigin: 'https://evil.example/?token=SECRET123',
+      stopReason: 'SECRET123',
+    });
+    await t.controller.init();
+    await flush();
+    const m = t.last();
+    expect(m.section).toBe('saved');
+    expect(JSON.stringify(m)).not.toMatch(/SECRET123|onerror|evil/);
+    expect(m.savedFile).toBe(MESSAGES.savedFile(FILE_NAME));
+  });
+});
+
+describe('popup controller: collect says why the screenshot is off (E4 D8, AC-3.9)', () => {
+  async function recordingWith(frameCheck) {
+    const t = setup({ handlers: { frameCheck } });
+    t.bg.status = recording();
+    await t.controller.init();
+    await flush();
+    return t;
+  }
+
+  it('box untouched + crossOriginFrames 2 → screenshotOffReason frames, crossOriginFrames 2', async () => {
+    const t = await recordingWith(() => ({ ok: true, crossOriginFrames: 2 }));
+    await t.controller.onSave({ includeScreenshot: false, screenshotTouched: false });
+    expect(t.sent('collect').at(-1)).toEqual({ type: 'collect', tabId: 7, includeScreenshot: false, screenshotOffReason: 'frames', crossOriginFrames: 2 });
+  });
+
+  it('frame count above 999 is capped for the background', async () => {
+    const t = await recordingWith(() => ({ ok: true, crossOriginFrames: 5000 }));
+    await t.controller.onSave({ includeScreenshot: false });
+    expect(t.sent('collect').at(-1)).toMatchObject({ screenshotOffReason: 'frames', crossOriginFrames: 999 });
+  });
+
+  it('failed check → frameCheckFailed', async () => {
+    const t = await recordingWith(() => ({ ok: false }));
+    await t.controller.onSave({ includeScreenshot: false, screenshotTouched: false });
+    expect(t.sent('collect').at(-1)).toEqual({ type: 'collect', tabId: 7, includeScreenshot: false, screenshotOffReason: 'frameCheckFailed' });
+  });
+
+  it('touched by the reporter → reporter, even with frames', async () => {
+    const t = await recordingWith(() => ({ ok: true, crossOriginFrames: 2 }));
+    await t.controller.onSave({ includeScreenshot: false, screenshotTouched: true });
+    expect(t.sent('collect').at(-1)).toEqual({ type: 'collect', tabId: 7, includeScreenshot: false, screenshotOffReason: 'reporter' });
+  });
+
+  it('no frames and unticked → reporter; ticked → no reason at all', async () => {
+    const t = await recordingWith(() => ({ ok: true, crossOriginFrames: 0 }));
+    await t.controller.onSave({ includeScreenshot: false });
+    expect(t.sent('collect').at(-1)).toEqual({ type: 'collect', tabId: 7, includeScreenshot: false, screenshotOffReason: 'reporter' });
+    const u = await recordingWith(() => ({ ok: true, crossOriginFrames: 2 }));
+    await u.controller.onSave({ includeScreenshot: true, screenshotTouched: true });
+    expect(u.sent('collect').at(-1)).toEqual({ type: 'collect', tabId: 7, includeScreenshot: true });
+  });
+});
+
+describe('popup controller: developer options in the disclosure (E4 D5, AC-6.5)', () => {
+  function withPolicy(t, value) {
+    t.chrome.storage.managed = { get: vi.fn(async () => value) };
+  }
+
+  it('disabledRules from the policy → disclosureDev lists both texts after the first render', async () => {
+    const t = setup();
+    withPolicy(t, { disabledRules: ['html-structure', 'email'] });
+    await t.controller.init();
+    await flush();
+    expect(t.models[0].disclosureDev).toBe('');
+    expect(t.last().disclosureDev).toBe(
+      [MESSAGES.disclosureDevExtra.email, MESSAGES.disclosureDevExtra['html-structure']].join('; '),
+    );
+    expect(t.chrome.storage.managed.get).toHaveBeenCalledTimes(1);
+  });
+
+  it('no policy / rejecting managed storage → built-in (nothing disabled), popup works', async () => {
+    const t = setup();
+    t.chrome.storage.managed = { get: vi.fn(() => Promise.reject(new Error('Managed storage manifest not found'))) };
+    await t.controller.init();
+    await flush();
+    expect(t.last()).toMatchObject({ section: 'ready', disclosureDev: '' });
+  });
+
+  it('no control changes dev options: the controller only reads managed storage (AC-6.2)', async () => {
+    const t = setup();
+    withPolicy(t, { disabledRules: ['email'] });
+    t.chrome.storage.managed.set = vi.fn();
+    await t.controller.init();
+    await flush();
+    expect(Object.keys(t.controller).sort()).toEqual(['destroy', 'init', 'onNewRecording', 'onRecord', 'onSave', 'onShowFile', 'refresh']);
+    expect(t.chrome.storage.managed.set).not.toHaveBeenCalled();
+    expect(t.sent().map((m) => m.type)).toEqual(['getStatus']);
   });
 });

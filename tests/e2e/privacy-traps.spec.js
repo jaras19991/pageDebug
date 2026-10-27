@@ -150,7 +150,9 @@ test('N9/N13/N14 console argument pairs: 0 hits in the whole zip (also in a trun
     expect(consoleText).toContain('[redacted:');
     expect(consoleText, 'long entry recorded').toContain('truncated');
     expect(consoleText).toContain('Pressed key');
-    expect(consoleText).toContain('Enter');
+    // `'Pressed key', 'Enter'` ends with a key word: a documented false positive since E4-IN5 (design D2, console-args.json).
+    expect(consoleText).toContain('[redacted:key-key]');
+    expect(consoleText).not.toContain('Enter');
     // Re-review iteration 3: N13 chains (`'[Auth]', 'Token:', t`, …) and N14 nested arrays are masked (0 hits above, also in
     // the preview of the long entry); benign controls stay as they were logged.
     expect(consoleText).toContain('[redacted:key-token]');

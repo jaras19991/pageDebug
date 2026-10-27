@@ -8,7 +8,7 @@ import { TRUNCATED_KEYS } from '../helpers/snapshot-validator.js';
 import { countDownloads } from './helpers/download.js';
 import { startFixtureServer } from './helpers/fixtures-server.js';
 import { launchWithExtension, openPopupFor } from './helpers/launch.js';
-import { popupState, saveRecording, startRecording } from './helpers/recording.js';
+import { popupState, readSaveOutcome, saveRecording, startRecording } from './helpers/recording.js';
 
 const REC_KEY = 'pds:rec';
 const MARKER_KEY = 'pds.installed';
@@ -172,7 +172,7 @@ test('save: Zapisano names the file that exists in download dir; file is a zip, 
     const downloads = await countDownloads(ext);
     const { fileName, json, statusText } = await recordEarlyError(page);
 
-    expect(statusText).toBe(MESSAGES.saved(fileName));
+    expect(statusText, 'screenshot sentence, empty when the file has it').toBe('');
     expect(await downloads.names()).toEqual([fileName]);
     expect(await readdir(ext.downloadDir)).toContain(fileName);
 
@@ -200,6 +200,28 @@ test('save: Zapisano names the file that exists in download dir; file is a zip, 
   });
 });
 
+test('readSaveOutcome resolves saved section and error status (E4 TEST0)', async () => {
+  await withPage(async (page) => {
+    await page.goto(`${server.url}/basic.html`);
+    await startRecording(page);
+    const { fileName } = await saveRecording(page);
+    // Reopened popup: the background still knows this tab's last file, so the saved screen is shown again.
+    const popup = await openPopupFor(page);
+    try {
+      expect(await readSaveOutcome(popup, 5_000)).toEqual({ fileName, savedShot: '' });
+      await popup.evaluate(`(() => {
+        document.getElementById('saved').hidden = true;
+        const s = document.getElementById('status');
+        s.className = 'error';
+        s.textContent = 'boom';
+      })()`);
+      expect(await readSaveOutcome(popup, 5_000)).toEqual({ error: 'boom' });
+    } finally {
+      await popup.close();
+    }
+  });
+});
+
 test('NFR: click "Zapisz paczkę" → "Zapisano" on basic.html, median of 5 ≤ 5 s', async () => {
   const times = [];
   for (let i = 0; i < 5; i++) {
@@ -207,7 +229,7 @@ test('NFR: click "Zapisz paczkę" → "Zapisano" on basic.html, median of 5 ≤ 
       await page.goto(`${server.url}/basic.html`);
       await startRecording(page);
       const saved = await saveRecording(page);
-      expect(saved.statusText).toBe(MESSAGES.saved(saved.fileName));
+      expect(saved.fileName).toMatch(/\.zip$/);
       times.push(saved.savedAfterMs);
     });
   }
@@ -261,7 +283,8 @@ test('after save: reload has no recorder and after-log not in next package', asy
   await withPage(async (page) => {
     await recordEarlyError(page);
     expect(await ext.sessionStorage.get(REC_KEY)).toBeUndefined();
-    expect((await popupState(page)).section).toBe('ready');
+    // E4 D7: the popup now shows the saved screen (the file name) until the next "Nagrywaj".
+    expect((await popupState(page)).section).toBe('saved');
 
     await page.reload();
     expect(await hasMarker(page)).toBe(false);

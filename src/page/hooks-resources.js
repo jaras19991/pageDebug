@@ -51,7 +51,9 @@ function resourcePlain(entry) {
 function resourceCopies(items) {
   const out = [];
   // A loop, not Array.prototype.map, which the page may replace (AC-3.6).
-  for (const e of Array.isArray(items) ? items : []) out.push(e && typeof e === 'object' ? { ...e } : e);
+  // Index loop: the page may replace the array iterator too (E4-IN2b).
+  const list = Array.isArray(items) ? items : [];
+  for (let i = 0; i < list.length; i++) out.push(list[i] && typeof list[i] === 'object' ? { ...list[i] } : list[i]);
   return out;
 }
 
@@ -125,8 +127,11 @@ export function installResourceHooks({ win, now, record, enabled, intrinsics = {
   function handle(entries) {
     const made = [];
     if (!isOn()) return made;
-    const list = resourceTry(() => Array.from(entries), []);
-    for (const raw of list) {
+    // Index loop over the array-like list, not Array.from/for…of: the page may replace the iterator (E4-IN2b).
+    const list = resourceTry(() => entries || [], []);
+    const n = resourceTry(() => list.length >>> 0, 0);
+    for (let i = 0; i < n; i++) {
+      const raw = resourceTry(() => list[i], null);
       resourceTry(() => {
         const entry = resourcePlain(raw);
         if (RESOURCE_HOOK_INITIATORS.indexOf(entry.initiatorType) >= 0) {

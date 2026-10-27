@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "disabledRules": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

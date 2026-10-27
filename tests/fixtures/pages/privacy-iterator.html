@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: privacy, hostile array iterator</title>
+</head>
+<body>
+  <h1>Strona z podmienionym iteratorem tablic</h1>
+  <p><button type="button" id="t-fetch">Pobierz</button> <button type="button" id="t-nav">Dalej</button>
+     <button type="button" id="t-throw">Błąd</button> <span id="t-result"></span></p>
+  <script>
+    // E4-TEST4c (AC-2.5, E4-IN2): the page replaces Array.prototype[Symbol.iterator] before anything of the recording
+    // (the recorder's page code is in place at document_start). for…of and spread over arrays now yield nothing, so any
+    // masking written with them would silently stop masking. Secrets are computed first, with the iterator still intact.
+    //   - GET /status/500?body=token (the server answers 500 with a JWT and a Bearer line in the body) sent with
+    //     `Authorization: Bearer <bearer>`, bearer random per load,
+    //     "Dalej": history.pushState to /privacy-iterator.html?access_token=<token> (a navigate step with a token in the URL),
+    //     "Błąd": console.error('Uncaught Error: password: <pw>') and an uncaught Error('password: <pw>') (key + value after a prefix).
+    (() => {
+      const hex = (bytes) => Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (b) => b.toString(16).padStart(2, '0')).join('');
+      const traps = { bearer: `br${hex(16)}`, stepToken: `st${hex(14)}`, password: `pw${hex(8)}` };
+      window.__pdsTraps = traps;
+      // ?keep=1 leaves the iterator alone (the "password" trap is about key + value, not about iteration). Since E4-IN2b
+      // the console hook and the recorder use index loops too, so the recording is complete even without keep=1.
+      if (location.search.indexOf('keep=1') < 0) {
+        Array.prototype[Symbol.iterator] = function () {
+          return { next() { return { done: true, value: undefined }; } };
+        };
+      }
+      document.getElementById('t-fetch').addEventListener('click', async () => {
+        const res = await fetch('/status/500?body=token', { headers: { Authorization: `Bearer ${traps.bearer}` } });
+        document.getElementById('t-result').textContent = `status ${res.status}`;
+      });
+      document.getElementById('t-nav').addEventListener('click', () => {
+        history.pushState({}, '', `/privacy-iterator.html?access_token=${traps.stepToken}`);
+        document.getElementById('t-result').textContent = 'nav';
+      });
+      document.getElementById('t-throw').addEventListener('click', () => {
+        console.error(`Uncaught Error: password: ${traps.password}`);
+        setTimeout(() => { throw new Error(`password: ${traps.password}`); }, 0);
+        document.getElementById('t-result').textContent = 'thrown';
+      });
+    })();
+  </script>
+</body>
+</html>

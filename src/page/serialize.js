@@ -13,7 +13,7 @@ function serializeIsPlainObject(value) {
 function serializeCloneSourceValue(value) {
   if (Array.isArray(value)) {
     const out = [];
-    for (const item of value) out.push(serializeCloneSourceValue(item));
+    for (let i = 0; i < value.length; i++) out.push(serializeCloneSourceValue(value[i]));
     return out;
   }
   if (serializeIsPlainObject(value)) return deepMerge({}, value);

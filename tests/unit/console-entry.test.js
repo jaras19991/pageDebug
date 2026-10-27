@@ -171,6 +171,10 @@ describe('console-snapshot.js zip and redaction (E3-T9)', () => {
     expect(json).toMatchObject({ schemaVersion: 4, source: 'console', screenshots: [] });
     expect(json.notes).not.toContain('The package is not compressed (this browser cannot compress).');
     expect(text['summary.md']).toMatch(/\S/);
+    // E4-T9 smoke: the fallback inlines summary v2 (D2 structure) — same builder as the extension.
+    expect(text['summary.md']).toMatch(/^# Paczka diagnostyczna — /);
+    for (const section of ['## Kroki', '## Błędy', '## Nieudane zapytania', '## CWV', '## Prywatność']) expect(text['summary.md']).toContain(section);
+    expect(text['summary.md']).toContain('boom');
     assertValidSnapshot(json);
   });
 
@@ -215,7 +219,7 @@ describe('console-snapshot.js zip and redaction (E3-T9)', () => {
     const pkg = await win.PageDebugSnapshot.snapshot();
     const json = JSON.stringify(pkg);
     for (const secret of [PASSWORD, EMAIL]) expect(leaks(secret, json)).toEqual([]);
-    expect(pkg.redaction).toMatchObject({ rulesVersion: 1, disabledRules: [] });
+    expect(pkg.redaction).toMatchObject({ rulesVersion: 2, disabledRules: [] });
     expect(json).toContain('[redacted:');
     assertValidSnapshot(JSON.parse(json));
   });

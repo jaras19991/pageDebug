@@ -7,8 +7,9 @@ i pakuje `exportPackage` z `src/lib/export.js` (tło rozszerzenia i fallback kon
 zaczyna się od `PK` (zip) → `snapshot.json` w środku; jest `schemaVersion` → ta wersja; brak `schemaVersion` i `version: "1.0.0"` →
 wersja 1 (tabele migracji na końcu). Przykłady (dane syntetyczne): `tests/fixtures/snapshots/v4.json` (aktualny),
 `v3.json` i `v2.json` (do testów migracji). Zgodność z v4 sprawdza walidator `tests/helpers/snapshot-validator.js`
-(`validateSnapshot(pkg) → { ok, errors }` dla `snapshot.json`, `validateZipEntries(names, pkg?)` dla wpisów zipa), wspólny
-dla testów unit i e2e.
+(`validateSnapshot(pkg, { expectRulesVersion }?) → { ok, errors }` dla `snapshot.json`, `validateZipEntries(names, pkg?)` dla wpisów
+zipa), wspólny dla testów unit i e2e. Od rozszerzenia 0.6.0 (E4) schemat zostaje 4; zmiany niełamiące opisuje sekcja
+[Wersja 4 — zmiany w 0.6.0 (E4)](#wersja-4--zmiany-w-060-e4).
 
 ## Wersja 1 (baseline, rozszerzenie 1.0.0, E0)
 
@@ -436,8 +437,8 @@ Wszystkie są **wymagane**, także w fallbacku konsolowym. `null` lub pusta tabl
 - `masked.<sekcja>` to liczba wystąpień `[redacted:` w tej sekcji **po** budżecie rozmiaru. Suma `masked` równa się liczbie
   wystąpień `[redacted:` w całym `snapshot.json` (AC-4.3). Walidator sprawdza i sumę, i każdą sekcję.
 - `disabledRules` wymienia tylko reguły poziomu *Domyślnie*, w kolejności `email`, `phone`, `html-structure`, bez powtórzeń.
-  Próba wyłączenia reguły poziomu *Zawsze* jest ignorowana i nie trafia do listy (AC-4.5). Zgłaszający nie ma tej opcji. Źródło
-  opcji developerskich dostarczy E4-D4; w E3 lista jest zawsze pusta.
+  Próba wyłączenia reguły poziomu *Zawsze* jest ignorowana i nie trafia do listy (AC-4.5). Zgłaszający nie ma tej opcji. W 0.5.0 (E3)
+  lista jest zawsze pusta; od 0.6.0 pochodzi z konfiguracji developera (niżej, „zmiany w 0.6.0”).
 - `redaction` nie zawiera żadnej zamaskowanej wartości ani jej fragmentu.
 
 ### Reguły i znaczniki
@@ -460,7 +461,7 @@ Zamaskowana wartość to string `"[redacted:<reguła>]"`, nigdy `null` (`null` z
 | `form-value` | Zawsze | wartość pola formularza (`value` w pełnym HTML, treść `textarea`) |
 | `email` | Domyślnie | adres e-mail — wszędzie, gdzie przechodzi przebieg tekstowy (także URL-e, tytuł, kroki, atrybuty `data-*`, `notes`) |
 | `phone` | Domyślnie | numer telefonu — tylko w konsoli, błędach, `requestBody`, podglądach odpowiedzi i storage (w URL-ach i selektorach za dużo fałszywych trafień) |
-| `html-structure` | Domyślnie | pseudo-reguła: pełny HTML strony nie trafia do paczki; jej wyłączenie oznacza `dom.fullHtml` |
+| `html-structure` | Domyślnie | pseudo-reguła: pełny HTML strony nie trafia do paczki; jej wyłączenie oznacza `dom.fullHtml`. Znacznik `[redacted:html-structure]` zastępuje atrybut `srcdoc` ramek (`dom.iframes[].attributes.srcdoc`) |
 
 **Jedyna zmiana typu wartości:** liczba albo boolean przy kluczu wrażliwym w danych użytkownika (np. `{ "pin": 1234 }` w argumencie
 konsoli, w `requestBody` albo w storage) staje się stringiem znacznika (`"pin": "[redacted:key-pin]"`). Pozostałe pola zachowują
@@ -506,7 +507,7 @@ Klucze w kolejności: `counts`, `html`, `meta`, `canonical`, `hreflangs`, `scrip
 |---|---|---|
 | `html` | object | `doctype` (`{ name, publicId, systemId }` \| `null`), `lang`, `charset`, `compatMode`. **Bez `outerHTML`** |
 | `images[]` | object[] | `src`, `naturalWidth`, `naturalHeight`, `width`, `height`, `loading`, `altLength` (integer, długość tekstu `alt`; 0, gdy go nie ma). **Bez `alt`** — tekst bywa imieniem i nazwiskiem („Avatar Jana Kowalskiego”) |
-| `iframes[]` | object[] | `src`, `id`, `name`, `titleLength` (integer, długość atrybutu `title`; 0, gdy go nie ma), `attributes` (bez `title`). **Bez `title`** z tego samego powodu |
+| `iframes[]` | object[] | `src`, `id`, `name`, `titleLength` (integer, długość atrybutu `title`; 0, gdy go nie ma), `attributes` (bez `title`). **Bez `title`** z tego samego powodu. Niepusty atrybut `srcdoc` (pełny HTML ramki z tekstami i wartościami pól) = `"[redacted:html-structure]"`; gdy developer wyłączył `html-structure`, zostaje jak `fullHtml` (wartości pól → `[redacted:form-value]`) — od 0.6.0 (E4), bez zmiany `schemaVersion` |
 | `forms[].elements[]` | object[] | `tagName`, `type`, `name`, `id`, `checked?`, `valueLength?`, `fileCount?`. **Nigdy `value`.** `valueLength` (integer) to długość wartości; pola `password` go nie mają. Pole `file` nie ma `valueLength` (w v3 była to długość ścieżki `C:\fakepath\…`), tylko `fileCount` (integer, liczba wybranych plików; brak, gdy przeglądarka jej nie podaje). `fileCount` występuje wyłącznie przy `type: "file"` |
 | `structure` | string \| null | struktura bieżącego dokumentu jako HTML bez tekstów (niżej); ≤ `limits.html` znaków, chyba że `truncated.html` |
 | `fullHtml` | string \| null | `null`, chyba że developer wyłączył `html-structure` (`redaction.disabledRules`). Wtedy pełny HTML z tekstami i atrybutami (bez `value` pól), po przebiegu tekstowym redakcji, ≤ 8 000 000 znaków od kolektora, cięty dalej przez budżet 10 MB |
@@ -599,14 +600,16 @@ Gdy developer włączył pełny HTML, `limits.packageBytes` wynosi 10 485 760, a
   o małej liczbie możliwości (`consent=yes`, `lang=pl`, krótki PIN) da się jednak odgadnąć, licząc skróty kandydatów. Wartości
   sesji i tokenów są zbyt długie i losowe, żeby to było praktyczne.
 - **Ramki z innych originów a paczka:** liczba widocznych ramek cross-origin (`crossOriginVisible`) służy tylko popupowi do ustawienia
-  domyślnego stanu przełącznika zrzutu. **Nie trafia do paczki** i nie ma o niej notatki; `screenshots[].maskedFields` liczy wyłącznie zamalowane pola.
+  domyślnego stanu przełącznika zrzutu. **Nie jest polem paczki**; w 0.5.0 nie ma też o niej notatki (od 0.6.0 jest — patrz niżej).
+  `screenshots[].maskedFields` liczy wyłącznie zamalowane pola.
 - **Post-redakcyjne cięcia stringów:** po redakcji znacznik na granicy cięcia (`cutText`) może zostać usunięty (utrata informacji, bez przecieku);
   podgląd konsoli `{ truncated, preview }` po maskowaniu par tablic bywa zniekształcony (`masked` zawyżone).
 - **Redakcja regułowa:** sekret bez słowa-klucza, krótszy niż próg `long-secret` i w nietypowym miejscu może przejść: base64 < 32 znaków,
   `&amp;quot;` (podwójne kodowanie encji), podwójne kodowanie procentowe, `code`/`ticket` w adresach względnych (`/cb?code=…`) i w tekście
   poza adresami bezwzględnymi, klucz na samym początku stringu JSON (`{"log":"password: x"}`). Klucz AWS `AKIA…` to sam identyfikator;
   sekret (40 znaków) łapie `long-secret`. Fałszywie dodatnie trafienia (np. „123 456 789 zł” jako `phone`, `auth: "Invalid credentials"`)
-  zabierają developerowi pojedyncze wartości. Pełna lista: [README](../README.md#znane-ograniczenia).
+  zabierają developerowi pojedyncze wartości. Pełna lista: [README](../README.md#znane-ograniczenia). Część tych form reguły v2
+  (0.6.0) już maskują — patrz niżej.
 
 ### Przykład
 
@@ -652,6 +655,89 @@ występują tylko jako znaczniki. Po zamierzonej zmianie kształtu paczki odświ
            "fullHtml": null }
 }
 ```
+
+## Wersja 4 — zmiany w 0.6.0 (E4)
+
+`schemaVersion` **zostaje 4**: żadne pole nie znika ani nie zmienia typu, nie ma nowych pól (spec E4 „Dane”). Zmieniają się wartość
+`redaction.rulesVersion`, źródło `redaction.disabledRules`, nowe treści `notes` i struktura wpisu `summary.md`. Konsument v4 z 0.5.0
+czyta paczki 0.6.0 bez zmian. Fixture `tests/fixtures/snapshots/v4.json` zostaje przykładem 0.5.0 (`rulesVersion: 1`) do testów zgodności wstecz.
+
+| Pole | 0.5.0 | 0.6.0 | Konsument |
+|---|---|---|---|
+| `redaction.rulesVersion` | `1` | `2` (reguły E4 D9, niżej) | walidator przyjmuje `1 ≤ v ≤ 2` (liczba całkowita); świeża paczka: `validateSnapshot(pkg, { expectRulesVersion: 2 })` |
+| `redaction.disabledRules` | zawsze `[]` | z konfiguracji developera (podzbiór `email`, `phone`, `html-structure`, w tej kolejności, bez powtórzeń) | `summary.md`: „Wyłączone przez developera: …” |
+| `notes` | + „turned off by the reporter” | + powód wyłączenia zrzutu przez popup, ramki innych serwisów na zrzucie (niżej) | `summary.md`: linia o zrzucie po polsku |
+| `summary.md` | krótki opis | stała struktura sekcji (niżej) | viewer i MCP liczą ją same z `snapshot.json` |
+
+### `redaction.rulesVersion: 2`
+
+Nazwy reguł i znaczników bez zmian (`key-code`/`key-ticket` już istniały dla adresów, teraz działają też w tekście). Reguły v2
+maskują dodatkowo formy, które v1 przepuszczała:
+
+- klucz na początku stringu JSON: `{"log":"password: x"}` → `{"log":"password: [redacted:key-password]"}` (także JSON w escape'ach);
+- `code`/`ticket` jako parametr w tekście: adres względny `/cb?code=…`, `&code=`, `#code=`, adres JSON-escaped (`https:\/\/…?code=…`).
+  `country_code=PL` i `{"code":"PL"}` zostają bez zmian;
+- podgląd argumentu konsoli `{ truncated, preview }`: redakcja po literałach JSON, struktura podglądu zachowana, `masked` liczy
+  faktyczne zamiany (koniec zniekształceń i zawyżonego `masked` z 0.5.0);
+- kontener w parze z kluczem (`console.log('password:', { v: x })`, `('password', [x])`) — każdy skalar w środku, kształt zachowany;
+- zdanie kończące się słowem-kluczem (`'Your password is', x`, `'Your API key:', x`) maskuje następny argument.
+
+Wyjątek prozy: klucz bez cudzysłowu `auth`, `session` lub `key`, po którym stoją co najmniej dwa słowa (`auth: "Invalid credentials"`),
+nie jest maskowany. Maskowanie u źródła w MAIN nie zależy od `Array.prototype[Symbol.iterator]` strony. Formy spoza zamkniętego
+korpusu E4 (`tests/fixtures/redaction/`) są w README, „Znane ograniczenia”.
+
+### `redaction.disabledRules` z konfiguracji developera
+
+Źródła (E4 D5): konfiguracja wbudowana przy buildzie (`npm run build -- --config <plik.json>`, moduł `dist/<cel>/lib/dev-config.js`)
+albo polityka przedsiębiorstwa (`storage.managed`, klucz `disabledRules`), która zastępuje wbudowaną w całości (`[]` włącza reguły
+z powrotem). Do paczki trafiają tylko nazwy reguł poziomu *Domyślnie*; reguły *Zawsze*, nieznane nazwy i zły typ są pomijane.
+Fallback konsolowy nie czyta konfiguracji: zawsze `[]`. Kształt pola bez zmian względem v4 z 0.5.0; `html-structure` na liście
+nadal oznacza `dom.fullHtml` (walidator sprawdza tę zależność).
+
+### Nowe treści `notes` o zrzucie
+
+Teksty (po angielsku) pochodzą ze stałych `SCREENSHOT_NOTES` w `src/lib/screenshot-notes.js`; z tych samych stałych `describeScreenshot`
+liczy polską linię „Zrzut ekranu: …” w `summary.md`. `N` to liczba całkowita 1–999.
+
+| Notatka | Kiedy | Linia w `summary.md` |
+|---|---|---|
+| „Screenshot not included (turned off by the reporter).” | zgłaszający wyłączył przełącznik (albo popup nie podał powodu) | „wyłączony przez zgłaszającego” |
+| „Screenshot not included: the page showed N frame(s) of other sites, so it was off by default and the reporter did not turn it on.” | popup wyłączył zrzut domyślnie, bo strona miała N widocznych ramek innych serwisów, a zgłaszający go nie włączył (AC-3.9) | „wyłączony automatycznie — na stronie były okienka innych serwisów (N)” |
+| „Screenshot not included: the page could not be checked for frames of other sites, so it was off by default and the reporter did not turn it on.” | popup nie zdołał sprawdzić ramek (fail-closed, AC-3.9) | „wyłączony automatycznie — nie udało się sprawdzić strony” |
+| „The screenshot shows N frame(s) of other sites; they are not covered.” (dla 1: „…1 frame of other sites; it is not covered.”) | zrzut **jest** w paczce, a w chwili zrzutu widać było N ramek innych originów (większa z dwóch liczb z odczytów pól przed i po zrzucie); ramek nie zamalowujemy (AC-3.10) | „jest; widać na nim N okienek innych serwisów, nie są zakryte” |
+
+Bez zmian z 0.5.0: „No screenshot: form fields could not be hidden (<powód>).” → „brak — nie udało się zakryć pól formularzy”;
+każdy inny powód → „brak — powód w Uwagach”. Notatki są wyłącznym nośnikiem tych informacji (nie ma pola `crossOriginFrames`
+ani `screenshotOffReason` w paczce); `screenshots[].maskedFields` nadal liczy tylko zamalowane pola.
+
+### `srcdoc` ramek
+
+Atrybut `srcdoc` w `dom.iframes[].attributes` niesie pełny HTML ramki, w tym wartości pól. Redakcja (`src/lib/redact-page.js`) zastępuje go
+stringiem `"[redacted:html-structure]"` i liczy w `redaction.masked.dom`; z `html-structure` w `disabledRules` (pełny HTML) atrybut zostaje, ale jest redagowany jak `dom.fullHtml` (wartości pól zamaskowane).
+Kształt pola bez zmian.
+
+### Ostrzeżenie o paczce sprzed redakcji (po stronie czytnika)
+
+Paczki v1–v3 powstały przed automatyczną redakcją i mogą zawierać hasła i tokeny. Ostrzeżenie „Paczka sprzed automatycznej redakcji — może zawierać
+hasła i tokeny” generuje **czytnik** (`migrate.js`, kod `unredacted`) przy `schemaVersion < 4`: baner viewera, pole `warnings` w `list_snapshots`
+i nota nad `get_summary` w MCP. **Nie jest polem ani notatką paczki** — paczka v4 nie niesie takiej informacji, a `redaction` w paczce v1–v3 nie istnieje.
+
+### Struktura `summary.md`
+
+Wpis zipa budowany wyłącznie z już zredagowanego `snapshot.json` (`buildSummary`, `src/lib/summary.js`), ten sam tekst w rozszerzeniu,
+viewerze i MCP. Sekcje w stałej kolejności; sekcja bez danych ma jedną linię „brak — <powód>”:
+
+1. nagłówek `# Paczka diagnostyczna — <host>` i jedna linia: czas zapisu, wersja rozszerzenia, schemat, źródło, liczby z `overview`;
+2. `## Środowisko` (adres, przeglądarka, okno × DPR, język), `## Kroki` (≤ 20, krok przed pierwszym błędem oznaczony), `## Błędy`
+   (≤ 10 grup), `## Nieudane zapytania` (≤ 20), `## CWV` (per dokument, „niedostępne — <powód>”, nigdy 0), `## Najwolniejsze zasoby` (5),
+   `## Ciasteczka i rozmiar` (z listą sekcji uciętych przez limity);
+3. `## Prywatność`: liczba zamaskowanych wartości z „reguły v<rulesVersion>”, „Wyłączone przez developera: …” (gdy lista niepusta),
+   linia „Zrzut ekranu: …”;
+4. `## Uwagi`: pierwsze 10 `notes`; na końcu odesłanie do `snapshot.json` i `screenshot.jpg`.
+
+Każda wartość ze strony stoi w code spanie z adaptacyjnym ogrodzeniem (bez nagłówków, linków ani HTML z danych strony), pola mają limity
+długości, a całość ≤ 16 384 bajtów UTF-8 i 200 linii (najpierw skracane Uwagi, zasoby, środowisko, kroki, zapytania; nagłówek, Błędy,
+CWV i Prywatność nienaruszalne). Struktura `summary.md` nie jest częścią `schemaVersion` — maszyny czytają `snapshot.json`.
 
 ## Zmiany między wersjami
 
@@ -725,6 +811,9 @@ dochodzi `redaction` po `overview`, a `attachments` znika.
 
 ### Wpis zmian
 
+- **v4 bez zmiany numeru (E4, rozszerzenie 0.6.0):** reguły redakcji v2 (`redaction.rulesVersion: 2`), `redaction.disabledRules`
+  z konfiguracji developera (build albo polityka), notatki o wyłączeniu zrzutu przez popup i o ramkach innych serwisów na zrzucie,
+  `srcdoc` ramek zastępowany znacznikiem `[redacted:html-structure]`, stała struktura `summary.md`. Bez nowych pól; konsument v4 czyta obie wersje reguł.
 - **v4 (E3, rozszerzenie 0.5.0):** paczka jako zip (`snapshot.json`, `summary.md`, `screenshot.jpg`) z nazwą `snapshot-<host>-<czas>.zip`;
   redakcja całej paczki według reguł v1 ze znacznikami `[redacted:<reguła>]` i raportem `redaction`; ciasteczka jako nazwy, rozmiary
   i skróty SHA-256; struktura DOM bez tekstów zamiast `outerHTML` (pełny HTML tylko z opcją developera); formularze i pola plików bez

@@ -244,6 +244,8 @@ export function createRecordingHandlers({
         await setBadge(chrome.action, tabId, 'none');
         return fail('recordFailed');
       }
+      // A new recording: the tab's *Zapisano* screen ends only here, never on a refused or failed start (E4 D7, AC-1.6).
+      await store.clearLast(tabId);
       return ok(startedAt);
     },
 

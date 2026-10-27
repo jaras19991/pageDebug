@@ -12,19 +12,22 @@ const SAVE_RESULT_TIMEOUT = 16_000;
 export const TEST_LIMIT_KEY = 'pds:test:recordingLimitMs';
 
 // Two saves within one second get the same name and Chrome uniquifies it to `… (1).zip`, so the name may have a space.
-const SAVED_RE = /^Zapisano plik (.+?) — /;
+// "Plik: <name>" on the saved screen (E4 D7); the name may contain a space (`… (1).zip`).
+const SAVED_FILE_RE = /^Plik: (.+)$/;
 const RECORDING_RE = /^Nagrywam od \d{2}:\d{2}:\d{2}$/;
 
 export const SCREENSHOT_DECIDED = `document.getElementById('includeScreenshot').checked || document.getElementById('screenshotNote').textContent !== ''`;
 
 const STATE_EXPRESSION = `(() => {
   const byId = (id) => document.getElementById(id);
-  const section = !byId('ready').hidden ? 'ready' : !byId('recording').hidden ? 'recording' : null;
+  const section = !byId('ready').hidden ? 'ready' : !byId('recording').hidden ? 'recording' : !byId('saved').hidden ? 'saved' : null;
   return {
     section,
     since: byId('since').textContent,
     note: byId('note').textContent,
     status: byId('status').textContent,
+    savedFile: byId('savedFile').textContent,
+    savedShot: byId('savedShot').textContent,
     statusIsError: byId('status').classList.contains('error'),
     recordEnabled: !byId('record').disabled,
     saveEnabled: !byId('save').disabled,
@@ -52,6 +55,36 @@ async function waitForState(popup, matches, what, timeout = STEP_TIMEOUT) {
   }
 }
 
+const SAVE_OUTCOME_EXPRESSION = `(() => {
+  const byId = (id) => document.getElementById(id);
+  if (!byId('saved').hidden) return { savedFile: byId('savedFile').textContent, savedShot: byId('savedShot').textContent };
+  const s = byId('status');
+  if (s.classList.contains('error') && s.textContent) return { error: s.textContent };
+  return null;
+})()`;
+
+/**
+ * Save verdict of the popup (E4 TEST0): the saved screen (`#savedFile`, plus the `#savedShot` sentence) or an error status.
+ * Waits up to `timeout` for either.
+ * @param {{ evaluate: Function }} popup
+ * @param {number} [timeout]
+ * @returns {Promise<{ fileName: string, savedShot: string } | { error: string }>}
+ */
+export async function readSaveOutcome(popup, timeout = SAVE_RESULT_TIMEOUT) {
+  const end = Date.now() + timeout;
+  for (;;) {
+    const r = await popup.evaluate(SAVE_OUTCOME_EXPRESSION);
+    if (r?.error) return { error: r.error };
+    if (r?.savedFile) {
+      const m = SAVED_FILE_RE.exec(r.savedFile);
+      if (!m) return { error: `Unexpected saved file text: ${r.savedFile}` };
+      return { fileName: m[1], savedShot: r.savedShot };
+    }
+    if (Date.now() > end) throw new Error(`Popup: no save result within ${timeout} ms`);
+    await new Promise((res) => setTimeout(res, 50));
+  }
+}
+
 /** `http://127.0.0.1/*` for http://127.0.0.1:1234/x — the shape the popup asks for. */
 export function originPatternOf(url) {
   const { protocol, hostname } = new URL(url);
@@ -61,7 +94,7 @@ export function originPatternOf(url) {
 /**
  * Popup state for `page`: opens the popup, reads it and closes it.
  * @param {import('@playwright/test').Page} page
- * @returns {Promise<{ section: 'ready' | 'recording' | null, since: string, note: string, status: string,
+ * @returns {Promise<{ section: 'ready' | 'recording' | 'saved' | null, since: string, note: string, status: string,
  *   statusIsError: boolean, recordEnabled: boolean, saveEnabled: boolean }>}
  */
 export async function popupState(page) {
@@ -85,6 +118,9 @@ export async function startRecording(page, { grant = true, timeout = STEP_TIMEOU
   if (grant) await ext.grantOrigin(originPatternOf(page.url()));
   const popup = await openPopupFor(page);
   try {
+    // After a save the popup shows the saved screen (E4 D7); "Nowe nagranie" leads back to the ready screen.
+    const first = await readState(popup, timeout);
+    if (first.section === 'saved') await popup.click('#newRecording');
     await waitForState(popup, (s) => s.section === 'ready' && s.recordEnabled, '"Nagrywaj" button', timeout);
     const reloaded = page.waitForEvent('load', { timeout });
     const clickedAt = Date.now();
@@ -104,15 +140,15 @@ export async function startRecording(page, { grant = true, timeout = STEP_TIMEOU
 }
 
 /**
- * Clicks "Zapisz paczkę" for `page`, waits for "Zapisano plik …" and unzips that file from the
+ * Clicks "Zapisz paczkę" for `page`, waits for the saved screen and unzips that file from the
  * harness download dir in memory (v4 zip, E3-TEST0). Every save is checked against schema v4
  * (`validate: false` skips it, for tests that look at a broken package on purpose).
  * @param {import('@playwright/test').Page} page
  * @param {{ timeout?: number, resultTimeout?: number, validate?: boolean }} [options]
  * @returns {Promise<{ fileName: string, path: string, entries: string[], json: any, summary: string,
- *   files: Record<string, Uint8Array>, statusText: string, savedAfterMs: number }>}
+ *   files: Record<string, Uint8Array>, statusText: string (the savedShot sentence, '' when the file has the screenshot), savedAfterMs: number }>}
  *   json: parsed snapshot.json; summary: summary.md text; files: raw bytes of every entry.
- *   savedAfterMs: click on "Zapisz paczkę" → "Zapisano plik …" visible (popup polled every 50 ms).
+ *   savedAfterMs: click on "Zapisz paczkę" → saved screen visible (popup polled every 50 ms).
  */
 export async function saveRecording(
   page,
@@ -120,6 +156,7 @@ export async function saveRecording(
 ) {
   const popup = await openPopupFor(page);
   let statusText;
+  let fileName;
   let clickedAt;
   let savedAfterMs;
   try {
@@ -131,23 +168,18 @@ export async function saveRecording(
     if (forceScreenshot && !(await popup.evaluate(`document.getElementById('includeScreenshot').checked`))) await popup.click('#includeScreenshot');
     clickedAt = Date.now();
     await popup.click('#save');
-    const state = await waitForState(
-      popup,
-      (s) => SAVED_RE.test(s.status) || (s.statusIsError && s.status),
-      'save result',
-      resultTimeout,
-    );
-    if (!SAVED_RE.test(state.status)) throw new Error(`Save failed: ${state.status}`);
+    const outcome = await readSaveOutcome(popup, resultTimeout);
+    if ('error' in outcome) throw new Error(`Save failed: ${outcome.error}`);
     savedAfterMs = Date.now() - clickedAt;
-    statusText = state.status;
+    fileName = outcome.fileName;
+    statusText = outcome.savedShot;
   } finally {
     await popup.close();
   }
-  const fileName = SAVED_RE.exec(statusText)[1];
   const { path } = await waitForDownloadFile(page, { fileName, timeout });
   const pkg = await readZipPackage(path);
   if (validate) {
-    assertValidSnapshot(pkg.json);
+    assertValidSnapshot(pkg.json, { expectRulesVersion: 2 });
     const zip = validateZipEntries(pkg.entries, pkg.json);
     if (!zip.ok) throw new Error(`Zip entries of ${fileName}:\n${zip.errors.join('\n')}`);
   }

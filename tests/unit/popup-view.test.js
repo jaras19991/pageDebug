@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
 import { MESSAGES } from '../../src/popup/messages.js';
-import { applyModel, renderModel } from '../../src/popup/view.js';
+import { applyModel, renderModel, wasTouched } from '../../src/popup/view.js';
 
 const HTML_PATH = fileURLToPath(new URL('../../src/popup/popup.html', import.meta.url));
 const html = readFileSync(HTML_PATH, 'utf8');
@@ -98,12 +98,46 @@ describe('renderModel', () => {
     expect(reopened.statusText).toBe(MESSAGES.saving);
   });
 
-  it('saved outcome and lastSaved show the file name in ready state', () => {
+  it('lastSaved in idle → saved section with the file name; outcome saved adds the screenshot suffix (E4 D7)', () => {
     const name = 'page-debug-snapshot-1.json';
-    const m = renderModel(idle(), { target: 'web', outcome: { kind: 'saved', fileName: name } });
-    expect(m).toMatchObject({ section: 'ready', statusText: MESSAGES.saved(name), isError: false });
     const last = renderModel(idle({ lastSaved: { fileName: name, downloadId: 3 } }), WEB);
-    expect(last.statusText).toBe(MESSAGES.saved(name));
+    expect(last).toMatchObject({ section: 'saved', savedFile: MESSAGES.savedFile(name), savedShot: '', savedMissing: '', statusText: '', isError: false });
+    expect(last.buttons).toEqual({ record: false, save: false });
+    const withShot = renderModel(idle({ lastSaved: { fileName: name, downloadId: 3 } }), {
+      target: 'web',
+      outcome: { kind: 'saved', fileName: name, screenshot: 'failed' },
+    });
+    expect(withShot.savedShot).toBe(MESSAGES.screenshotFailedSaved);
+    const missing = renderModel(idle({ lastSaved: { fileName: name, downloadId: 3 } }), { target: 'web', fileMissing: true });
+    expect(missing.savedMissing).toBe(MESSAGES.fileMissing);
+    // "Nowe nagranie" (local): ready with the record button, no saved line in the status (D7).
+    const ready = renderModel(idle({ lastSaved: { fileName: name, downloadId: 3 } }), { target: 'web', showReady: true });
+    expect(ready).toMatchObject({ section: 'ready', statusText: '', buttons: { record: true } });
+    // Saved outcome without lastSaved never shows the old status line in ready.
+    expect(renderModel(idle(), { target: 'web', outcome: { kind: 'saved', fileName: name } })).toMatchObject({ section: 'ready', statusText: '' });
+    // Another tab's recording, this tab idle with a saved file: still the saved screen, with the note.
+    const other = renderModel(idle({ otherTabRecording: true, lastSaved: { fileName: name, downloadId: 3 } }), WEB);
+    expect(other).toMatchObject({ section: 'saved', statusText: MESSAGES.otherTabRecordingSaved });
+    // QA E4 F-3: the saved screen has no "Nagrywaj", so its line does not send the reporter to it.
+    expect(MESSAGES.otherTabRecordingSaved).not.toMatch(/Nagrywaj/);
+    expect(MESSAGES.otherTabRecordingSaved).toMatch(/innej karcie/);
+  });
+
+  it('applyModel shows only the saved section, texts via textContent', () => {
+    const name = '<img src=x onerror=alert(1)>.zip';
+    const m = renderModel(idle({ lastSaved: { fileName: name, downloadId: 3 } }), { target: 'web', fileMissing: true });
+    const dom = domFor(m);
+    expect(dom.visible('saved')).toBe(true);
+    expect(dom.visible('ready')).toBe(false);
+    expect(dom.visible('recording')).toBe(false);
+    expect(dom.text('savedFile')).toBe(MESSAGES.savedFile(name));
+    expect(dom.document.querySelector('#saved img')).toBeNull();
+    expect(dom.text('savedShot')).toBe('');
+    expect(dom.text('savedMissing')).toBe(MESSAGES.fileMissing);
+    // Back to ready hides it again.
+    applyModel(dom.document, renderModel(idle(), WEB));
+    expect(dom.visible('saved')).toBe(false);
+    expect(dom.text('savedMissing')).toBe('');
   });
 
   it.each(['saveCancelled', 'downloadFailed', 'pageBusy', 'failed'])('%s while recording keeps save and marks an error', (kind) => {
@@ -237,5 +271,43 @@ describe('screenshot default with cross-origin frames (store S1, review F4)', ()
     applyModel(document, renderModel(recording(), { target: 'web', busy: 'saving', crossOriginFrames: 1 }));
     expect(box.checked).toBe(true);
     expect(note()).toBe(MESSAGES.screenshotFramesNote);
+  });
+});
+
+describe('developer options in the disclosure (E4 AC-6.5)', () => {
+  it('disabledRules [email, html-structure] → disclosureDev lists both texts; [] → hidden', () => {
+    const m = renderModel(idle(), { target: 'web', devOptions: { disabledRules: ['email', 'html-structure'] } });
+    const expected = `${MESSAGES.disclosureDevExtra.email}; ${MESSAGES.disclosureDevExtra['html-structure']}`;
+    expect(m.disclosureDev).toBe(expected);
+    const dom = domFor(m);
+    expect(dom.visible('disclosureDev')).toBe(true);
+    expect(dom.text('disclosureDev')).toBe(expected);
+
+    for (const devOptions of [{ disabledRules: [] }, null, undefined, { disabledRules: ['jwt', '<b>x</b>'] }, { disabledRules: 'email' }]) {
+      const none = renderModel(idle(), { target: 'web', devOptions });
+      expect(none.disclosureDev, JSON.stringify(devOptions)).toBe('');
+      const d = domFor(none);
+      expect(d.visible('disclosureDev')).toBe(false);
+      expect(d.text('disclosureDev')).toBe('');
+    }
+  });
+
+  it('phone alone, order of DEFAULT_RULES kept', () => {
+    expect(renderModel(idle(), { target: 'web', devOptions: { disabledRules: ['phone'] } }).disclosureDev).toBe(MESSAGES.disclosureDevExtra.phone);
+  });
+});
+
+describe('wasTouched (E4 D8)', () => {
+  it('false until the reporter clicks the box, true after; unknown box → false', () => {
+    const { document } = new JSDOM(html).window;
+    const box = document.getElementById('includeScreenshot');
+    expect(wasTouched(box)).toBe(false);
+    applyModel(document, renderModel(recording(), WEB));
+    expect(wasTouched(box)).toBe(false);
+    applyModel(document, renderModel(recording(), { target: 'web', crossOriginFrames: 2 }));
+    expect(wasTouched(box)).toBe(false); // a default set by the view is not a touch
+    box.click();
+    expect(wasTouched(box)).toBe(true);
+    expect(wasTouched(null)).toBe(false);
   });
 });

@@ -202,10 +202,11 @@ describe('popup ↔ background (contract for E1-T1c)', () => {
     expect(pkg.consoleLogs.map((l) => l.args[0])).toEqual(['Nie działa koszyk']);
 
     // Success comes from the background (pds:last with downloadId), with the real file name.
-    // No screenshot (hidden tab) → "Zapisano…" says so (QA F-5).
+    // No screenshot (hidden tab) → the saved screen says so (QA F-5, E4 D7).
     expect(env.last()).toMatchObject({
-      section: 'ready',
-      statusText: `${MESSAGES.saved(savedAs)} ${MESSAGES.screenshotFailedSaved}`,
+      section: 'saved',
+      savedFile: MESSAGES.savedFile(savedAs),
+      savedShot: MESSAGES.screenshotFailedSaved,
       isError: false,
     });
     expect(env.urlApi.revokeObjectURL).toHaveBeenCalledTimes(1);
@@ -218,7 +219,7 @@ describe('popup ↔ background (contract for E1-T1c)', () => {
     // A popup opened later still shows the last saved file.
     const reopened = env.openPopup();
     await reopened.init();
-    expect(env.last()).toMatchObject({ section: 'ready', statusText: MESSAGES.saved(savedAs) });
+    expect(env.last()).toMatchObject({ section: 'saved', savedFile: MESSAGES.savedFile(savedAs) });
     reopened.destroy();
   });
 
@@ -277,7 +278,7 @@ describe('popup ↔ background (contract for E1-T1c)', () => {
     const { pkg } = await saveFromPopup(later);
     expect(pkg.recordingStoppedReason).toBe('time-limit');
     expect(pkg.consoleLogs.map((l) => l.args[0])).toEqual(['przed limitem']);
-    expect(env.last().statusText).toMatch(/^Zapisano plik snapshot-shop\.example\.com-\d{8}-\d{6}\.zip/);
+    expect(env.last().savedFile).toMatch(/^Plik: snapshot-shop\.example\.com-\d{8}-\d{6}\.zip$/);
     later.destroy();
   });
 
@@ -332,10 +333,12 @@ describe('popup ↔ background: screenshot default with cross-origin frames (sto
       type: 'collect',
       tabId: TAB,
       includeScreenshot: false,
+      screenshotOffReason: 'frames',
+      crossOriginFrames: 1,
     });
     env.fake.completeDownload(1, 'C:\\Users\\u\\Downloads\\x.zip');
     await env.settle();
-    expect(env.last().statusText).toBe(`${MESSAGES.saved('x.zip')} ${MESSAGES.screenshotOffSaved}`);
+    expect(env.last()).toMatchObject({ section: 'saved', savedFile: MESSAGES.savedFile('x.zip'), savedShot: MESSAGES.screenshotOffSaved });
   });
 
   it('no cross-origin frames → default stays checked, no note', async () => {

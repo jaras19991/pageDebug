@@ -20,16 +20,20 @@ describe('popup.html', () => {
     expect(document.querySelector('#recording #save')).not.toBeNull();
   });
 
-  it('popup.html: every <button> has a Polish label from the allowed set (Nagrywaj, Zapisz paczkę), none English', () => {
+  it('popup.html: every <button> has a Polish label from the allowed set (Nagrywaj, Zapisz paczkę, Pokaż plik, Nowe nagranie), none English', () => {
     const labels = [...document.querySelectorAll('button')].map((b) => b.textContent.trim());
-    expect(labels.sort()).toEqual(['Nagrywaj', 'Zapisz paczkę']);
+    expect(labels.sort()).toEqual(['Nagrywaj', 'Nowe nagranie', 'Pokaż plik', 'Zapisz paczkę']);
     expect(text('#record')).toBe('Nagrywaj');
     expect(text('#save')).toBe('Zapisz paczkę');
   });
 
-  it('button set equals E1 set {record, save}', () => {
+  it('button set equals E1 set {record, save} + E4 saved screen {showFile, newRecording}; no "Wyślij" (decision 2026-10-26)', () => {
     const ids = [...document.querySelectorAll('button')].map((b) => b.id).sort();
-    expect(ids).toEqual(['record', 'save']);
+    expect(ids).toEqual(['newRecording', 'record', 'save', 'showFile']);
+    // Sending from the popup was rejected: no send button, no mailto, no link at all.
+    expect(document.querySelectorAll('a, form').length).toBe(0);
+    expect(html).not.toMatch(/mailto:/i);
+    for (const b of document.querySelectorAll('button')) expect(b.textContent).not.toMatch(/Wyślij/);
     // E3: the only form control is the screenshot checkbox (AC-2.1).
     const controls = [...document.querySelectorAll('input, select, textarea, [role="switch"], [role="checkbox"]')];
     expect(controls.map((el) => el.id)).toEqual(['includeScreenshot']);
@@ -62,7 +66,7 @@ describe('popup.html', () => {
 
   it('popup.html static texts equal MESSAGES incl. privacyNote and includeScreenshot label (AC-1.3)', () => {
     expect(text('#ready #disclosureTitle')).toBe(MESSAGES.disclosureTitle);
-    const items = [...document.querySelectorAll('#ready #disclosure > li')].map((li) => li.textContent.trim());
+    const items = [...document.querySelectorAll('#ready #disclosure > li:not(#disclosureDev)')].map((li) => li.textContent.trim());
     expect(items).toEqual([...MESSAGES.disclosureItems]);
     expect(text('#ready #privacyNote')).toBe(MESSAGES.privacyNote);
     expect(text('#ready #noUpload')).toBe(MESSAGES.noUpload);
@@ -101,9 +105,65 @@ describe('popup.html', () => {
     expect(document.querySelector('#ready .actions #record')).not.toBeNull();
   });
 
+  it('consent and reload notices sit in the sticky footer right above "Nagrywaj", only the list scrolls (QA E4 F-1, AC-1.8)', () => {
+    const footer = document.querySelector('#ready .actions');
+    const kids = [...footer.children].map((el) => el.id);
+    expect(kids).toEqual(['consentNotice', 'reloadNotice', 'record']);
+    // The disclosure, privacy note and no-upload sentence stay in the scrolling part above the footer.
+    for (const id of ['disclosure', 'privacyNote', 'noUpload']) expect(footer.contains(document.getElementById(id)), id).toBe(false);
+    const css = document.querySelector('style').textContent.replace(/\s+/g, ' ');
+    expect(css).toMatch(/#ready \.actions p \{[^}]*margin: 0;/);
+  });
+
+  it('saved screen texts in popup.html equal MESSAGES; instruction is Q-2 verbatim (AC-1.1)', () => {
+    const saved = document.querySelector('section#saved');
+    expect(saved).not.toBeNull();
+    expect(saved.hasAttribute('hidden')).toBe(true);
+    expect(text('#saved #savedTitle')).toBe(MESSAGES.savedTitle);
+    expect(text('#saved #savedInstruction')).toBe(MESSAGES.savedInstruction);
+    expect(text('#saved #savedInstruction')).toBe(
+      'Wyślij ten plik osobie, która poprosiła Cię o zgłoszenie — jako załącznik e-maila lub w zgłoszeniu.',
+    );
+    expect(text('#saved #showFile')).toBe(MESSAGES.showFile);
+    expect(text('#saved #newRecording')).toBe(MESSAGES.newRecording);
+    // Filled by view.js: the file name, the screenshot suffix and the "file not found" alert.
+    for (const id of ['savedFile', 'savedShot', 'savedMissing']) {
+      expect(document.querySelector(`#saved #${id}`), id).not.toBeNull();
+      expect(text(`#saved #${id}`), id).toBe('');
+    }
+    expect(document.getElementById('savedMissing').getAttribute('role')).toBe('alert');
+    const order = ['savedTitle', 'savedFile', 'savedInstruction', 'showFile', 'newRecording'].map((id) => document.getElementById(id));
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i - 1].compareDocumentPosition(order[i]) & 4, order[i].id).toBe(4); // FOLLOWING
+    }
+    const css = document.querySelector('style').textContent.replace(/\s+/g, ' ');
+    expect(css).toMatch(/#savedShot:empty, #savedMissing:empty \{[^}]*display: none;/);
+  });
+
+  it('consentNotice is AC-1.8 verbatim in messages.js and popup.html (AC-1.8)', () => {
+    expect(text('#ready #consentNotice')).toBe(
+      'Mimo automatycznego usuwania haseł i tokenów plik może zawierać Twoje dane osobowe (np. adresy stron, treść logów) — wyślij go tylko developerowi. Klikając „Nagrywaj”, zgadzasz się na zapisanie tych danych w pliku.',
+    );
+    expect(text('#ready #consentNotice')).toBe(MESSAGES.consentNotice);
+  });
+
+  it('disclosure ends with the hidden, empty #disclosureDev item filled by the view (AC-6.5)', () => {
+    const items = [...document.querySelectorAll('#ready #disclosure > li')];
+    const last = items.at(-1);
+    expect(last.id).toBe('disclosureDev');
+    expect(last.hasAttribute('hidden')).toBe(true);
+    expect(last.textContent).toBe('');
+  });
+
+  it('no element in popup.html changes developer settings (no select/checkbox other than #includeScreenshot) (AC-6.2)', () => {
+    const controls = [...document.querySelectorAll('input, select, textarea, [contenteditable], [role="switch"], [role="checkbox"], [role="radio"], [role="listbox"]')];
+    expect(controls.map((el) => el.id)).toEqual(['includeScreenshot']);
+    expect(document.body.textContent).not.toMatch(/ustawienia|opcje|konfiguracj/i);
+  });
+
   it('status message sits above both sections, so "Zapisano…" is visible without scrolling at 360×600 (QA F-1)', () => {
     const status = document.getElementById('status');
-    for (const id of ['ready', 'recording']) {
+    for (const id of ['ready', 'recording', 'saved']) {
       expect(status.compareDocumentPosition(document.getElementById(id)) & 4, id).toBe(4); // FOLLOWING
     }
     expect(status.parentElement).toBe(document.body);
@@ -151,10 +211,11 @@ describe('popup.html', () => {
     expect(document.body.textContent).not.toMatch(/Debug snapshot|snapshot debugowy/);
   });
 
-  it('no JSON, zip, hash, redakcja in the popup; "token" only inside #privacyNote (AC-1.3)', () => {
+  it('no JSON, zip, hash, redakcja in the popup; "token" only inside #privacyNote and #consentNotice (AC-1.3, AC-1.8)', () => {
     const body = document.body.cloneNode(true);
-    for (const el of body.querySelectorAll('script, #privacyNote')) el.remove();
+    for (const el of body.querySelectorAll('script, #privacyNote, #consentNotice')) el.remove();
     const visible = body.textContent.toLowerCase();
-    for (const word of ['json', 'zip', 'hash', 'redakcj', 'token']) expect(visible, word).not.toContain(word);
+    // "Snapshot" stays allowed only as part of the product name in <h1>.
+    for (const word of ['json', 'zip', 'hash', 'redakcj', 'token', 'mcp']) expect(visible, word).not.toContain(word);
   });
 });

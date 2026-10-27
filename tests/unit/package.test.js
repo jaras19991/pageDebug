@@ -720,4 +720,51 @@ describe('assemblePackage v4 (E3-T4b)', () => {
     expect(pkg.notes).toContain('No screenshot: form fields could not be hidden (no answer from the page).');
     expect(SCREENSHOT_NOTES.notHidden('x')).toBe('No screenshot: form fields could not be hidden (x).');
   });
+
+  // E4 D8 (IN6, IN11): why the popup turned the screenshot off, and frames of other sites on an included one.
+  const shotNotesOf = (pkg) => pkg.notes.filter((n) => /screenshot/i.test(n));
+
+  it('SCREENSHOT_NOTES is the screenshot-notes.js object (re-export)', async () => {
+    const notesModule = await import('../../src/lib/screenshot-notes.js');
+    expect(SCREENSHOT_NOTES).toBe(notesModule.SCREENSHOT_NOTES);
+  });
+
+  it('includeScreenshot false + reason frames(3) → note offFrames(3), not "turned off by the reporter" (AC-3.9)', () => {
+    const pkg = assemblePackage({ meta: meta({ screenshotOff: true, screenshotOffReason: 'frames', crossOriginFrames: 3 }), current: current() });
+    expect(pkg.screenshots).toEqual([]);
+    expect(shotNotesOf(pkg)).toEqual([SCREENSHOT_NOTES.offFrames(3)]);
+    expect(pkg.notes).not.toContain(SCREENSHOT_NOTES.off);
+  });
+
+  it('reason frameCheckFailed → offCheckFailed (AC-3.9)', () => {
+    const pkg = assemblePackage({ meta: meta({ screenshotOff: true, screenshotOffReason: 'frameCheckFailed' }), current: current() });
+    expect(shotNotesOf(pkg)).toEqual([SCREENSHOT_NOTES.offCheckFailed]);
+  });
+
+  it.each([
+    ['missing', {}],
+    ['reporter', { screenshotOffReason: 'reporter' }],
+    ['unknown', { screenshotOffReason: 'evil' }],
+    ['frames without a valid count', { screenshotOffReason: 'frames', crossOriginFrames: 0 }],
+    ['frames with a count over 999', { screenshotOffReason: 'frames', crossOriginFrames: 1000 }],
+    ['frames with a string count', { screenshotOffReason: 'frames', crossOriginFrames: '3' }],
+  ])('%s reason → off (AC-3.9)', (_label, over) => {
+    const pkg = assemblePackage({ meta: meta({ screenshotOff: true, ...over }), current: current() });
+    expect(shotNotesOf(pkg)).toEqual([SCREENSHOT_NOTES.off]);
+  });
+
+  it('screenshot included and framesVisible 2 → note framesVisible(2); 0 → no note (AC-3.10)', () => {
+    const withFrames = assemblePackage({ meta: meta({ screenshots: [shot()], framesVisible: 2 }), current: current() });
+    expect(withFrames.screenshots).toHaveLength(1);
+    expect(withFrames.notes).toContain(SCREENSHOT_NOTES.framesVisible(2));
+    for (const framesVisible of [0, undefined, -1, 1000, 2.5, '2']) {
+      const pkg = assemblePackage({ meta: meta({ screenshots: [shot()], framesVisible }), current: current() });
+      expect(pkg.notes.some((n) => /frame/i.test(n))).toBe(false);
+    }
+  });
+
+  it('framesVisible without an included screenshot → no frames note', () => {
+    const pkg = assemblePackage({ meta: meta({ screenshotOff: true, framesVisible: 2 }), current: current() });
+    expect(pkg.notes).not.toContain(SCREENSHOT_NOTES.framesVisible(2));
+  });
 });

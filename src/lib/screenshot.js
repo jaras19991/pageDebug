@@ -18,11 +18,11 @@ export const SCREENSHOT_LIMITS = Object.freeze({
   headerChars: 65536,
 });
 
-// Field masking (E3 D6): margin so that 8×8 JPEG blocks and anti-aliasing leave no edge of a glyph.
+// Field masking (E3 D6, E4 D10): the margin covers the anti-aliased edge of the field's border box. The mask is painted
+// on the bitmap before JPEG encoding, so 8×8 blocks cannot bring hidden glyphs back; a label 4 CSS px above stays visible.
 export const MASK_LIMITS = Object.freeze({
   color: '#9e9e9e',
   marginCssPx: 2,
-  marginImagePx: 8,
   // Image and viewport proportions may differ this much (device pixel rounding); more means a wrong scale.
   aspectTolerance: 0.02,
   // Pinch-zoom (`visualViewport.scale`, spike S0): rectangles are in layout-viewport pixels, the image shows the
@@ -232,7 +232,7 @@ function isPinchZoomed(viewport) {
 
 /**
  * Field rectangles (CSS px, viewport coordinates) → rectangles in image pixels: scaled by
- * `imageWidth / innerWidth` (covers DPR and zoom), grown by `max(2 CSS px, 8 image px)`, clipped to the image;
+ * `imageWidth / innerWidth` (covers DPR and zoom), grown by `round(2 CSS px × scale)` image px, clipped to the image;
  * rectangles outside the image are dropped. `null` when the scale cannot be trusted (aspect ratio off by > 2%)
  * the page is pinch-zoomed (`viewport.vvScale` ≠ 1 ± 1%), or the input is malformed — the caller then keeps no image at all.
  * @param {{ rects: Array<{ x: number, y: number, w: number, h: number }>,
@@ -247,7 +247,7 @@ export function planMask({ rects, viewport, imageWidth, imageHeight }) {
   if (Math.abs(aspect - 1) > MASK_LIMITS.aspectTolerance) return null;
   if (rects.length > MASK_LIMITS.maxRects) return [{ x: 0, y: 0, w: imageWidth, h: imageHeight }];
   const scale = imageWidth / innerWidth;
-  const margin = Math.max(MASK_LIMITS.marginCssPx * scale, MASK_LIMITS.marginImagePx);
+  const margin = Math.round(MASK_LIMITS.marginCssPx * scale);
   const planned = [];
   for (const rect of rects) {
     if (!rect || ![rect.x, rect.y, rect.w, rect.h].every(finite)) return null;

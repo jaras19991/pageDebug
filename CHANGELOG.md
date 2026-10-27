@@ -4,6 +4,40 @@ Format: [Keep a Changelog](https://keepachangelog.com/pl/1.1.0/). Wpisy per epik
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-27
+
+### E4 — Wyjście: podsumowanie, viewer, przekazanie, dostęp dla agenta (rozszerzenie 0.6.0, `schemaVersion` bez zmian: 4)
+
+#### Dodano
+- **Dla developera — pełne `summary.md`** (`src/lib/summary.js`): środowisko, ostatnie kroki (z oznaczeniem kroku przed pierwszym błędem), grupy błędów, nieudane zapytania, CWV per dokument, najwolniejsze zasoby, ciasteczka i rozmiar, prywatność (linia o regułach v2, o regułach wyłączonych przez developera i o zrzucie), uwagi; stała struktura, ≤ 16 KB i 200 linii, wartości ze strony w code spanach. Ten sam tekst w rozszerzeniu, viewerze i MCP. Wspólne moduły: `snapshot-query.js`, `snapshot-metrics.js`, `snapshot-diff.js`.
+- **Viewer** `dist/page-debug-viewer-<wersja>.html` (artefakt `npm run pack`; źródło `src/viewer`, generowany do `src/standalone/viewer.html`): jeden plik otwierany z `file://`, offline, z CSP z hashami i renderowaniem wyłącznie przez tekst. Zakładki: Podsumowanie, Kroki, Błędy, Sieć, Konsola, CWV, DOM, Storage. Czyta paczki v1–v4 (`unzip.js`, `migrate.js`, `package-reader.js`); dla v1–v3 pokazuje baner „Paczka sprzed automatycznej redakcji — może zawierać hasła i tokeny”.
+- **Serwer MCP** `mcp/` (własny transport stdio, bez zależności npm, tylko odczyt): katalog paczek przez argument albo `PDS_SNAPSHOTS_DIR` (jeden katalog na serwer) i siedem narzędzi: `list_snapshots`, `get_summary`, `get_errors`, `get_network`, `get_vitals`, `get_steps`, `diff_snapshots`; limit odpowiedzi 25 000 znaków. Klucz diffu statusów to metoda + `pathname` bez hosta (staging vs produkcja). `list_snapshots` ma pole `warnings`, `get_summary` dla v<4 dopisuje notę o braku redakcji.
+- **Dla zgłaszającego — ekran „Zapisano”** w popupie: nazwa pliku, „Pokaż plik” (sprawdzenie `downloads.search`, potem `downloads.show`), „Nowe nagranie”; stan `lastSaved` w `storage.session`. Zdanie zgody (dane osobowe, „Klikając „Nagrywaj”, zgadzasz się…”) stoi nad przyciskiem „Nagrywaj” i nie przewija się poza ekran. Wysyłki z popupu nie ma (decyzja 2026-10-26) — zgłaszający wysyła plik sam.
+- **Konfiguracja deweloperska**: `npm run build|dev:* -- --config <plik>` albo `PDS_CONFIG` wbudowuje `disabledRules` do `lib/dev-config.js`; polityka `storage.managed` (Chrome: `managed-schema.json`, Firefox: `policies.json` `3rdparty`) nadpisuje ją w całości. Wyłączyć można tylko `email`, `phone` i `html-structure`. `npm run pack --config` czyta tylko jawny `--config` i dopisuje do zipów sufiks `-devconfig` z ostrzeżeniem. Popup i `summary.md` ujawniają wyłączone reguły.
+- Notatki o zrzucie w `notes`: powód wyłączenia przez popup (ramki innych serwisów, nieudane sprawdzenie) i liczba niezakrytych ramek na zrzucie (`src/lib/screenshot-notes.js`); polska linia „Zrzut ekranu: …” w `summary.md`.
+- Dokumentacja: [docs/JAK-CZYTAC-PACZKE.md](docs/JAK-CZYTAC-PACZKE.md), `mcp/README.md`; zaktualizowana instrukcja dla zgłaszającego (ekran „Zapisano”, wysyłka samodzielna, zgoda nad „Nagrywaj”).
+
+#### Zmieniono
+- **Redakcja `rulesVersion: 2`** (nazwy reguł i znaczników bez zmian): klucz na początku stringu JSON (IN1), `code`/`ticket` w tekście i w adresach względnych (IN3), podgląd `{ truncated, preview }` argumentów konsoli bez zniekształceń i bez zawyżonego `masked` (IN4), kontener w parze z kluczem i zdania kończące się słowem-kluczem w argumentach konsoli (IN5), wyjątek „proza” dla `auth`/`session`/`key` bez cudzysłowu (PB-2), poprawka IN1b (`Error: password: …` po innym kluczu).
+- **`srcdoc` ramek**: atrybut `dom.iframes[].attributes.srcdoc` zastępuje `[redacted:html-structure]` (niósł pełny HTML ramki z wartościami pól).
+- Maska pól na zrzucie: margines 2 px CSS zamiast 8 px (etykiety nad polami zostają czytelne; IN7).
+- `redaction.disabledRules` pochodzi z konfiguracji developera (w 0.5.0 zawsze `[]`); `rulesVersion` w świeżej paczce to `2`. Walidator przyjmuje `1 ≤ rulesVersion ≤ 2`.
+- Manifest Chrome: klucz `storage.managed_schema` (nie jest uprawnieniem; Firefox go nie ma). Uzasadnienia uprawnień `storage` i `downloads` w README uzupełnione o `storage.managed` i „Pokaż plik”.
+- **`schemaVersion` zostaje 4** — bez nowych ani usuniętych pól; konsument v4 z 0.5.0 czyta paczki 0.6.0 (patrz [docs/snapshot-schema.md](docs/snapshot-schema.md#wersja-4--zmiany-w-060-e4)).
+
+#### Naprawiono
+- Maskowanie w MAIN odporne na podmienione iteratory strony (IN2, IN2b): pętle indeksowe zamiast `for…of` w `recorder`, `hooks-console`, `serialize` i w regułach — wcześniej nagranie pod podmienionym `Array.prototype[Symbol.iterator]` było puste.
+- Wydajność redakcji: `TRAILING_BLANKS` i `INPUT_TAG` liniowe (40 000 spacji: 1461 ms → 0,5 ms).
+- Viewer: pasek zakładek nie jest widoczny przed wczytaniem paczki (FIX1).
+- Review i QA: pary w `'token: abcd…'` z apostrofem, `redactJsonPreview` z parami `{name, value}`, pusty tekst argumentów `{ truncated, preview }` w grupowaniu błędów, ukryte `INPUT_TAG`/`TEXTAREA` przy wyłączonym `html-structure`, tekst o nagrywaniu w innej karcie na ekranie „Zapisano” (QA F-3), `pack` nie czyta `PDS_CONFIG` z env niejawnie.
+
+#### Bezpieczeństwo
+- Wyciek wykryty w TEST3 i naprawiony przed wydaniem: `Error: password: …` (para po innym kluczu) była jawna; `dom.iframes[].attributes.srcdoc` niósł wartości pól formularzy ramki (QA F-2).
+- Viewer i MCP renderują dane z paczki wyłącznie jako tekst, CSP viewera blokuje skrypty inline i sieć; MCP czyta tylko wskazany katalog (odrzuca ścieżki, `..` i dowiązania symboliczne), nie zapisuje i nie łączy się z siecią.
+- Brak nowych uprawnień względem 0.3.0. Do sklepów trafia zawsze build bez `--config`; zipy `*-devconfig.zip` są tylko do użytku wewnętrznego.
+- Znane ograniczenia (README „Znane ograniczenia”): frazy-hasła złożone z samych słów pod `session:`/`key:`/`auth:` w cudzysłowie nie są maskowane (PB-2); podgląd JSON długiego wpisu konsoli nie zamaskuje `{"value":…,"name":"password"}`; nieutwardzone są podmienione iteratory `Map`/`Set`/`String`, `%ArrayIteratorPrototype%.next` i metody tablic; telefony w tekście kroków nie są maskowane; `downloads.show` nie sygnalizuje usunięcia pliku.
+- Do ręcznej weryfikacji: Eksplorator Windows (Pokaż plik), prawdziwy klient MCP, Firefox i Edge, polityki `storage.managed` w obu przeglądarkach (Firefox: spike S3).
+
 ## [0.5.0] - 2026-10-26
 
 ### E3 — Prywatność i rozmiar paczki (schemat paczki v4)

@@ -5,7 +5,7 @@
 // feature detection (supportedEntryTypes, interactionId), never from the user agent.
 // Every buffer is bounded; every failure is swallowed. Top-level helpers carry the `vitalsObs` prefix (D6).
 
-import { rate, unavailable, clsFromShifts, inpFromEvents, inpPhases, topLongTasks, vitalsMap, LONG_TASKS_MAX } from './vitals-math.js';
+import { rate, unavailable, clsFromShifts, inpFromEvents, inpPhases, topLongTasks, vitalsList, vitalsMap, LONG_TASKS_MAX } from './vitals-math.js';
 
 export const VITALS_CLS_SOURCES_MAX = 5;
 
@@ -43,7 +43,8 @@ function vitalsObsGetter(ctor, name) {
 // Shifts of the session window that is still open (the last one); only it can still grow.
 function vitalsObsTrailingWindow(shifts) {
   let current = [];
-  for (const shift of shifts) {
+  for (let i = 0; i < shifts.length; i++) {
+    const shift = shifts[i];
     const first = current[0];
     const last = current[current.length - 1];
     if (current.length && shift.startTime - last.startTime < 1000 && shift.startTime - first.startTime < 5000) current.push(shift);
@@ -81,7 +82,10 @@ export function captureVitalsIntrinsics(win) {
 export function installVitals({ win, doc, now, selectorOf, intrinsics = {}, accept, options = {} }) {
   const I = { ...captureVitalsIntrinsics(win), ...intrinsics };
   const call = (fn, self, ...args) => I.apply(fn, self, args);
-  const types = new Set(I.PerformanceObserver ? I.supportedEntryTypes : []);
+  // Filled by index, not new Set(iterable): the page may replace the array iterator (E4-IN2b).
+  const types = new Set();
+  const supported = I.PerformanceObserver ? vitalsList(I.supportedEntryTypes) : [];
+  for (let i = 0; i < supported.length; i++) types.add(supported[i]);
   const since = typeof options.interactionsSince === 'number' && Number.isFinite(options.interactionsSince)
     ? options.interactionsSince
     : -Infinity;
@@ -118,14 +122,20 @@ export function installVitals({ win, doc, now, selectorOf, intrinsics = {}, acce
     if (entry.hadRecentInput || typeof entry.value !== 'number' || !ok(entry.startTime)) return;
     const selectors = [];
     if (entry.value >= VITALS_OBS_SHIFT_MIN) {
-      for (const source of [...(entry.sources || [])].slice(0, VITALS_OBS_SOURCES_PER_SHIFT)) {
+      const sources = vitalsList(entry.sources).slice(0, VITALS_OBS_SOURCES_PER_SHIFT);
+      for (let i = 0; i < sources.length; i++) {
+        const source = sources[i];
         const sel = select(source && source.node);
         if (sel) selectors.push(sel);
       }
     }
     shifts.push({ startTime: entry.startTime, value: entry.value, hadRecentInput: false, selectors });
     if (shifts.length > VITALS_OBS_SHIFTS_MAX) {
-      const keep = new Set([...clsFromShifts(shifts).windowEntries, ...vitalsObsTrailingWindow(shifts)]);
+      const keep = new Set();
+      const windowEntries = clsFromShifts(shifts).windowEntries;
+      const trailing = vitalsObsTrailingWindow(shifts);
+      for (let i = 0; i < windowEntries.length; i++) keep.add(windowEntries[i]);
+      for (let i = 0; i < trailing.length; i++) keep.add(trailing[i]);
       shifts = shifts.filter((shift) => keep.has(shift)).slice(-VITALS_OBS_SHIFTS_MAX);
     }
   }
@@ -147,7 +157,9 @@ export function installVitals({ win, doc, now, selectorOf, intrinsics = {}, acce
     });
     if (interactions.size > VITALS_OBS_INTERACTIONS_MAX) {
       let shortest = null;
-      for (const item of interactions.values()) if (!shortest || item.duration < shortest.duration) shortest = item;
+      interactions.forEach((item) => {
+        if (!shortest || item.duration < shortest.duration) shortest = item;
+      });
       interactions.delete(shortest.interactionId);
     }
   }
@@ -158,7 +170,7 @@ export function installVitals({ win, doc, now, selectorOf, intrinsics = {}, acce
       startTime: entry.startTime,
       duration: entry.duration,
       blockingDuration: entry.blockingDuration,
-      scripts: vitalsMap([...(entry.scripts || [])].slice(0, 10), (s) => ({
+      scripts: vitalsMap(vitalsList(entry.scripts).slice(0, 10), (s) => ({
         sourceURL: s.sourceURL,
         sourceFunctionName: s.sourceFunctionName,
         invoker: s.invoker,
@@ -180,11 +192,15 @@ export function installVitals({ win, doc, now, selectorOf, intrinsics = {}, acce
   ];
 
   function feed(handler, entries) {
-    for (const entry of entries || []) vitalsObsTry(() => entry && handler(entry));
+    const list = vitalsObsTry(() => vitalsList(entries), []);
+    for (let i = 0; i < list.length; i++) vitalsObsTry(() => list[i] && handler(list[i]));
   }
 
   const observers = [];
-  for (const [type, handler, extra] of observed) {
+  for (let i = 0; i < observed.length; i++) {
+    const type = observed[i][0];
+    const handler = observed[i][1];
+    const extra = observed[i][2];
     if (!types.has(type)) continue;
     vitalsObsTry(() => {
       const observer = new I.PerformanceObserver((list) => {
@@ -242,8 +258,10 @@ export function installVitals({ win, doc, now, selectorOf, intrinsics = {}, acce
     const result = clsFromShifts(shifts);
     const sources = [];
     const ranked = result.windowEntries.slice().sort((a, b) => b.value - a.value);
-    for (const shift of ranked) {
-      for (const selector of shift.selectors) {
+    for (let i = 0; i < ranked.length; i++) {
+      const shift = ranked[i];
+      for (let j = 0; j < shift.selectors.length; j++) {
+        const selector = shift.selectors[j];
         if (sources.length < VITALS_CLS_SOURCES_MAX) {
           sources.push({ selector, value: Math.round(shift.value * 1000) / 1000, t: vitalsObsMs(shift.startTime) });
         }
@@ -254,7 +272,9 @@ export function installVitals({ win, doc, now, selectorOf, intrinsics = {}, acce
 
   function inp(final) {
     if (!types.has('event') || !I.hasInteractionId) return unavailable('unsupported-browser');
-    const result = inpFromEvents([...interactions.values()]);
+    const values = [];
+    interactions.forEach((item) => { values.push(item); });
+    const result = inpFromEvents(values);
     if (!result) return unavailable('no-interaction');
     const { entry } = result;
     const phases = inpPhases(entry);
@@ -275,7 +295,10 @@ export function installVitals({ win, doc, now, selectorOf, intrinsics = {}, acce
 
   function snapshot({ final = false } = {}) {
     if (active) {
-      for (const { observer, handler } of observers) feed(handler, vitalsObsTry(() => call(I.takeRecords, observer), []));
+      for (let i = 0; i < observers.length; i++) {
+        const { observer, handler } = observers[i];
+        feed(handler, vitalsObsTry(() => call(I.takeRecords, observer), []));
+      }
     }
     const finalized = final === true;
     const lcpExtra = {};
@@ -294,7 +317,8 @@ export function installVitals({ win, doc, now, selectorOf, intrinsics = {}, acce
   function restore() {
     if (!active) return;
     // Pending records are taken first, so a stopped recorder keeps what was observed until now.
-    for (const { observer, handler } of observers) {
+    for (let i = 0; i < observers.length; i++) {
+      const { observer, handler } = observers[i];
       feed(handler, vitalsObsTry(() => call(I.takeRecords, observer), []));
       vitalsObsTry(() => call(I.disconnect, observer));
     }

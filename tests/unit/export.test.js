@@ -146,7 +146,7 @@ describe('exportPackage (E3-T4b, design D8)', () => {
     expect(json.screenshots).toEqual([]);
     expect(json.overview.screenshot).toBe(false);
     expect(json.notes).toContain(SCREENSHOT_NOTES.off);
-    expect(text['summary.md']).toContain('- Zrzut ekranu: nie');
+    expect(text['summary.md']).toContain('- Zrzut ekranu: wyłączony przez zgłaszającego');
   });
 
   it('trap values (JWT, cookie, email, password, access_token) absent from every zip entry bytes (AC-3.5)', async () => {
@@ -177,7 +177,7 @@ describe('exportPackage (E3-T4b, design D8)', () => {
     const values = Object.values(json.redaction.masked);
     const total = values.reduce((a, b) => a + b, 0);
     expect(total).toBeGreaterThan(4);
-    expect(text['summary.md']).toContain(`Zamaskowano ${total} wartości w ${values.length} sekcjach (reguły v1). Hasła, tokeny i dane logowania nie są w tym pliku.`);
+    expect(text['summary.md']).toContain(`Zamaskowano ${total} wartości w ${values.length} sekcjach (reguły v2). Hasła, tokeny i dane logowania nie są w tym pliku.`);
     expect(text['summary.md']).toContain('# Paczka diagnostyczna — app.example.test');
   });
 

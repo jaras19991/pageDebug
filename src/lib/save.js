@@ -12,14 +12,17 @@ import { resolveDisabledRules } from './redact.js';
 import { fromBase64, toBase64 } from './zip.js';
 import { isSameOrigin } from './origin.js';
 import { captureScreenshot, maskScreenshot, MASK_LIMITS, SCREENSHOT_LIMITS } from './screenshot.js';
+import { FRAMES_MAX, frameCount } from './screenshot-notes.js';
 
 // D7 / AC-2.4: click → download id, and download start → complete.
 export const COLLECT_TIMEOUT_MS = 15_000;
 export const DOWNLOAD_TIMEOUT_MS = 60_000;
 // E3 D6: one `fieldRects` answer from ISOLATED; counted in the 15 s of the collect.
 export const FIELD_RECTS_TIMEOUT_MS = 1000;
-// `frameCheck` only needs "any or none"; a bigger count is reported as this.
-const MAX_FRAMES_REPORTED = 999;
+// `frameCheck` and the frames note only need "how many, roughly"; a bigger count is reported as this.
+const MAX_FRAMES_REPORTED = FRAMES_MAX;
+// Why the popup left the screenshot off (E4 D8); anything else counts as the reporter's switch.
+const SCREENSHOT_OFF_REASONS = new Set(['reporter', 'frames', 'frameCheckFailed']);
 
 // Protocol of the MAIN `collect` result (design T15: `{ protocol, recorderVersion, docId, … }`).
 // Mirrors PROTOCOL from src/page/constants.js (T3c, E2-T9a); src/lib does not import page modules.
@@ -42,7 +45,7 @@ const shotFailedNote = (reason) =>
 // The image is kept, but over FIELD_RECTS_MAX fields ISOLATED gives one rectangle of the whole view (E3-IN1a).
 const NOTE_FIELDS_OVERFLOW = 'More than 2000 form fields: the whole screenshot is covered.';
 
-// Why form fields could not be hidden: `SCREENSHOT_NOTES.notHidden(reason)` in package.js (E3 D6, AC-2.4).
+// Why form fields could not be hidden: `SCREENSHOT_NOTES.notHidden(reason)` in screenshot-notes.js (E3 D6, AC-2.4).
 const MASK_REASONS = Object.freeze({
   noAnswer: 'the page did not answer', // no bridge (e.g. loadedAfterStop), timeout, sendMessage threw
   invalid: 'invalid answer',
@@ -73,7 +76,22 @@ function checkFieldRects(answer) {
     return { reason: MASK_REASONS.invalid };
   }
   if (isPinchZoomed(viewport)) return { reason: MASK_REASONS.zoomed };
-  return { rects: answer.rects, viewport, overflow: answer.overflow === true };
+  return { rects: answer.rects, viewport, overflow: answer.overflow === true, framesVisible: visibleFrames(answer.frames) };
+}
+
+// Cross-origin frames the reporter could see (`frames.crossOriginVisible`, IN11); they are never masked (PB-1 = B).
+// Malformed → 0: the note is information only, the image does not depend on it.
+function visibleFrames(frames) {
+  const count = isObject(frames) ? frames.crossOriginVisible : undefined;
+  return Number.isInteger(count) && count > 0 ? Math.min(count, MAX_FRAMES_REPORTED) : 0;
+}
+
+// `collect` message → the popup's reason for an unticked box (E4 D8); `crossOriginFrames` only with 'frames', 1..999.
+function screenshotOffOf({ screenshotOffReason, crossOriginFrames }) {
+  const reason = typeof screenshotOffReason === 'string' && SCREENSHOT_OFF_REASONS.has(screenshotOffReason) ? screenshotOffReason : 'reporter';
+  const count = reason === 'frames' ? frameCount(crossOriginFrames) : null;
+  if (reason === 'frames' && count === null) return { screenshotOffReason: 'reporter' };
+  return count === null ? { screenshotOffReason: reason } : { screenshotOffReason: reason, crossOriginFrames: count };
 }
 
 // R1 ∪ R2 without repeats: a field that did not move is one rectangle (and one in `maskedFields`). Malformed entries
@@ -126,13 +144,13 @@ const isOurDownload = (rec, downloadId) =>
  *   `runtime`, `scripting`, `action`; optional `now`, `setTimeout`, `clearTimeout`, and
  *   `unregisterAll(scripting)` / `setBadge(action, tabId, kind)` from content-scripts.js (T1b);
  *   optional `codec` (screenshot.js `createCanvasCodec`) to mask form fields and shrink the screenshot;
- *   optional `devOptions` (E3 D12; `{ disabledRules }`, background.js passes `{}`); optional `exportAssembled`
+ *   optional `getDevOptions` (E4 D5; `() => Promise<{ disabledRules }>`, read once per collect; failure → defaults); optional `exportAssembled`
  *   (export.js, injected by tests).
  */
 export function createSaveHandlers(api) {
   const { store, tabs, downloads, runtime, scripting, action } = api;
   const codec = api.codec ?? null;
-  const devOptions = isObject(api.devOptions) ? api.devOptions : {};
+  const getDevOptions = typeof api.getDevOptions === 'function' ? api.getDevOptions : async () => ({});
   const exportAssembled = api.exportAssembled ?? exportZip;
   const now = () => (api.now ?? Date.now)();
   const schedule = (fn, ms) => (api.setTimeout ?? globalThis.setTimeout)(fn, ms);
@@ -195,7 +213,8 @@ export function createSaveHandlers(api) {
    * D6: R1 = fieldRects → captureVisibleTab → origin re-check → R2 = fieldRects; a view that moved gets one retry
    * (R2 becomes R1). The mask is R1 ∪ R2. The unmasked capture never leaves this function: every failure gives a
    * note instead of an image (AC-2.4).
-   * @returns {Promise<{ tab: object|null, shot?: object, overflow?: boolean, maskFailure?: string, note?: string }>}
+   * `framesVisible` = max(R1, R2) visible cross-origin frames of the kept image (IN11, a note only).
+   * @returns {Promise<{ tab: object|null, shot?: object, overflow?: boolean, framesVisible?: number, maskFailure?: string, note?: string }>}
    */
   async function takeScreenshot({ tabId, tab, origin, getTab, timeLeft }) {
     let before = await requestFieldRects(tabId, timeLeft());
@@ -220,7 +239,12 @@ export function createSaveHandlers(api) {
       if (masked === TIMEOUT) return { tab, note: shotFailedNote('timeout') };
       if (masked.error === 'fields-not-hidden') return { tab, maskFailure: MASK_REASONS.notMasked };
       if (masked.error) return { tab, note: shotFailedNote(masked.error) };
-      return { tab, shot: { ...masked.shot, epochMs: captured.shot.epochMs }, overflow: before.overflow || after.overflow };
+      return {
+        tab,
+        shot: { ...masked.shot, epochMs: captured.shot.epochMs },
+        overflow: before.overflow || after.overflow,
+        framesVisible: Math.max(before.framesVisible, after.framesVisible),
+      };
     }
     return { tab, note: SHOT_NOTE_MOVED };
   }
@@ -298,9 +322,10 @@ export function createSaveHandlers(api) {
   return {
     /**
      * Popup command: masked screenshot (unless switched off), current document, redacted zip (E3 D6–D8).
-     * `includeScreenshot` missing = true (the checkbox default). Answer: `{ ok: true, zipBase64, fileName, packageBytes, screenshot: 'included'|'off'|'failed' }`.
+     * `includeScreenshot` missing = true (the checkbox default). With `includeScreenshot: false` the popup may say why:
+     * `screenshotOffReason` 'reporter'|'frames'|'frameCheckFailed' and `crossOriginFrames` 1..999 (E4 D8). Answer: `{ ok: true, zipBase64, fileName, packageBytes, screenshot: 'included'|'off'|'failed' }`.
      */
-    async collect({ tabId, includeScreenshot } = {}) {
+    async collect({ tabId, includeScreenshot, ...offReason } = {}) {
       const startedAt = now();
       let rec = null;
       await store.updateRec((current) => {
@@ -330,9 +355,10 @@ export function createSaveHandlers(api) {
       let screenshotNote;
       let maskFailure;
       let fieldsOverflow = false;
+      let framesVisible = 0;
       const screenshotOff = includeScreenshot === false;
       if (screenshotOff) {
-        // package.js writes the reporter's note.
+        // package.js writes the note: the reporter's switch, or why the popup left it off.
       } else if (tab && isSameOrigin(tab.url, rec.origin)) {
         if (tab.active) {
           const result = await takeScreenshot({ tabId, tab, origin: rec.origin, getTab, timeLeft });
@@ -341,6 +367,7 @@ export function createSaveHandlers(api) {
           else if (result.maskFailure) maskFailure = result.maskFailure;
           else screenshotNote = result.note;
           fieldsOverflow = result.overflow === true;
+          framesVisible = result.framesVisible ?? 0;
         } else {
           screenshotNote = SHOT_NOTE_HIDDEN;
         }
@@ -349,6 +376,14 @@ export function createSaveHandlers(api) {
       }
 
       const version = runtime.getManifest().version;
+      // One read per save, after the screenshot (it never delays the capture); a bad or failed read = default rules (AC-6.3).
+      let devOptions = {};
+      try {
+        const options = await getDevOptions();
+        if (isObject(options)) devOptions = options;
+      } catch {
+        // Defaults: saving is never blocked by the developer configuration.
+      }
       // `html-structure` among the developer's disabled rules = full HTML (E3 D12, AC-6.3).
       const fullHtml = resolveDisabledRules(devOptions.disabledRules).includes('html-structure');
       let current = null;
@@ -401,8 +436,10 @@ export function createSaveHandlers(api) {
             currentMissingReason,
             screenshots,
             screenshotOff,
+            ...(screenshotOff ? screenshotOffOf(offReason) : {}),
             maskFailure,
             screenshotNote,
+            framesVisible,
             fullHtml,
           },
           current,

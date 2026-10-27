@@ -22,6 +22,10 @@ async function project(name, { manifestVersion = '1.2.3', recorderVersion = '1.2
   for (const { entry } of BUNDLES) {
     await writeFile(join(root, 'src', entry), "import { RECORDER_VERSION } from './constants.js';\n\nglobalThis.__v = RECORDER_VERSION;\n");
   }
+  // E4-T3a: the viewer page is a generated file as well.
+  await mkdir(join(root, 'src', 'viewer'), { recursive: true });
+  await writeFile(join(root, 'src', 'viewer', 'viewer.html'), '<meta content="{{CSP}}"><style></style><script>{{SCRIPT}}</script>\n');
+  await writeFile(join(root, 'src', 'viewer', 'viewer-entry.js'), 'globalThis.__v = 1;\n');
   await generateAll({ root });
   return root;
 }

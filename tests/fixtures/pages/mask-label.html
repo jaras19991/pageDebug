@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>PDS fixture: label above a masked field</title>
+  <style>
+    body { margin: 16px; background: #fff; font: bold 20px sans-serif; color: #000; }
+    /* The label ends exactly 4 CSS px above the field (E4 IN7: the mask margin is 2 px, so the label stays intact). */
+    .label { display: block; height: 28px; line-height: 28px; margin: 0 0 4px; width: 280px; }
+    .field { display: block; width: 280px; height: 40px; margin: 0 0 24px; box-sizing: border-box; background: rgb(230, 20, 20); color: #000; border: 2px solid #333; font: bold 22px sans-serif; }
+  </style>
+</head>
+<body>
+  <!-- E4-TEST4b (AC-3.11): black label text above red fields. No iframes, so the screenshot switch is on by default. -->
+  <span id="l-card" class="label">Numer karty</span>
+  <input type="text" id="f-card" class="field mask" autocomplete="cc-number" value="4111 1111 1111 1111">
+  <span id="l-mail" class="label">Adres e-mail</span>
+  <input type="email" id="f-mail" class="field mask" value="jan.kowalski@example.com">
+</body>
+</html>

@@ -1,0 +1,27 @@
+{
+  "version": "1.0.0",
+  "collectedAt": "2026-01-15T10:00:05.000Z",
+  "initializedAt": "2026-01-15T10:00:04.990Z",
+  "notes": ["Console logs are captured only from initialization time."],
+  "environment": {
+    "location": { "href": "http://127.0.0.1:8080/basic.html", "hostname": "127.0.0.1", "pathname": "/basic.html" },
+    "document": { "title": "Basic fixture", "readyState": "complete" }
+  },
+  "dom": { "counts": { "totalElements": 12, "forms": 1 }, "html": { "outerHTML": "<html>…</html>" } },
+  "performance": { "timeOrigin": 1768471200000, "navigation": { "type": "navigate" }, "resources": [] },
+  "storage": { "cookies": "sid=EXAMPLE", "localStorage": { "theme": "dark" }, "sessionStorage": {} },
+  "consoleLogs": [
+    { "timestamp": "2026-01-15T10:00:04.995Z", "level": "info", "args": ["PageDebugSnapshot initialized."] },
+    { "timestamp": "2026-01-15T10:00:05.000Z", "level": "error", "args": ["save failed"] }
+  ],
+  "runtimeErrors": [
+    { "timestamp": "2026-01-15T10:00:04.998Z", "type": "error", "message": "Uncaught TypeError: x is undefined",
+      "filename": "http://127.0.0.1:8080/basic.html", "lineno": 3, "colno": 9,
+      "error": { "name": "TypeError", "message": "x is undefined", "stack": "TypeError: x is undefined\n    at basic.html:3:9" } }
+  ],
+  "network": [
+    { "type": "fetch", "startedAtIso": "2026-01-15T10:00:04.996Z", "startedAt": 4996, "input": "http://127.0.0.1:8080/api/fail",
+      "init": { "method": "POST", "headers": { "content-type": "application/json" } }, "status": 500, "ok": false,
+      "durationMs": 3.2, "headers": { "content-type": "text/plain" }, "body": "{\"name\":\"Example\"}", "error": null }
+  ]
+}

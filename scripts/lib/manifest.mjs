@@ -2,7 +2,8 @@
 // A target overlay may only ADD keys from a closed allow-list; anything else is
 // a build error, so Chrome and Firefox manifests cannot drift apart silently (AC-4.8).
 
-export const TARGET_KEYS = Object.freeze(['browser_specific_settings', 'minimum_chrome_version', 'background']);
+// `storage` (E4 D5): only Chrome reads `storage.managed_schema`; Firefox does not support the key (web-ext lint).
+export const TARGET_KEYS = Object.freeze(['browser_specific_settings', 'minimum_chrome_version', 'background', 'storage']);
 
 const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 

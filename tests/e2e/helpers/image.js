@@ -100,3 +100,56 @@ export async function decodeImage(context, source, { cornerSize = 6, regions = [
 export async function regionLuma(context, source, rects) {
   return (await decodeImage(context, source, { regions: rects })).regions;
 }
+
+/**
+ * Mean absolute luma difference (0–255) between the same rectangle of two images of equal size (E4-TEST4b: the label
+ * above a masked field must look as in an unmasked capture; JPEG against PNG leaves a small residue).
+ * @param {import('@playwright/test').BrowserContext} context
+ * @param {Uint8Array | ArrayBuffer | string} a
+ * @param {Uint8Array | ArrayBuffer | string} b
+ * @param {Rect} rect image pixels
+ * @returns {Promise<{ widthA: number, heightA: number, widthB: number, heightB: number, pixels: number, meanDiff: number }>}
+ */
+export async function lumaDiff(context, a, b, rect) {
+  const page = await context.newPage();
+  try {
+    await page.goto('about:blank');
+    return await page.evaluate(
+      async ({ urlA, urlB, r }) => {
+        const load = async (url) => {
+          const img = new globalThis.Image();
+          img.src = url;
+          await img.decode();
+          const canvas = globalThis.document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          ctx.drawImage(img, 0, 0);
+          return { w: canvas.width, h: canvas.height, ctx };
+        };
+        const A = await load(urlA);
+        const B = await load(urlB);
+        const x0 = Math.max(0, Math.floor(r.x));
+        const y0 = Math.max(0, Math.floor(r.y));
+        const x1 = Math.min(A.w, B.w, Math.ceil(r.x + r.width));
+        const y1 = Math.min(A.h, B.h, Math.ceil(r.y + r.height));
+        const out = { widthA: A.w, heightA: A.h, widthB: B.w, heightB: B.h, pixels: 0, meanDiff: 0 };
+        if (x1 <= x0 || y1 <= y0) return out;
+        const da = A.ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data;
+        const db = B.ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data;
+        let sum = 0;
+        for (let i = 0; i < da.length; i += 4) {
+          const la = 0.299 * da[i] + 0.587 * da[i + 1] + 0.114 * da[i + 2];
+          const lb = 0.299 * db[i] + 0.587 * db[i + 1] + 0.114 * db[i + 2];
+          sum += Math.abs(la - lb);
+        }
+        out.pixels = da.length / 4;
+        out.meanDiff = sum / out.pixels;
+        return out;
+      },
+      { urlA: toDataUrl(a), urlB: toDataUrl(b), r: rect },
+    );
+  } finally {
+    await page.close();
+  }
+}

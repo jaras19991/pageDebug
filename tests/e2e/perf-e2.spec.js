@@ -19,7 +19,7 @@ const SPEC = {
   basicPackageBytes: 1024 * 1024,
   floodPackageBytes: 12 * 1024 * 1024,
   saveMs: 5000,
-  distBytes: 500 * 1024,
+  distBytes: 600 * 1024, // raised from 500 KB in E4-T9 (same as build.test): summary/query/metrics/notes/dev-options ship in dist
 };
 
 let server;

@@ -1,6 +1,9 @@
 # private signing key — never commit
 *.pem
 
+# local developer configuration for `npm run build -- --config` (E4 D5); only the example is tracked
+pds.config.json
+
 # build artifacts
 *.crx
 *.zip

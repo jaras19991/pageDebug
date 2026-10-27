@@ -6,6 +6,8 @@ oraz metryki wydajności, a przy zapisie także stan strony (środowisko, strukt
 Po „Zapisz paczkę” powstaje jeden plik `.zip` w pobranych (`snapshot.json`, `summary.md`, `screenshot.jpg`), z którego tło usunęło hasła,
 tokeny i wartości ciasteczek, a który zgłaszający przekazuje developerowi; rozszerzenie niczego nie wysyła do sieci.
 Instrukcja dla osoby zgłaszającej: [docs/INSTRUKCJA-ZGLASZAJACEGO.md](docs/INSTRUKCJA-ZGLASZAJACEGO.md).
+Instrukcja dla developera, jak czytać paczkę (viewer, `summary.md`, agent AI przez MCP, porównanie dwóch paczek):
+[docs/JAK-CZYTAC-PACZKE.md](docs/JAK-CZYTAC-PACZKE.md).
 
 ## Szybki start
 
@@ -26,7 +28,7 @@ Wszystkie komendy z katalogu głównego repo:
 |---|---|
 | `npm run build` | składa `dist/chrome/` i `dist/firefox/` od zera (manifesty z `src/manifest.*.json`) |
 | `npm run gen` | generuje bundle z modułów `src/page` (`src/content/*.js`, `src/standalone/console-snapshot.js`); `npm run gen -- --check` tylko sprawdza, że są aktualne (kod ≠ 0, gdy nie) |
-| `npm run pack` | build + po jednym `dist/page-debug-snapshot-<target>-<wersja>.zip` na target |
+| `npm run pack` | build + po jednym `dist/page-debug-snapshot-<target>-<wersja>.zip` na target oraz viewer `dist/page-debug-viewer-<wersja>.html`; z `--config` patrz „Konfiguracja developerska” |
 | `npm run icons` | generuje `src/icons/icon{16,48,128}.png` (patrz „Ikony”) |
 | `npm run lint` | build + `eslint` + `web-ext lint` na `dist/firefox` (2 warnings o `data_collection_permissions` są znane) |
 | `npm test` | vitest + jsdom; bez przeglądarki i sieci |
@@ -90,6 +92,9 @@ Przepływ:
    a potem `saveStarted` z `downloadId`.
 5. Tło śledzi `downloads.onChanged`. Dopiero `complete` daje komunikat „Zapisano plik …”; wtedy tło wyrejestrowuje skrypty,
    zdejmuje hooki i czyści `storage.session`. Przerwane lub nieudane pobranie zostawia nagrywanie włączone.
+   Popup pokazuje wtedy ekran „Zapisano” (nazwa pliku, „Pokaż plik”, „Nowe nagranie”); tło trzyma w `storage.session` ostatni zapis karty
+   (`lastSaved`) do kolejnego „Nagrywaj”. „Pokaż plik” sprawdza najpierw `downloads.search`, czy plik nadal istnieje, i dopiero potem woła `downloads.show`.
+   Rozszerzenie niczego nie wysyła — plik zgłaszający przekazuje sam (e-mail, komunikator).
 
 Limit nagrywania to 10 minut (auto-stop; zapis nadal możliwy). Uzasadnienia decyzji: `docs/epics/E1/design.md`, `docs/epics/E3/design.md`.
 
@@ -105,7 +110,7 @@ Wpisy zipa w stałej kolejności:
 | Wpis | Co to |
 |---|---|
 | `snapshot.json` | paczka: `schemaVersion: 4`, wszystkie sekcje, JSON z wcięciem |
-| `summary.md` | krótki opis po polsku, budowany ze **zredagowanego** `snapshot.json`: środowisko, `overview`, linia „Zamaskowano N wartości w M sekcjach”, pierwsze notatki |
+| `summary.md` | pełne podsumowanie po polsku (≤ 16 KB, ≤ 200 linii), budowane ze **zredagowanego** `snapshot.json`: środowisko, kroki, grupy błędów, nieudane zapytania, CWV, najwolniejsze zasoby, ciasteczka, prywatność (reguły v2, zrzut), pierwsze notatki; ten sam tekst w viewerze i w MCP (`get_summary`) |
 | `screenshot.jpg` | tylko gdy jest zrzut: JPEG ≤ 300 KB z zamalowanymi polami formularzy |
 
 `unzip -t` powinno dać „No errors detected”; zip otwiera się Eksploratorem Windows i Archiwizatorem macOS bez dodatkowych programów.
@@ -129,7 +134,8 @@ Plik `snapshot.json` czyta się od góry: `overview` (same liczby) → `redactio
 
 Całą paczkę redaguje tło (`src/lib/redact.js`, `redact-rules.js`, `redact-page.js`) na kopii złożonej paczki, przed budżetem i zipem.
 Ochrona u źródła w MAIN (nagłówki, adresy i podglądy w hookach sieci, kroki) to tylko obrona w głąb. Reguły: skill `privacy-redaction`,
-`rulesVersion: 1`.
+`rulesVersion: 2` (od 0.6.0; reguły v2 maskują dodatkowo m.in. klucz na początku stringu JSON, `code`/`ticket` w tekście,
+podgląd konsoli i zdania w argumentach konsoli; atrybut `srcdoc` ramek zastępuje `[redacted:html-structure]`).
 
 - **Zawsze** (nie do wyłączenia): wartości przy kluczach wrażliwych (`token`, `password`, `auth`, `session`, `key`, `cvv`, `cvc`, `pass`, `pw`, …;
   `code`/`ticket` tylko jako parametr adresu URL), JWT, `Bearer`/`Basic`, karta (Luhn), IBAN, PESEL, długie sekrety, `user:hasło@`, fragment `#…` z tokenem,
@@ -152,9 +158,9 @@ lub `error`), `vitals`, zrzut. Rozmiar nie blokuje zapisu — gdy po wszystkich 
 
 ### Opcje developerskie
 
-Kontrakt jest w kodzie (`devOptions: { disabledRules }` w `exportPackage`/`exportAssembled`, dopuszczalne tylko `email`, `phone`, `html-structure`;
-próba wyłączenia reguły poziomu *Zawsze* jest ignorowana), ale **w E3 nie ma źródła tych opcji**: `src/background.js` przekazuje `{}`.
-Dostarczy je E4-D4 (konfiguracja developerska). Do tego czasu pełny HTML i wyłączenie `email`/`phone` są możliwe tylko w testach.
+Jedyna opcja to lista `disabledRules`: reguły poziomu *Domyślnie*, które developer chce wyłączyć. Dopuszczalne tylko `email`, `phone` i `html-structure`
+(ta ostatnia włącza `dom.fullHtml`); reguł poziomu *Zawsze* nie da się wyłączyć żadną drogą, a nieznane nazwy i klucze są ignorowane
+(`ignored` w buildzie wypisuje ostrzeżenie). Zgłaszający nie ma tej opcji i nie może jej zmienić. Szczegóły: „Konfiguracja developerska”.
 
 ### Chrome i Firefox
 
@@ -176,15 +182,21 @@ src/
   lib/             logika tła: recording.js, save.js, package.js (schemat v4), session-store.js, content-scripts.js, origin.js;
                    eksport: export.js (potok: przycięcie → redakcja → budżet → zip), redact.js / redact-rules.js / redact-page.js (redakcja),
                    budget.js (cięcia do 2 MB), zip.js, sha256.js, summary.js (summary.md), file-name.js, screenshot.js (zrzut + maska), mask-secrets.js
+                   E4: summary.js (pełne summary.md), snapshot-query.js / snapshot-metrics.js (zapytania i metryki dla viewera, MCP i summary), unzip.js,
+                   migrate.js (v1–v3 → v4 przy odczycie), package-reader.js (zip/JSON → znormalizowana paczka), screenshot-notes.js, dev-config.js
+                   (wbudowana konfiguracja, podmieniana przez `--config`), dev-options.js (konfiguracja + `storage.managed`)
+  managed-schema.json   schemat polityki Chrome (`storage.managed_schema`)
   popup/           popup.html, popup.js, controller.js, view.js, target.js, messages.js
+  viewer/          źródło viewera (app.js, dom.js, tabs-*.js, viewer.html) — generowany do src/standalone/viewer.html
   page/            moduły ES kodu działającego na stronie (recorder, hooki, kanał, collector, dom-structure.js, field-rects.js, *-entry.js)
   content/         isolated-world.js, main-world.js — GENEROWANE z src/page (npm run gen); nie edytuj ręcznie
-  standalone/      console-snapshot.js — GENEROWANY; wersja do wklejenia w konsolę; nie trafia do dist
+  standalone/      console-snapshot.js, viewer.html — GENEROWANE; konsola: wersja do wklejenia; viewer: kopiowany do dist/ przez pack (artefakt wydania)
   icons/           icon16/48/128.png        generowane przez npm run icons
+mcp/               serwer MCP dla agentów AI (server.js, tools.js, snapshots-dir.js; README w katalogu)
 scripts/           build.mjs, pack.mjs, gen-content.mjs, icons.mjs, dev-browser.mjs/.ps1, check-repo.mjs, lib/
 tests/             unit/ (vitest), e2e/ (Playwright + helpers/), fixtures/ (pages, snapshots, modules)
 dist/              wynik build/pack (ignorowany)
-docs/              BACKLOG.md, snapshot-schema.md, INSTRUKCJA-ZGLASZAJACEGO.md, epics/E*/
+docs/              BACKLOG.md, snapshot-schema.md, INSTRUKCJA-ZGLASZAJACEGO.md, JAK-CZYTAC-PACZKE.md, epics/E*/
 ```
 
 Bundle w `src/content` i `src/standalone` są w repo; test `gen-content` pada, gdy są nieaktualne. Po zmianie czegokolwiek w `src/page`
@@ -192,6 +204,33 @@ Bundle w `src/content` i `src/standalone` są w repo; test `gen-content` pada, g
 (importy jednolinijkowe od kolumny 0, bez cykli, bez `import(`/`import.meta`/`require(` nawet w komentarzach) — reguły w `CLAUDE.md`.
 
 ## Konfiguracja developerska
+
+### Konfiguracja reguł redakcji (`pds.config.json`)
+
+Plik konfiguracyjny ma jeden klucz: `{ "disabledRules": ["email", "phone"] }` (wzór: `pds.config.example.json`, domyślnie `[]`).
+Lokalny `pds.config.json` nie jest czytany niejawnie — trzeba go wskazać:
+
+```
+npm run build -- --config pds.config.json        # albo: PDS_CONFIG=pds.config.json npm run build
+npm run dev:chrome -- --config pds.config.json   # dev:firefox tak samo; PDS_CONFIG też działa
+npm run pack -- --config pds.config.json         # tylko jawny --config; zmiennej PDS_CONFIG pack NIE czyta
+```
+
+- Build wstawia konfigurację do `dist/<target>/lib/dev-config.js` (Chrome i Firefox dostają tę samą). Bez `--config` plik jest kopiowany bez zmian
+  (`disabledRules: []`). Nieczytelny albo niepoprawny plik przerywa build z nazwą pliku.
+- **`pack --config`** dopisuje do nazw zipów sufiks `-devconfig` (`page-debug-snapshot-chrome-<wersja>-devconfig.zip`) i wypisuje ostrzeżenie.
+  Taki zip jest tylko do rozdania wewnątrz zespołu.
+- **Do sklepu (Chrome Web Store, AMO) idzie zawsze build bez `--config`.** Nie wysyłaj zipa z sufiksem `-devconfig`.
+- **Polityka zamiast buildu** (nadpisuje wbudowaną konfigurację w całości; `[]` włącza reguły z powrotem). Rozszerzenie czyta ją przez `storage.managed`
+  (limit 1 s; brak polityki lub błąd = konfiguracja wbudowana):
+  - Chrome: polityka `3rdparty.extensions.<id rozszerzenia>.disabledRules` (rejestr/GPO na Windows, `/etc/opt/chrome/policies/managed/*.json` na Linuksie);
+    schemat polityki to `src/managed-schema.json` (`storage.managed_schema` w `manifest.chrome.json`).
+  - Firefox: `policies.json` → `3rdparty` → `Extensions` → `{799eb178-df9a-41bb-9775-8fc8aff45926}` → `disabledRules`. Firefox bez polityki odrzuca
+    `storage.managed.get` — rozszerzenie wtedy używa wbudowanej konfiguracji.
+- Popup (przed „Nagrywaj”) i `summary.md` („Wyłączone przez developera: …”) ujawniają wyłączone reguły; w paczce są w `redaction.disabledRules`.
+  Fallback konsolowy (`console-snapshot.js`) nie czyta konfiguracji — zawsze domyślne reguły.
+
+### Środowisko i testy
 
 - Zmienne: `PDS_CHROMIUM_BINARY` (binarka Chrome/Chromium dla `dev:chrome`), `PDS_E2E_HEADED=1` (e2e z widocznym oknem),
   `PDS_E2E_NO_BUILD=1` (e2e bez przebudowy `dist/`).
@@ -208,7 +247,17 @@ Bundle w `src/content` i `src/standalone` są w repo; test `gen-content` pada, g
 
 ## Viewer / MCP
 
-Nie istnieją jeszcze (E4, patrz `docs/BACKLOG.md`). Do czasu viewera paczkę czyta się z `summary.md` i `snapshot.json` po rozpakowaniu zipa.
+Jak czytać paczkę krok po kroku: [docs/JAK-CZYTAC-PACZKE.md](docs/JAK-CZYTAC-PACZKE.md).
+
+- **Viewer** to jeden plik `dist/page-debug-viewer-<wersja>.html` (powstaje w `npm run pack`; źródło `src/viewer`, generowany do
+  `src/standalone/viewer.html` przez `npm run gen`). Otwierasz go z dysku (`file://`) w Chrome, Edge lub Firefoksie, działa offline, niczego nie wysyła
+  (CSP z hashami, dane z paczki trafiają do DOM wyłącznie jako tekst). Przeciągnij na niego `.zip` z rozszerzenia albo `snapshot.json`. Czyta paczki
+  v1–v4; dla v1–v3 (sprzed automatycznej redakcji) pokazuje baner ostrzegawczy „Paczka sprzed automatycznej redakcji — może zawierać hasła i tokeny”.
+  Zakładki: Podsumowanie, Kroki/oś czasu, Błędy, Sieć, Konsola, CWV, DOM, Storage.
+- **MCP** (`mcp/`): lokalny serwer stdio (bez zależności npm), który pozwala agentowi AI (Claude Code, Cursor) pytać o paczki z katalogu.
+  Katalog podajesz argumentem (`node mcp/server.js <katalog>`) albo zmienną `PDS_SNAPSHOTS_DIR`; **jeden katalog na serwer**, bez podkatalogów
+  (kilka katalogów = kilka wpisów serwera w konfiguracji klienta). Serwer tylko czyta. Siedem narzędzi: `list_snapshots`, `get_summary`, `get_errors`,
+  `get_network`, `get_vitals`, `get_steps`, `diff_snapshots`. Konfiguracja klienta i opis narzędzi: [mcp/README.md](mcp/README.md).
 
 ## Firefox
 
@@ -224,13 +273,13 @@ Nie istnieją jeszcze (E4, patrz `docs/BACKLOG.md`). Do czasu viewera paczkę cz
 
 - `activeTab` — dostęp do bieżącej karty tylko po kliknięciu ikony rozszerzenia; daje adres strony, aby zaproponować nagranie tej witryny, a po kliknięciu „Zapisz paczkę” pozwala dołączyć do raportu zrzut widocznej części tej karty (tylko gdy pokazuje nagrywaną witrynę).
 - `scripting` — rejestracja dołączonego skryptu nagrywania tylko dla jednej wybranej witryny (od początku ładowania strony); skrypt jest wyrejestrowywany po zapisie raportu.
-- `storage` — stan nagrania oraz dane zebrane z podstron przeładowanych w trakcie nagrania, w pamięci sesji (`storage.session`) czyszczonej przez przeglądarkę przy zamknięciu i niedostępnej dla stron; usuwane po zapisaniu pliku, nic nie trafia do pamięci trwałej.
-- `downloads` — zapis pliku raportu (`.zip`) do folderu pobranych i sprawdzenie, że plik naprawdę powstał.
+- `storage` — stan nagrania oraz dane zebrane z podstron przeładowanych w trakcie nagrania, w pamięci sesji (`storage.session`) czyszczonej przez przeglądarkę przy zamknięciu i niedostępnej dla stron; usuwane po zapisaniu pliku, nic nie trafia do pamięci trwałej. W instalacjach zarządzanych rozszerzenie czyta też ustawienie maskowania nadane przez administratora (`storage.managed`, tylko odczyt).
+- `downloads` — zapis pliku raportu (`.zip`) do folderu pobranych, sprawdzenie, że plik naprawdę powstał, i — na kliknięcie „Pokaż plik” — pokazanie go w folderze (`downloads.show`).
 - `optional_host_permissions` (`http://*/*`, `https://*/*`, `file:///*`) — nie są przyznawane przy instalacji; rozszerzenie prosi w trakcie działania wyłącznie o dostęp do witryny z bieżącej karty (jeden wzorzec), gdy użytkownik wybierze jej nagranie.
 
 Rozszerzenie nie dostaje przy instalacji dostępu do wszystkich witryn i niczego nie wysyła do sieci.
 
-E2 (0.4.0) i E3 (0.5.0) **nie dodają żadnych uprawnień**: manifesty są takie same jak w 0.3.0. Statusy zasobów pochodzą z Resource Timing
+E2 (0.4.0), E3 (0.5.0) i E4 (0.6.0) **nie dodają żadnych uprawnień**: lista `permissions` jest taka sama jak w 0.3.0 (E4 dodaje do manifestu Chrome tylko klucz `storage.managed_schema`, który nie jest uprawnieniem). Statusy zasobów pochodzą z Resource Timing
 (`responseStatus`), a nie z `webRequest`; zrzut korzysta z istniejącego `activeTab` (`tabs.captureVisibleTab`, po otwarciu popupu). Zip, redakcja, SHA-256
 i maska zrzutu (`OffscreenCanvas`, `CompressionStream`) używają natywnych API lub czytelnego kodu w paczce — bez zdalnego kodu i bez uprawnień `offscreen`/`cookies`.
 Ciasteczka czytamy przez `document.cookie` (bez `HttpOnly`), nie przez uprawnienie `cookies`.
@@ -244,11 +293,11 @@ Wersje do formularzy sklepów (Chrome Web Store, AMO):
   - PL: Rejestruje dołączony do rozszerzenia skrypt nagrywania tylko dla witryny wybranej przez użytkownika, aby działał od początku ładowania strony, i usuwa go po zapisaniu raportu.
   - EN: Registers the bundled recording script only for the site the user chose to record, so it runs from the start of the page load, and removes it after the report is saved.
 - `storage`
-  - PL: Przechowuje w pamięci sesji przeglądarki (czyszczonej przy jej zamknięciu, niedostępnej dla stron) stan nagrania oraz dane zebrane z podstron przeładowanych w trakcie nagrania, do chwili zapisania pliku; potem je usuwa; nic nie trafia do pamięci trwałej.
-  - EN: Keeps the recording state and the data captured from pages reloaded during the recording in the browser's session memory (cleared on exit, not accessible to websites) until the user saves the file, then deletes it; nothing is written to persistent storage.
+  - PL: Przechowuje w pamięci sesji przeglądarki stan nagrania i dane z przeładowanych podstron do chwili zapisu pliku, a w instalacjach zarządzanych odczytuje ustawienie maskowania nadane przez administratora (storage.managed); nic nie trafia do pamięci trwałej.
+  - EN: Keeps the recording state and data from pages reloaded during recording in session memory until the file is saved, and in managed installs reads the administrator's masking setting (storage.managed); nothing is written to persistent storage.
 - `downloads`
-  - PL: Zapisuje plik raportu w pobranych plikach użytkownika i sprawdza, że plik naprawdę powstał, zanim poinformuje o zapisie.
-  - EN: Saves the report file to the user's downloads and confirms the file was actually written before telling the user it is saved.
+  - PL: Zapisuje plik raportu do folderu pobranych, sprawdza, że powstał, i na żądanie użytkownika („Pokaż plik”) pokazuje go w folderze.
+  - EN: Saves the report file to Downloads, checks that it exists and, when the user clicks "Show file", reveals it in its folder.
 - `optional_host_permissions`
   - PL: Prośba w trakcie działania wyłącznie o witrynę, którą użytkownik wybrał do nagrania (albo o lokalny plik otwarty w przeglądarce), aby nagrywanie mogło zacząć się od załadowania strony; o dostęp do innych witryn rozszerzenie nigdy nie prosi.
   - EN: Requested at runtime only for the site the user chooses to record, so recording can start with the page load; access to other sites is never requested. The `file:///*` pattern is requested only if the user chooses to record a local file opened in the browser.
@@ -302,8 +351,8 @@ Test `tests/unit/icons-script.test.js` pilnuje, by `src/icons/*.png` były ident
   okienka innych serwisów lub nie udało się sprawdzić strony — notatka jest ta sama), karta nie była aktywna, pokazywała inną witrynę, pól formularzy nie dało
   się zakryć (np. pinch-zoom), zrzut przekroczył 300 KB albo (Firefox) strona przeładowała się przy otwartym popupie. Otwórz popup ponownie na tej karcie i zapisz jeszcze raz.
 - **Dwa zapisy w tej samej sekundzie** — nazwa pliku ma rozdzielczość sekundy; Chrome dopisuje „ (1)”, a komunikat w popupie podaje faktyczną nazwę.
-- **W paczce widać za dużo `[redacted:…]`** — fałszywie dodatnie trafienia (np. `phone` na kwocie, `card` na UUID); sprawdź `redaction.masked`, a opcje
-  wyłączenia `email`/`phone` pojawią się z E4-D4.
+- **W paczce widać za dużo `[redacted:…]`** — fałszywie dodatnie trafienia (np. `phone` na kwocie, `card` na UUID); sprawdź `redaction.masked`; `email`/`phone` można wyłączyć
+  konfiguracją developerską (patrz „Konfiguracja developerska”).
 - **Metryka `available:false`** — `reason` mówi dlaczego: `unsupported-browser` (np. CLS w Firefoksie), `no-interaction` (INP bez kliknięć), `hidden-at-start`, `no-data`.
 - **e2e na WSL: chromium nie startuje** — linuksowy Chromium z Playwrighta wymaga bibliotek `libnss3`, `libnspr4`, `libasound2`. Bez nich uruchom e2e Node'em z Windows (`node_modules` są natywne dla jednego systemu).
 - **Chrome: ikona niewidoczna** — jest pod „puzzlem”; przypnij ją.
@@ -336,26 +385,29 @@ Test `tests/unit/icons-script.test.js` pilnuje, by `src/icons/*.png` były ident
   ani Chrome 121–122 na żywo (long tasks tylko unit).
 - Firefox: bez automatycznego e2e (ręczne QA).
 
-### Prywatność i redakcja (E3)
+### Prywatność i redakcja (E3, E4)
 
-Redakcja jest regułowa, więc nie jest wyczerpująca. Znane luki i fałszywe trafienia (część w backlogu E4, patrz `docs/BACKLOG.md`):
+Redakcja jest regułowa, więc nie jest wyczerpująca. Znane luki i fałszywe trafienia (reguły `rulesVersion: 2`; formy, które v1 przepuszczała, a E4 zamknął, są opisane w [docs/snapshot-schema.md](docs/snapshot-schema.md)):
 
-- **Zrzut a ramki innych serwisów (decyzja PB-1 B):** pola formularzy tej strony i ramek tego samego originu są zamalowane (margines 8 px zakrywa
-  dolną część etykiet nad polami), ale **ramki cross-origin (płatność, logowanie SSO) nie są zakrywane** — numer karty wpisany w osadzony formularz może być
+- **Zrzut a ramki innych serwisów (decyzja PB-1 B):** pola formularzy tej strony i ramek tego samego originu są zamalowane (margines 2 px CSS wokół pola; etykiety nad polami zostają czytelne), ale **ramki cross-origin (płatność, logowanie SSO) nie są zakrywane** — numer karty wpisany w osadzony formularz może być
   widoczny na `screenshot.jpg`. Ujawnienie w popupie mówi to wprost. Gdy na stronie jest widoczna taka ramka, przełącznik „Dołącz zrzut ekranu” startuje wyłączony
   (zgłaszający może go włączyć); to samo przy nieudanym sprawdzeniu ramek (fail-closed). Przy ręcznym włączeniu ryzyko zostaje. Liczba ramek nie trafia do paczki.
-- **Notatka „turned off by the reporter”** jest nieprecyzyjna: pojawia się także, gdy zrzut wyłączył popup (ramki cross-origin, nieudane sprawdzenie).
-- **N7:** fałszywe trafienia w prozie (`auth: "Invalid credentials"`) oraz przeciek, gdy klucz stoi na początku stringu JSON (`{"log":"password: x"}`).
-- **N8:** iterator tablic strony (`Array.prototype[Symbol.iterator]`) jest nadal używany w MAIN; wroga strona może wyłączyć redakcję u źródła (tło redaguje ponownie, do pliku nie trafia).
-- **N12:** `code`/`ticket` bez maskowania w adresach względnych (`/cb?code=…`) i w tekście poza adresami bezwzględnymi (`&code=`, fragment `#code=`).
-- **N15:** podgląd konsoli (`{ truncated, preview }`) po maskowaniu par w tablicy bywa zniekształcony, a `redaction.masked` zawyżone; bez przecieku.
-- **Pary argumentów konsoli:** `console.log('Your password is', pw)` (klucz w zdaniu, bez `:`/`=`) nie jest maskowane; `console.log('password:', { v: pw })`
-  — kontener w parze nie jest wymuszany (decydują jego własne klucze). Pojedyncze słowa-klucze w argumentach są maskowane (fail-closed, część to FP: `('token', 1, 2, 3)`).
+- **PB-2, frazy-hasła:** wyjątek „proza” (żeby nie maskować komunikatów typu `auth: "Invalid credentials"`) obejmuje też hasło złożone z samych słów.
+  Fraza-hasło pod kluczem `session:`, `key:` albo `auth:` w cudzysłowie (`session: "correct horse battery staple"`) **nie jest maskowana**.
+  Z kolei `key: correct horse` bez cudzysłowu jest maskowane (fail-closed, część to fałszywe trafienia).
+- **Podgląd JSON długiego wpisu konsoli** (wpis > 40 000 znaków, czytany strumieniowo): para `{"value":…,"name":"password"}` nie zostanie zamaskowana, gdy `value` stoi przed `name`.
+- **Nieutwardzone przed wrogą stroną w MAIN:** podmienione iteratory `Map`/`Set`/`String` i `%ArrayIteratorPrototype%.next` oraz podmienione metody tablic
+  (`filter`, `sort`, `slice`, `reduce`). Skutek to brak danych albo przekłamane dane (nie wyciek: tło redaguje ponownie), ale nagranie lub jego część bywa puste.
+  Pętle indeksowe zamiast `for…of` w `recorder`, `hooks-console` i `serialize` chronią przed podmienionym `Array.prototype[Symbol.iterator]`.
+- **Telefony w tekście kroków** (`steps[].text`) nie są maskowane — zgodnie z polityką (za dużo fałszywych trafień); `phone` działa w konsoli, błędach, treści zapytań, podglądach i storage.
+- **Fałszywe trafienia** na słowach-kluczach w tekście, np. `console.log('Pressed key', 'Enter')` — argument kończący się słowem-kluczem sprawia, że następny argument dostaje znacznik `[redacted:…]`; sprawdź `redaction.masked`.
+- **`downloads.show` nie sygnalizuje usunięcia pliku** (wywołanie kończy się bez błędu): popup sprawdza `downloads.search` przed `show` i przy braku pliku pisze
+  „Nie znaleziono pliku. Zapisz paczkę ponownie.”; plik usunięty tuż po sprawdzeniu da po prostu brak efektu przycisku.
 - **Kodowania:** `&amp;quot;` (podwójne encje), podwójne kodowanie procentowe i base64 krótsze niż 32 znaki nie są maskowane.
 - **AWS `AKIA…`** to sam identyfikator klucza i nie jest maskowany; sekret (40 znaków) łapie reguła `long-secret`.
 - **Skrót ciasteczka bez soli:** `valueHash` wartości o małej liczbie możliwości (`consent=yes`, krótki PIN) da się odgadnąć. Długie wartości sesji nie.
 - **Fałszywie dodatnie:** np. „123 456 789 zł” jako `phone`; `card` na ciągu cyfr o poprawnej sumie Luhna w nietypowym kontekście.
-- **Pełny HTML** nie jest osiągalny dla zgłaszającego; tylko opcja developerska (bez źródła w E3).
+- **Pełny HTML** nie jest osiągalny dla zgłaszającego; tylko konfiguracja developerska (`html-structure` w `disabledRules`).
 - Fallback konsolowy działa w realmie strony — patrz „Chrome i Firefox”.
 - Sekcje `dom` (`meta`, `scripts`, `iframes`, `rootMarkers`) czytają żywe gettery strony; wroga strona może je sfałszować lub wyzerować (bez przecieku, redaguje tło).
 - Strony z `Object.prototype.toJSON` (Prototype.js) wpływają na serializację argumentów konsoli.

@@ -44,14 +44,18 @@ function recorderFinite(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-// Rough char size of the fields a hook did not pass through `json` (strings, header maps).
+// Rough char size of the fields a hook did not pass through `json` (strings, header maps). Index loops: on the
+// record path of masked entries, so a page-replaced Array.prototype[Symbol.iterator] must not drop them (E4-IN2).
 function recorderShallowChars(entry) {
   let chars = 0;
-  for (const key of Object.keys(entry)) {
+  const keys = Object.keys(entry);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
     const value = entry[key];
     if (typeof value === 'string') chars += value.length;
     else if (value && typeof value === 'object' && (key === 'requestHeaders' || key === 'responseHeaders')) {
-      for (const k of Object.keys(value)) chars += k.length + String(value[k]).length;
+      const names = Object.keys(value);
+      for (let j = 0; j < names.length; j++) chars += names[j].length + String(value[names[j]]).length;
     }
   }
   return chars + 64;
@@ -111,7 +115,8 @@ export function createRecorder({ win, options = {} }) {
     : limits.documentChars;
   const buffers = {};
   const counts = {};
-  for (const section of RECORDER_SECTIONS) {
+  for (let i = 0; i < RECORDER_SECTIONS.length; i++) {
+    const section = RECORDER_SECTIONS[i];
     const maxChars = section === 'network' ? networkChars : limits.documentChars;
     buffers[section] = createBuffer({ maxItems: limits[section], maxChars });
     counts[section] = 0;
@@ -192,12 +197,13 @@ export function createRecorder({ win, options = {} }) {
       while (bodyEntries.length && bodyChars + size > limits.responseBodyTotalChars) {
         const oldest = bodyEntries.shift();
         bodyChars -= oldest.size;
-        for (const key of RECORDER_ATTACH_FIELDS) delete oldest.entry[key];
+        for (let i = 0; i < RECORDER_ATTACH_FIELDS.length; i++) delete oldest.entry[RECORDER_ATTACH_FIELDS[i]];
         bodiesTruncated = true;
       }
       bodyChars += size;
       bodyEntries.push({ entry, size });
-      for (const key of RECORDER_ATTACH_FIELDS) {
+      for (let i = 0; i < RECORDER_ATTACH_FIELDS.length; i++) {
+        const key = RECORDER_ATTACH_FIELDS[i];
         if (key === 'responseBodyPreview') entry[key] = capped;
         else if (typeof fields[key] === 'boolean') entry[key] = fields[key] || capped !== preview;
       }
@@ -217,11 +223,12 @@ export function createRecorder({ win, options = {} }) {
     limitTimer = null;
     const pending = restores;
     restores = [];
-    for (const restore of pending) recorderTry(restore);
+    for (let i = 0; i < pending.length; i++) recorderTry(pending[i]);
   }
 
   function clearBuffers() {
-    for (const section of RECORDER_SECTIONS) {
+    for (let i = 0; i < RECORDER_SECTIONS.length; i++) {
+      const section = RECORDER_SECTIONS[i];
       buffers[section].clear();
       counts[section] = 0;
     }
@@ -308,8 +315,8 @@ export function createRecorder({ win, options = {} }) {
         return () => Reflect.apply(intrinsics.removeEventListener, doc, ['visibilitychange', onVisibility, true]);
       },
     ];
-    for (const installer of installers) {
-      const restore = recorderTry(installer, null);
+    for (let i = 0; i < installers.length; i++) {
+      const restore = recorderTry(installers[i], null);
       if (typeof restore === 'function') restores.push(restore);
     }
     configTimer = later(() => {
@@ -339,7 +346,8 @@ export function createRecorder({ win, options = {} }) {
   // Raw buffer copies with `doc`; `network` without the Resource Timing adjustments (see snapshot()).
   function exportBuffers() {
     const out = { truncated: {}, counts: {} };
-    for (const section of RECORDER_SECTIONS) {
+    for (let i = 0; i < RECORDER_SECTIONS.length; i++) {
+      const section = RECORDER_SECTIONS[i];
       out[section] = recorderWithDoc(buffers[section].items(), docId);
       out.truncated[section] = buffers[section].truncated;
       out.counts[section] = counts[section];

@@ -293,6 +293,70 @@
   {
    "id": "n4-xml-entity-benign",
    "text": "<pre>&lt;title>Raport&lt;/title> &lt;b&gt;ok&lt;/b&gt;</pre>"
+  },
+  {
+   "id": "in1-prose-auth",
+   "text": "auth: \"Invalid credentials\""
+  },
+  {
+   "id": "in1-prose-session",
+   "text": "session: \"Expired session\""
+  },
+  {
+   "id": "in3-benign-json",
+   "text": "{\"code\":\"PL\"}"
+  },
+  {
+   "id": "in3-benign-country",
+   "text": "country_code=PL"
+  },
+  {
+   "id": "in3-benign-error",
+   "text": "error code=42"
+  },
+  {
+   "id": "in1b-error-plain",
+   "text": "Error: Network request failed"
+  },
+  {
+   "id": "in1b-uncaught-typeerror",
+   "text": "Uncaught TypeError: Cannot read properties of undefined (reading 'token')"
+  },
+  {
+   "id": "in1b-warning-key-prop",
+   "text": "Warning: Each child in a list should have a unique \"key\" prop."
+  },
+  {
+   "id": "in1b-error-prose-auth",
+   "text": "Error: auth: \"Invalid credentials\""
+  },
+  {
+   "id": "in1b-error-prose-session",
+   "text": "Uncaught Error: session: \"Expired session.\""
+  },
+  {
+   "id": "in1b-error-chain-benign",
+   "text": "Error: Failed to load resource: the server responded with a status of 404 (Not Found)"
+  },
+  {
+   "id": "in1b-error-url",
+   "text": "TypeError: Failed to fetch: https://api.example.com/v1/items?page=2"
+  },
+  {
+   "id": "in1b-sentence-session",
+   "text": "Warning: session expired: please log in again"
+  },
+  {
+   "id": "fix2-sq-status",
+   "text": "Failed 'status: loading'"
+  },
+  {
+   "id": "fix2-sq-quoted-key",
+   "text": "{'mode': 'dark'}"
+  },
+  {
+   "id": "fix2-sq-word-colon",
+   "text": "Got 'Error: Network request failed'"
   }
  ]
 }

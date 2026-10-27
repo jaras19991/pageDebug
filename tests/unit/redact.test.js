@@ -163,7 +163,7 @@ describe('redact: name/value pairs (re-review E3 N3)', () => {
 
   it('pairs with an ordinary name and other two-item arrays are unchanged', () => {
     const input = pkg();
-    const args = [{ name: 'country', value: 'PL' }, ['lang', 'pl'], [1, 2], ['password', { a: 1 }]];
+    const args = [{ name: 'country', value: 'PL' }, ['lang', 'pl'], [1, 2]];
     input.consoleLogs = [{ t: 1, doc: 0, level: 'log', args }];
     expect(redact(input).snapshot.consoleLogs[0].args).toEqual(args);
   });
@@ -186,12 +186,13 @@ describe('redact: key/value pairs across console arguments (re-review E3 N9, N10
     expect(run(['Enter password:', 'ArgPwd5x', 'pin', 1234, 'ok'])).toEqual(['Enter password:', '[redacted:key-password]', 'pin', '[redacted:key-pin]', 'ok']);
     // `password` as the value of an ordinary key is a key again.
     expect(run(['user', 'password', 'ArgPwd6x'])).toEqual(['user', 'password', '[redacted:key-password]']);
-    // An object after the key keeps the usual pass (its own keys decide).
-    expect(run(['password:', { a: 1 }])).toEqual(['password:', { a: 1 }]);
+    // A container after the key is masked as a whole (E4-IN5, Q-4; was: its own keys decide).
+    expect(run(['password:', { a: 1 }])).toEqual(['password:', { a: '[redacted:key-password]' }]);
   });
 
   it('N10: a key with white space and without a trailing `:`/`=` is ordinary text', () => {
-    for (const args of [['Pressed key', 'Enter'], ['token count', 5], ['auth ok', true], ['user', 'jan'], ['login', 'jan', 'theme', 'dark']]) {
+    // `'Pressed key', 'Enter'` ends with a key word: a documented false positive since E4-IN5 (console-args.json).
+    for (const args of [['token count', 5], ['auth ok', true], ['user', 'jan'], ['login', 'jan', 'theme', 'dark']]) {
       expect(run(args)).toEqual(args);
     }
   });
@@ -211,7 +212,7 @@ describe('redact: key/value pairs across console arguments (re-review E3 N9, N10
     const cut = entry('["a","b","token=","PrevTok3');
     expect(cut).not.toContain('PrevTok3');
     expect(cut).toContain('[redacted:key-token]');
-    expect(entry('["Pressed key","Enter","token count",5]')).toBe('["Pressed key","Enter","token count",5]');
+    expect(entry('["Pressed it","Enter","token count",5]')).toBe('["Pressed it","Enter","token count",5]');
     expect(entry('["say \\"password\\"","x"]')).toBe('["say \\"password\\"","x"]');
   });
 
@@ -230,7 +231,7 @@ describe('redact: key/value pairs across console arguments (re-review E3 N9, N10
   });
 
   it('N10 after N13: benign arguments stay as they are', () => {
-    for (const args of [['Pressed key', 'Enter'], ['token count', 5], ['auth ok', true], ['login', 'jan', 'theme', 'dark']]) {
+    for (const args of [['token count', 5], ['auth ok', true], ['login', 'jan', 'theme', 'dark']]) {
       expect(run(args)).toEqual(args);
     }
   });
@@ -343,7 +344,7 @@ describe('countMarkers (AC-4.3)', () => {
 
   it('redact fills an existing `redaction` block (no values, sum = markers)', () => {
     const { snapshot } = redact(trapPackage());
-    expect(snapshot.redaction.rulesVersion).toBe(1);
+    expect(snapshot.redaction.rulesVersion).toBe(2);
     expect(snapshot.redaction.disabledRules).toEqual([]);
     expect(snapshot.redaction.masked).toEqual(countMarkers(snapshot).masked);
     const noBlock = RECORD_ONLY(loadV3());

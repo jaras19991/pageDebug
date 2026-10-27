@@ -4,13 +4,13 @@
 // do not count. A manual switch-on keeps working.
 import { test, expect } from '@playwright/test';
 import { MESSAGES } from '../../src/popup/messages.js';
+import { SCREENSHOT_NOTES } from '../../src/lib/screenshot-notes.js';
 import { SCREENSHOT_FILE } from '../helpers/snapshot-validator.js';
 import { startFixtureServer } from './helpers/fixtures-server.js';
 import { readZipPackage } from './helpers/download.js';
 import { launchWithExtension, openPopupFor, waitForDownloadFile } from './helpers/launch.js';
-import { startRecording } from './helpers/recording.js';
+import { readSaveOutcome, startRecording } from './helpers/recording.js';
 
-const SAVED_RE = /^Zapisano plik (.+?) — /;
 const OFF_SAVED = MESSAGES.screenshotOffSaved; // "Plik nie zawiera zrzutu ekranu."
 
 let server;
@@ -50,14 +50,10 @@ const askFrameCheck = (popup) =>
 
 async function savedPackage(page, popup) {
   await popup.click('#save');
-  const status = await popup.waitFor(
-    `(() => { const s = document.getElementById('status'); return /^Zapisano plik /.test(s.textContent) || s.classList.contains('error') ? s.textContent : null; })()`,
-    16_000,
-  );
-  const match = SAVED_RE.exec(status);
-  if (!match) throw new Error(`Save failed: ${status}`);
-  const { path } = await waitForDownloadFile(page, { fileName: match[1] });
-  return { ...(await readZipPackage(path)), status };
+  const outcome = await readSaveOutcome(popup);
+  if ('error' in outcome) throw new Error(`Save failed: ${outcome.error}`);
+  const { path } = await waitForDownloadFile(page, { fileName: outcome.fileName });
+  return { ...(await readZipPackage(path)), status: outcome.savedShot };
 }
 
 test('visible cross-origin iframe → switch off + note; save without screenshot, status says so (S1, F-5)', async () => {
@@ -80,6 +76,66 @@ test('visible cross-origin iframe → switch off + note; save without screenshot
       await popup.close();
     }
   });
+});
+
+// E4 AC-3.9: the popup turned the screenshot off (frames) and the reporter left it off → notes say why, not "turned off by the reporter".
+test('frames page, switch untouched → notes offFrames(1), not "turned off by the reporter"; summary.md gives the reason in Polish (AC-3.9)', async () => {
+  await withTab(async (page) => {
+    await page.goto(`${server.url}/screenshot-mask.html`);
+    await startRecording(page);
+    const popup = await openPopupFor(page);
+    try {
+      await waitReady(popup);
+      await popup.waitFor(`document.getElementById('screenshotNote').textContent === ${JSON.stringify(MESSAGES.screenshotFramesNote)}`, 8000);
+      expect((await switchState(popup)).checked).toBe(false);
+      const { json, entries, status, summary } = await savedPackage(page, popup);
+      expect(status).toContain(OFF_SAVED);
+      expect(json.screenshots).toEqual([]);
+      expect(entries).not.toContain(SCREENSHOT_FILE);
+      expect(json.notes, JSON.stringify(json.notes)).toContain(SCREENSHOT_NOTES.offFrames(1));
+      expect(json.notes).not.toContain(SCREENSHOT_NOTES.off);
+      expect(json.notes.some((n) => n.includes('turned off by the reporter'))).toBe(false);
+      expect(summary).toContain('Zrzut ekranu: wyłączony automatycznie — na stronie były okienka innych serwisów (1)');
+    } finally {
+      await popup.close();
+    }
+  });
+});
+
+// The check itself fails (fieldRects errors in the background): the popup says so, the default stays off, the note says why.
+test('frame check failing (fieldRects error) → offCheckFailed note; summary says the page could not be checked (AC-3.9)', async () => {
+  test.setTimeout(60_000);
+  const sw = await ext.serviceWorker();
+  await sw.evaluate(() => {
+    const tabs = globalThis.chrome.tabs;
+    globalThis.__pdsOrigSendMessage = tabs.sendMessage;
+    tabs.sendMessage = async (...args) => {
+      if (args[1] && args[1].type === 'fieldRects') throw new Error('stub: no receiver');
+      return globalThis.__pdsOrigSendMessage.apply(tabs, args);
+    };
+  });
+  try {
+    await withTab(async (page) => {
+      await page.goto(`${server.url}/frames-hidden.html`);
+      await startRecording(page);
+      const popup = await openPopupFor(page);
+      try {
+        await waitReady(popup);
+        await popup.waitFor(`document.getElementById('screenshotNote').textContent === ${JSON.stringify(MESSAGES.screenshotCheckFailedNote)}`, 20_000);
+        expect((await switchState(popup)).checked).toBe(false);
+        const { json, entries, summary } = await savedPackage(page, popup);
+        expect(json.screenshots).toEqual([]);
+        expect(entries).not.toContain(SCREENSHOT_FILE);
+        expect(json.notes, JSON.stringify(json.notes)).toContain(SCREENSHOT_NOTES.offCheckFailed);
+        expect(json.notes).not.toContain(SCREENSHOT_NOTES.off);
+        expect(summary).toContain('Zrzut ekranu: wyłączony automatycznie — nie udało się sprawdzić strony');
+      } finally {
+        await popup.close();
+      }
+    });
+  } finally {
+    await sw.evaluate(() => { globalThis.chrome.tabs.sendMessage = globalThis.__pdsOrigSendMessage; });
+  }
 });
 
 test('cross-origin iframes out of view, 1×1, display:none, visibility:hidden, opacity:0 → switch stays on, no note (S1)', async () => {
@@ -115,11 +171,15 @@ test('manual switch-on with a visible cross-origin iframe → the screenshot is 
       expect((await switchState(popup)).checked).toBe(false);
       await popup.click('#includeScreenshot');
       expect((await switchState(popup)).checked).toBe(true);
-      const { json, entries, status } = await savedPackage(page, popup);
+      const { json, entries, status, summary } = await savedPackage(page, popup);
       expect(status).not.toContain(OFF_SAVED);
       expect(json.screenshots, JSON.stringify(json.notes)).toHaveLength(1);
       expect(json.screenshots[0].file).toBe(SCREENSHOT_FILE);
       expect(entries).toContain(SCREENSHOT_FILE);
+      // AC-3.10: the image shows a frame of another site that is not covered — said in notes (and in the summary), no new field.
+      expect(json.notes, JSON.stringify(json.notes)).toContain(SCREENSHOT_NOTES.framesVisible(1));
+      expect(json.notes.some((n) => /^Screenshot not included/i.test(n))).toBe(false);
+      expect(summary).toContain('Zrzut ekranu: jest; widać na nim 1 okienko innego serwisu, nie jest zakryte');
     } finally {
       await popup.close();
     }

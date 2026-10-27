@@ -3,7 +3,8 @@
 // dependencies and deliberately no import of src/lib: the lists below are the contract from docs/snapshot-schema.md,
 // so a drift in the implementation shows up as an error instead of being copied into the check.
 //
-// validateSnapshot(pkg) → { ok, errors } where every error is "<path>: <problem>" (e.g. "network[3].status: …").
+// validateSnapshot(pkg, { expectRulesVersion }?) → { ok, errors } where every error is "<path>: <problem>" (e.g. "network[3].status: …").
+// Any rules version 1…RULES_VERSION is valid (older packages); a fresh export passes `expectRulesVersion: RULES_VERSION` (E4 AC-2.8).
 // validateZipEntries(names, pkg?) → { ok, errors } for the entry names of the zip, in order.
 // The package must be the REDACTED one (snapshot.json): `redaction.masked` has to match the markers in it.
 
@@ -27,8 +28,9 @@ export const TRUNCATED_KEYS = Object.freeze([...RECORD_KEYS, 'responseBodies', '
 export const OVERVIEW_KEYS = Object.freeze(['runtimeErrors', 'consoleErrors', 'failedRequests', 'steps', 'poorVitals', 'screenshot']);
 export const PAGE_SECTIONS = Object.freeze(['environment', 'performance', 'storage', 'dom']);
 export const REDACTION_KEYS = Object.freeze(['rulesVersion', 'disabledRules', 'masked']);
-export const RULES_VERSION = 1;
-// Rules a developer option may turn off (`rulesVersion: 1`); Always rules never appear in `disabledRules` (AC-4.5).
+// Newest redaction rules version (src/lib/redact-rules.js): 1 = 0.5.0 (E3), 2 = 0.6.0 (E4 D9).
+export const RULES_VERSION = 2;
+// Rules the developer config may turn off (same list in rules v1 and v2); Always rules never appear in `disabledRules` (AC-4.5).
 export const DEFAULT_RULES = Object.freeze(['email', 'phone', 'html-structure']);
 // Sections that may carry markers: keys of `redaction.masked`.
 export const MASKED_SECTIONS = Object.freeze([
@@ -70,7 +72,7 @@ const isCount = (v) => Number.isInteger(v) && v >= 0;
 const isStr = (v) => typeof v === 'string';
 const show = (v) => (v === undefined ? 'undefined' : JSON.stringify(v)?.slice(0, 80) ?? String(v));
 
-export function validateSnapshot(pkg) {
+export function validateSnapshot(pkg, { expectRulesVersion } = {}) {
   const errors = [];
   const err = (path, problem) => {
     if (errors.length < MAX_ERRORS) errors.push(`${path}: ${problem}`);
@@ -195,7 +197,7 @@ export function validateSnapshot(pkg) {
     if (pkg[section] === null) expect(noteMatches(new RegExp(`\\b${section}\\b`)), section, 'null without a note');
     else expect(isObject(pkg[section]), section, 'not an object or null');
   }
-  const redaction = validateRedaction(pkg, expect);
+  const redaction = validateRedaction(pkg, expect, expectRulesVersion);
   if (isObject(pkg.storage)) validateStorage(pkg.storage, expect);
   if (isObject(pkg.dom)) validateDom(pkg.dom, limits, pkg.truncated, redaction, expect, err);
 
@@ -225,8 +227,8 @@ export function validateSnapshot(pkg) {
 }
 
 // Throws with all errors listed; convenient in e2e (`assertValidSnapshot(JSON.parse(text))`).
-export function assertValidSnapshot(pkg) {
-  const { ok, errors } = validateSnapshot(pkg);
+export function assertValidSnapshot(pkg, options) {
+  const { ok, errors } = validateSnapshot(pkg, options);
   if (!ok) throw new Error(`Snapshot package does not match schema v${SCHEMA_VERSION}:\n${errors.join('\n')}`);
 }
 
@@ -337,13 +339,17 @@ const RECORD_CHECKS = {
   },
 };
 
-// `redaction` (AC-4.3, AC-4.5): no values, rules v1, only Default rules turned off, `masked` = markers in snapshot.json.
-function validateRedaction(pkg, expect) {
+// `redaction` (AC-4.3, AC-4.5): no values, rules v1…RULES_VERSION, only Default rules turned off, `masked` = markers in snapshot.json.
+function validateRedaction(pkg, expect, expectRulesVersion) {
   const r = pkg.redaction;
   if (!expect(isObject(r), 'redaction', 'not an object')) return { disabledRules: [] };
   const keys = Object.keys(r);
   expect(keys.join() === REDACTION_KEYS.join(), 'redaction', `keys ${keys.join(', ')}, expected ${REDACTION_KEYS.join(', ')}`);
-  expect(r.rulesVersion === RULES_VERSION, 'redaction.rulesVersion', `expected ${RULES_VERSION}, got ${show(r.rulesVersion)}`);
+  const v = r.rulesVersion;
+  if (expect(Number.isInteger(v) && v >= 1 && v <= RULES_VERSION, 'redaction.rulesVersion', `expected an integer 1–${RULES_VERSION}, got ${show(v)}`)
+    && expectRulesVersion !== undefined) {
+    expect(v === expectRulesVersion, 'redaction.rulesVersion', `expected ${expectRulesVersion}, got ${show(v)}`);
+  }
   const disabled = Array.isArray(r.disabledRules) ? r.disabledRules : [];
   if (expect(Array.isArray(r.disabledRules), 'redaction.disabledRules', 'not an array')) {
     disabled.forEach((rule, i) => {

@@ -29,9 +29,18 @@ function collectorLimits(deps) {
   return { ...COLLECTOR_LIMITS, ...(deps && deps.limits) };
 }
 
+// Array copy of a NodeList/HTMLCollection/NamedNodeMap by index, not Array.from: the page may replace the
+// array iterator (E4-IN2b).
+function collectorList(arrayLike) {
+  const out = [];
+  const n = arrayLike ? arrayLike.length >>> 0 : 0;
+  for (let i = 0; i < n; i++) out.push(arrayLike[i]);
+  return out;
+}
+
 export function getAttributes(el) {
   if (!el?.attributes) return {};
-  return Array.from(el.attributes).reduce((acc, attr) => {
+  return collectorList(el.attributes).reduce((acc, attr) => {
     acc[attr.name] = attr.value;
     return acc;
   }, {});
@@ -127,7 +136,7 @@ export function collectDomSnapshot(win, doc, deps) {
   const limits = collectorLimits(deps);
   const intrinsics = deps.intrinsics || COLLECTOR_DOM_INTRINSICS;
   const structure = serializeDom(doc, { mode: 'structure', maxChars: limits.html, intrinsics });
-  const allElements = Array.from(doc.querySelectorAll('*'));
+  const allElements = collectorList(doc.querySelectorAll('*'));
 
   return {
     counts: {
@@ -151,13 +160,13 @@ export function collectDomSnapshot(win, doc, deps) {
       charset: doc.characterSet,
       compatMode: doc.compatMode,
     },
-    meta: Array.from(doc.querySelectorAll('meta')).map((el) => getElementSummary(el, deps)),
+    meta: collectorList(doc.querySelectorAll('meta')).map((el) => getElementSummary(el, deps)),
     canonical: doc.querySelector('link[rel="canonical"]')?.href || null,
-    hreflangs: Array.from(doc.querySelectorAll('link[rel="alternate"][hreflang]')).map((el) => ({
+    hreflangs: collectorList(doc.querySelectorAll('link[rel="alternate"][hreflang]')).map((el) => ({
       hreflang: el.getAttribute('hreflang'),
       href: el.href,
     })),
-    scripts: Array.from(doc.scripts).map((el) => ({
+    scripts: collectorList(doc.scripts).map((el) => ({
       src: el.src || null,
       type: el.type || null,
       async: el.async,
@@ -166,7 +175,7 @@ export function collectDomSnapshot(win, doc, deps) {
       id: el.id || null,
       attributes: getAttributes(el),
     })),
-    stylesheets: Array.from(doc.querySelectorAll('link[rel="stylesheet"], style')).map((el) => ({
+    stylesheets: collectorList(doc.querySelectorAll('link[rel="stylesheet"], style')).map((el) => ({
       tagName: el.tagName,
       href: el.getAttribute('href') || null,
       media: el.getAttribute('media') || null,
@@ -174,7 +183,7 @@ export function collectDomSnapshot(win, doc, deps) {
       textLength: el.tagName === 'STYLE' ? (el.textContent || '').length : 0,
       attributes: getAttributes(el),
     })),
-    images: Array.from(doc.images).map((img) => ({
+    images: collectorList(doc.images).map((img) => ({
       src: img.currentSrc || img.src,
       naturalWidth: img.naturalWidth,
       naturalHeight: img.naturalHeight,
@@ -184,7 +193,7 @@ export function collectDomSnapshot(win, doc, deps) {
       // Review F7: alt and title texts may name a person ("Avatar Jana Kowalskiego"); only their lengths are kept.
       altLength: (img.alt || '').length,
     })),
-    iframes: Array.from(doc.querySelectorAll('iframe')).map((el) => {
+    iframes: collectorList(doc.querySelectorAll('iframe')).map((el) => {
       const attributes = getAttributes(el);
       delete attributes.title;
       return {
@@ -195,13 +204,13 @@ export function collectDomSnapshot(win, doc, deps) {
         attributes,
       };
     }),
-    forms: Array.from(doc.forms).map((form) => ({
+    forms: collectorList(doc.forms).map((form) => ({
       id: form.id || null,
       name: form.name || null,
       method: form.method || null,
       action: form.action || null,
       enctype: form.enctype || null,
-      elements: Array.from(form.elements).map((el) => ({
+      elements: collectorList(form.elements).map((el) => ({
         tagName: el.tagName,
         type: el.type || null,
         name: el.name || null,
@@ -317,9 +326,10 @@ const COLLECTOR_SECTIONS = [
 export function collectPageState({ win, doc, safeSlice, limits, fullHtml = false, intrinsics }) {
   const deps = { safeSlice, limits, fullHtml: fullHtml === true, intrinsics };
   const result = { environment: null, dom: null, performance: null, storage: null, errors: [] };
-  for (const [section, collect] of COLLECTOR_SECTIONS) {
+  for (let i = 0; i < COLLECTOR_SECTIONS.length; i++) {
+    const section = COLLECTOR_SECTIONS[i][0];
     try {
-      result[section] = collect(win, doc, deps);
+      result[section] = COLLECTOR_SECTIONS[i][1](win, doc, deps);
     } catch (error) {
       result.errors.push({ section, error: (error && error.name) || 'Error' });
     }

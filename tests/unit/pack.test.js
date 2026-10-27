@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, relative, sep } from 'node:path';
 import { unzipSync } from 'fflate';
-import { pack } from '../../scripts/pack.mjs';
+import { pack, packCliOptions } from '../../scripts/pack.mjs';
 
 const TARGETS = ['chrome', 'firefox'];
 // AC-4.3: nothing of this may end up in a target, so not in its zip either.
@@ -93,4 +93,38 @@ describe('pack', () => {
       }
     }
   });
+});
+
+describe('pack with a developer configuration (E4-FIX2)', () => {
+  it('CLI: only an explicit --config; PDS_CONFIG in env is ignored', () => {
+    const saved = process.env.PDS_CONFIG;
+    process.env.PDS_CONFIG = 'from-env.json';
+    try {
+      expect(packCliOptions([])).toEqual({ devConfigPath: undefined });
+      expect(packCliOptions(['--config', 'a.json']).devConfigPath).toMatch(/a\.json$/);
+      expect(() => packCliOptions(['--config'])).toThrow(/--config/);
+    } finally {
+      if (saved === undefined) delete process.env.PDS_CONFIG;
+      else process.env.PDS_CONFIG = saved;
+    }
+  });
+
+  it('--config: a warning and zips named …-devconfig.zip', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'pds-pack-cfg-'));
+    try {
+      const config = join(dir, 'team.json');
+      await writeFile(config, JSON.stringify({ disabledRules: ['email'] }));
+      const warnings = [];
+      const out = await pack({ distDir: join(dir, 'dist'), devConfigPath: config, warn: (msg) => warnings.push(msg) });
+      expect(out).toHaveLength(2);
+      for (const t of TARGETS) {
+        const { version } = JSON.parse(await readFile(join(dir, 'dist', t, 'manifest.json'), 'utf8'));
+        expect(basename(zipFor(out, t))).toBe(`page-debug-snapshot-${t}-${version}-devconfig.zip`);
+      }
+      expect(warnings.join('\n')).toMatch(/team\.json/);
+      expect(warnings.join('\n')).toMatch(/developer configuration/i);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 120_000);
 });

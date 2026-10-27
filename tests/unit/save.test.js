@@ -7,6 +7,7 @@ import {
   RESULT_PROTOCOL,
 } from '../../src/lib/save.js';
 import { createStore, KEYS } from '../../src/lib/session-store.js';
+import { SCREENSHOT_NOTES } from '../../src/lib/screenshot-notes.js';
 import { createFakeChrome, createFakeCodec, fieldRectsAnswer, jpegDataUrl, readZip } from './helpers/fake-chrome.js';
 import { JWT, TOKEN, EMAIL, PASSWORD, COOKIE_SID } from './helpers/redaction-traps.js';
 
@@ -81,7 +82,7 @@ const FILE_NAME = () => `snapshot-example.com-${localStamp(T0 + 60_000)}.zip`;
 // Package of a `collect` answer (E3 D7: zip as base64).
 const pkgOf = (res) => readZip(res.zipBase64).pkg;
 
-async function setup({ rec = REC, prior = [PRIOR], url = 'https://example.com/b', active = true, answer, codec = createFakeCodec(), devOptions } = {}) {
+async function setup({ rec = REC, prior = [PRIOR], url = 'https://example.com/b', active = true, answer, codec = createFakeCodec(), getDevOptions } = {}) {
   const { chrome, calls, fake } = createFakeChrome({ tabs: [{ id: TAB, url, active, windowId: WINDOW }] });
   const store = createStore(chrome.storage.session);
   if (rec) await store.updateRec(() => structuredClone(rec));
@@ -93,7 +94,7 @@ async function setup({ rec = REC, prior = [PRIOR], url = 'https://example.com/b'
   await chrome.action.setBadgeText({ tabId: TAB, text: '●' });
   fake.sendMessage = answer ?? (async (_tabId, message) => (message.type === 'collect' ? resultOf() : undefined));
   fake.fieldRects = async () => fieldRectsAnswer();
-  const makeHandlers = () => createSaveHandlers({ store, ...chrome, codec, devOptions });
+  const makeHandlers = () => createSaveHandlers({ store, ...chrome, codec, getDevOptions });
   const handlers = makeHandlers();
   // Listener as background.js registers it; collected promises let tests await the async work.
   const pending = [];
@@ -342,10 +343,10 @@ describe('screenshot at save (E2 D5)', () => {
     expect(env.codec.masks).toHaveLength(1);
     const [mask] = env.codec.masks;
     expect(mask.quality).toBe(60);
-    // Scale 1, margin max(2, 8) = 8 image px.
+    // Scale 1, margin 2 CSS px = 2 image px (E4 D10).
     expect(mask.rects).toEqual([
-      { x: 2, y: 12, w: 216, h: 46 },
-      { x: 292, y: 392, w: 116, h: 66 },
+      { x: 8, y: 18, w: 204, h: 34 },
+      { x: 298, y: 398, w: 104, h: 54 },
     ]);
     expect(pkgOf(res).screenshots[0].maskedFields).toBe(2);
   });
@@ -363,6 +364,50 @@ describe('screenshot at save (E2 D5)', () => {
     expect(shotNotes(pkg)).toEqual([]);
     // The page itself is still collected.
     expect(sent('collect')).toHaveLength(1);
+  });
+
+  // E4 D8 (IN6, AC-3.9): the popup says why the screenshot was off; the background trusts only known values.
+  const offNotes = (pkg) => pkg.notes.filter((n) => /^Screenshot not included/.test(n));
+
+  it('includeScreenshot false + reason frames(3) → note offFrames(3), not "turned off by the reporter" (AC-3.9)', async () => {
+    await setup();
+    const res = await env.handlers.collect({ tabId: TAB, includeScreenshot: false, screenshotOffReason: 'frames', crossOriginFrames: 3 });
+    expect(res).toMatchObject({ ok: true, screenshot: 'off' });
+    expect(captures()).toEqual([]);
+    expect(offNotes(pkgOf(res))).toEqual([SCREENSHOT_NOTES.offFrames(3)]);
+  });
+
+  it('reason frameCheckFailed → offCheckFailed (AC-3.9)', async () => {
+    await setup();
+    const res = await env.handlers.collect({ tabId: TAB, includeScreenshot: false, screenshotOffReason: 'frameCheckFailed' });
+    expect(offNotes(pkgOf(res))).toEqual([SCREENSHOT_NOTES.offCheckFailed]);
+  });
+
+  it.each([
+    ['missing', {}],
+    ['unknown', { screenshotOffReason: 'admin' }],
+    ['not a string', { screenshotOffReason: { toString: () => 'frames' } }],
+    ['frames without count', { screenshotOffReason: 'frames' }],
+  ])('%s reason → off note (AC-3.9)', async (_label, over) => {
+    await setup();
+    const res = await env.handlers.collect({ tabId: TAB, includeScreenshot: false, ...over });
+    expect(offNotes(pkgOf(res))).toEqual([SCREENSHOT_NOTES.off]);
+  });
+
+  it.each([0, -1, 1000, 2.5, '3', NaN, Infinity])('crossOriginFrames %s outside 1..999 ignored', async (crossOriginFrames) => {
+    await setup();
+    const res = await env.handlers.collect({ tabId: TAB, includeScreenshot: false, screenshotOffReason: 'frames', crossOriginFrames });
+    const notes = offNotes(pkgOf(res));
+    expect(notes).toEqual([SCREENSHOT_NOTES.off]);
+    expect(notes.join(' ')).not.toMatch(/frame/);
+  });
+
+  it('a reason with includeScreenshot true is ignored: the screenshot is taken', async () => {
+    await setup();
+    const res = await env.handlers.collect({ tabId: TAB, includeScreenshot: true, screenshotOffReason: 'frames', crossOriginFrames: 2 });
+    const pkg = pkgOf(res);
+    expect(pkg.screenshots).toHaveLength(1);
+    expect(offNotes(pkg)).toEqual([]);
   });
 
   it('includeScreenshot missing → treated as true (the checkbox default)', async () => {
@@ -490,9 +535,41 @@ describe('screenshot at save (E2 D5)', () => {
     expect(pkg.notes).toContain('More than 2000 form fields: the whole screenshot is covered.');
   });
 
-  it('cross-origin frames give no note (gate decision PB-1 = B)', async () => {
+  it('cross-origin frames out of view give no note; frames are never masked (gate decision PB-1 = B)', async () => {
     await setup();
-    env.fake.fieldRects = async () => fieldRectsAnswer({ frames: { sameOrigin: 0, crossOrigin: 3 } });
+    env.fake.fieldRects = async () => fieldRectsAnswer({ frames: { sameOrigin: 0, crossOrigin: 3, crossOriginVisible: 0 } });
+    const pkg = pkgOf(await env.handlers.collect({ tabId: TAB }));
+    expect(pkg.screenshots).toHaveLength(1);
+    expect(pkg.notes.some((n) => /frame/i.test(n))).toBe(false);
+  });
+
+  // E4 D8 (IN11, AC-3.10): the image is kept, the note says how many frames of other sites it shows.
+  it('screenshot included and fieldRects crossOriginVisible 2 → note framesVisible(2); 0 → no note (AC-3.10)', async () => {
+    await setup();
+    env.fake.fieldRects = async () => fieldRectsAnswer({ frames: { sameOrigin: 0, crossOrigin: 2, crossOriginVisible: 2 } });
+    const pkg = pkgOf(await env.handlers.collect({ tabId: TAB }));
+    expect(pkg.screenshots).toHaveLength(1);
+    expect(pkg.notes).toContain(SCREENSHOT_NOTES.framesVisible(2));
+    expect(pkg.notes.filter((n) => /frame/i.test(n))).toHaveLength(1);
+  });
+
+  it('frames note uses max(R1, R2) crossOriginVisible, capped at 999', async () => {
+    await setup();
+    const answers = [
+      fieldRectsAnswer({ frames: { sameOrigin: 0, crossOrigin: 1, crossOriginVisible: 1 } }),
+      fieldRectsAnswer({ frames: { sameOrigin: 0, crossOrigin: 3, crossOriginVisible: 3 } }),
+    ];
+    env.fake.fieldRects = async () => answers.shift();
+    expect(pkgOf(await env.handlers.collect({ tabId: TAB })).notes).toContain(SCREENSHOT_NOTES.framesVisible(3));
+
+    await setup();
+    env.fake.fieldRects = async () => fieldRectsAnswer({ frames: { sameOrigin: 0, crossOrigin: 5000, crossOriginVisible: 5000 } });
+    expect(pkgOf(await env.handlers.collect({ tabId: TAB })).notes).toContain(SCREENSHOT_NOTES.framesVisible(999));
+  });
+
+  it('malformed frames in fieldRects → no frames note, screenshot kept', async () => {
+    await setup();
+    env.fake.fieldRects = async () => fieldRectsAnswer({ frames: { crossOriginVisible: 'many' } });
     const pkg = pkgOf(await env.handlers.collect({ tabId: TAB }));
     expect(pkg.screenshots).toHaveLength(1);
     expect(pkg.notes.some((n) => /frame/i.test(n))).toBe(false);
@@ -672,8 +749,8 @@ describe('zip and privacy (E3 D7, D8)', () => {
     expect([...env.fake.sessionData.keys()].some((k) => k.startsWith(KEYS.docPrefix))).toBe(false);
   });
 
-  it('devOptions with html-structure → collect asks MAIN for full HTML; default asks without options', async () => {
-    await setup({ devOptions: { disabledRules: ['html-structure'] } });
+  it('getDevOptions with html-structure → collect asks MAIN for full HTML; default asks without options', async () => {
+    await setup({ getDevOptions: async () => ({ disabledRules: ['html-structure'] }) });
     const res = await env.handlers.collect({ tabId: TAB, includeScreenshot: false });
     expect(env.calls.filter((c) => c.name === 'tabs.sendMessage' && c.args[1].type === 'collect').map((c) => c.args[1])).toEqual([
       { type: 'collect', options: { fullHtml: true } },
@@ -681,6 +758,29 @@ describe('zip and privacy (E3 D7, D8)', () => {
     const pkg = pkgOf(res);
     expect(pkg.redaction.disabledRules).toEqual(['html-structure']);
     expect(pkg.limits.packageBytes).toBe(10485760);
+  });
+
+  it('getDevOptions is read once per collect: fullHtml and the redaction use the same answer (E4-D4d)', async () => {
+    const answers = [{ disabledRules: ['html-structure', 'email'] }, { disabledRules: [] }];
+    let reads = 0;
+    await setup({ getDevOptions: async () => answers[reads++] });
+    const res = await env.handlers.collect({ tabId: TAB, includeScreenshot: false });
+    expect(reads).toBe(1);
+    const sent = env.calls.filter((c) => c.name === 'tabs.sendMessage' && c.args[1].type === 'collect').map((c) => c.args[1]);
+    expect(sent).toEqual([{ type: 'collect', options: { fullHtml: true } }]);
+    expect(pkgOf(res).redaction.disabledRules).toEqual(['email', 'html-structure']);
+  });
+
+  it.each([
+    ['rejects', async () => { throw new Error('Managed storage manifest not found'); }],
+    ['returns garbage', async () => 'nope'],
+  ])('getDevOptions %s → default rules, save succeeds (AC-6.3)', async (_name, getDevOptions) => {
+    await setup({ getDevOptions });
+    const res = await env.handlers.collect({ tabId: TAB, includeScreenshot: false });
+    expect(res.ok).toBe(true);
+    expect(pkgOf(res).redaction.disabledRules).toEqual([]);
+    const sent = env.calls.filter((c) => c.name === 'tabs.sendMessage' && c.args[1].type === 'collect').map((c) => c.args[1]);
+    expect(sent).toEqual([{ type: 'collect' }]);
   });
 
   it('export failure → failed, attempt cleared (never a half-written package)', async () => {

@@ -17,9 +17,14 @@
 // comments or strings). No cycles. Exported values are a snapshot taken when the module finishes
 // evaluating (no live bindings). Output is LF-only and depends only on the sources.
 //
-// CLI: `node scripts/gen-content.mjs [--check]` writes (or verifies) src/content/*.js and
-// src/standalone/console-snapshot.js. Do not edit the generated files by hand.
+// The viewer (E4 D3) is one HTML file: the template gets the bundle as its only inline script and a
+// CSP meta tag with the SHA-256 of that script and of its one <style>. A bundle that could end the
+// script element early (`</script`, `<!--`) is an error, never escaped.
+//
+// CLI: `node scripts/gen-content.mjs [--check]` writes (or verifies) src/content/*.js,
+// src/standalone/console-snapshot.js and src/standalone/viewer.html. Do not edit the generated files by hand.
 
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -35,6 +40,14 @@ export const BUNDLES = [
   { out: 'content/isolated-world.js', entry: 'page/isolated-entry.js' },
   { out: 'standalone/console-snapshot.js', entry: 'page/console-entry.js' },
 ];
+
+/** Output (relative to src/) ← HTML template + entry module (both relative to src/), see bundleHtml(). */
+export const HTML_BUNDLES = [
+  { out: 'standalone/viewer.html', template: 'viewer/viewer.html', entry: 'viewer/viewer-entry.js' },
+];
+
+/** NFR size: the generated viewer must stay a small single file. */
+export const MAX_HTML_BYTES = 300 * 1024;
 
 const ID = String.raw`[A-Za-z_$][\w$]*`;
 const SPEC = String.raw`(['"])([^'"]+)\2`; // capture groups: quote, specifier
@@ -233,6 +246,49 @@ export function bundle({ entry, srcDir = join(ROOT, 'src', 'page'), banner = HEA
   return code;
 }
 
+const SCRIPT_SLOT = '<script>{{SCRIPT}}</script>';
+const CSP_SLOT = '{{CSP}}';
+const count = (text, part) => text.split(part).length - 1;
+const sha256 = (text) => `'sha256-${createHash('sha256').update(text, 'utf8').digest('base64')}'`;
+
+/**
+ * Builds a one-file HTML page: `entry` bundled (see bundle()) into the template's only script element,
+ * CSP hashes of that script and of the template's only <style> in place of `{{CSP}}`.
+ * The template must contain `<script>{{SCRIPT}}</script>` and `{{CSP}}` exactly once, one <style> element
+ * and no other <script>. Throws when the bundle contains `</script` or `<!--`, or the page exceeds MAX_HTML_BYTES.
+ * @param {{ template: string, entry: string, srcDir?: string }} options  paths relative to `srcDir` (default src/)
+ * @returns {string} the page, LF only
+ */
+export function bundleHtml({ template, entry, srcDir = join(ROOT, 'src') }) {
+  const where = `src/${template}`;
+  const page = readFileSync(join(srcDir, template), 'utf8').replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+  if (count(page, SCRIPT_SLOT) !== 1) fail(where, `template must contain '${SCRIPT_SLOT}' exactly once`);
+  if (count(page, '{{SCRIPT}}') !== 1) fail(where, "template must contain '{{SCRIPT}}' exactly once");
+  if (count(page, CSP_SLOT) !== 1) fail(where, `template must contain '${CSP_SLOT}' exactly once`);
+  if ((page.match(/<script\b/gi) ?? []).length !== 1) fail(where, 'template must have no <script> besides the bundle slot');
+  const styles = [...page.matchAll(/<style>([\s\S]*?)<\/style>/g)];
+  if (styles.length !== 1 || (page.match(/<style\b/gi) ?? []).length !== 1) fail(where, 'template must have exactly one <style> element (no attributes)');
+
+  const code = bundle({ entry, srcDir });
+  // Fail-safe instead of escaping: either sequence could end or confuse the inline script element.
+  const bad = /<\/script|<!--/i.exec(code);
+  if (bad) fail(entry, `bundle contains '${bad[0]}' (would break the inline script; rewrite the source, e.g. '<\\/' + 'script')`);
+
+  const csp = [
+    "default-src 'none'",
+    `script-src ${sha256(code)}`,
+    `style-src ${sha256(styles[0][1])}`,
+    'img-src blob:',
+    "base-uri 'none'",
+    "form-action 'none'",
+  ].join('; ');
+  // split/join, not String#replace: the bundle may contain `$&`-style replacement patterns.
+  const html = page.split(CSP_SLOT).join(csp).split(SCRIPT_SLOT).join(`<script>${code}</script>`);
+  const bytes = Buffer.byteLength(html, 'utf8');
+  if (bytes > MAX_HTML_BYTES) fail(where, `generated page has ${bytes} bytes, limit is ${MAX_HTML_BYTES} (300 KB)`);
+  return html;
+}
+
 /**
  * Generates every bundle from BUNDLES under `root`/src, or with `check` only compares.
  * @param {{ root?: string, check?: boolean }} [options]
@@ -245,12 +301,20 @@ export async function generateAll({ root = ROOT, check = false } = {}) {
   for (const { entry } of BUNDLES) {
     if (!existsSync(join(src, entry))) throw new Error(`Missing entry module: src/${entry} (created in E1-T15/T7)`);
   }
-  const results = BUNDLES.map(({ out, entry }) => {
-    const code = bundle({ entry: relative(srcDir, join(src, entry)), srcDir });
+  for (const { template, entry } of HTML_BUNDLES) {
+    for (const file of [template, entry]) {
+      if (!existsSync(join(src, file))) throw new Error(`Missing viewer source: src/${file} (created in E4-T3a)`);
+    }
+  }
+  const result = (out, code) => {
     const file = join(src, out);
     const current = existsSync(file) ? readFileSync(file, 'utf8') : null;
     return { out, code, file, changed: current !== code };
-  });
+  };
+  const results = [
+    ...BUNDLES.map(({ out, entry }) => result(out, bundle({ entry: relative(srcDir, join(src, entry)), srcDir }))),
+    ...HTML_BUNDLES.map(({ out, template, entry }) => result(out, bundleHtml({ template, entry, srcDir }))),
+  ];
   const changed = results.filter((r) => r.changed);
   if (check) return { written: [], stale: changed.map((r) => r.out) };
   for (const { file, code } of changed) {

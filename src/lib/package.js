@@ -2,9 +2,11 @@
 // `collect` result, the per-document snapshots flushed on `pagehide` (D4) and the background's screenshot (E2 D5).
 // The result is NOT redacted yet: export.js redacts it, fits the size budget and writes the zip (E3 D8); the screenshot
 // bytes travel beside the package (`assembleParts`), never inside it.
-// Pure: no chrome.*, no DOM, no clock. Bundled into the console fallback too, so it imports only mask-secrets.js.
+// Pure: no chrome.*, no DOM, no clock. Bundled into the console fallback too, so it imports only mask-secrets.js and
+// screenshot-notes.js.
 
 import { maskSecrets, cutPreview } from './mask-secrets.js';
+import { SCREENSHOT_NOTES, frameCount } from './screenshot-notes.js';
 
 export const SCHEMA_VERSION = 4;
 
@@ -31,11 +33,8 @@ const FULL_HTML_PACKAGE_BYTES = 10485760;
 // The one image of the package (E3 D7): its entry in the zip.
 export const SCREENSHOT_FILE = 'screenshot.jpg';
 
-/** Notes of a missing screenshot that the background knows the reason of (E3-IN1c). */
-export const SCREENSHOT_NOTES = Object.freeze({
-  off: 'Screenshot not included (turned off by the reporter).',
-  notHidden: (reason) => `No screenshot: form fields could not be hidden (${cap(reason, NOTE_TEXT_MAX)}).`,
-});
+// Notes about the screenshot (E3-IN1c, E4 D8) live in screenshot-notes.js; re-exported for existing imports.
+export { SCREENSHOT_NOTES };
 
 const PAGE_SECTIONS = ['environment', 'performance', 'storage', 'dom'];
 const NOTE_URL_MAX = 300;
@@ -263,6 +262,14 @@ function describeCounts(counts) {
   return RECORD_KEYS.map((key) => `${counts[key]} ${LABELS[key]}`).join(', ');
 }
 
+// Why the screenshot was off (E4 D8): only the known reasons; anything else is the reporter's switch.
+function screenshotOffNote(meta) {
+  if (meta.screenshotOffReason === 'frameCheckFailed') return SCREENSHOT_NOTES.offCheckFailed;
+  const count = frameCount(meta.crossOriginFrames);
+  if (meta.screenshotOffReason === 'frames' && count !== null) return SCREENSHOT_NOTES.offFrames(count);
+  return SCREENSHOT_NOTES.off;
+}
+
 /**
  * The v4 package (not redacted) and the screenshot that goes beside it as `screenshot.jpg`.
  * @param {object} input
@@ -271,11 +278,14 @@ function describeCounts(counts) {
  *           currentMissingReason?: 'loadedAfterStop',
  *           screenshots?: { epochMs: number, mime: string, width: number, height: number, bytes: number, dataUrl: string,
  *                           reason?: 'save', maskedFields?: number }[],
- *           screenshotOff?: boolean, maskFailure?: string, screenshotNote?: string,
+ *           screenshotOff?: boolean, screenshotOffReason?: 'reporter'|'frames'|'frameCheckFailed', crossOriginFrames?: number,
+ *           maskFailure?: string, screenshotNote?: string, framesVisible?: number,
  *           fullHtml?: boolean }} input.meta  `currentMissingReason`: why `current` is null, when known
  *           (`loadedAfterStop`: the tab has no recorder because it was loaded after the time limit stopped the recording).
  *           `screenshots`: `shot`s of `captureScreenshot` (epoch ms); why there is none (goes to `notes`): `screenshotOff`
- *           (the reporter's switch), `maskFailure` (fields could not be hidden: the reason), else `screenshotNote`.
+ *           (the reporter's switch; `screenshotOffReason` + `crossOriginFrames` 1..999 say why the popup left it off, E4 D8),
+ *           `maskFailure` (fields could not be hidden: the reason), else `screenshotNote`. `framesVisible` 1..999: frames of
+ *           other sites shown on the included image (a note, IN11).
  *           `fullHtml`: the developer turned on full HTML (`dom.fullHtml` kept, `limits.packageBytes` 10 MB)
  * @param {object|null} input.current  parsed `collect` result of the current document, or null when unavailable;
  *           besides the v2 fields it may carry `steps`, `vitals`, `documentStatus`, `truncated.responseBodies`
@@ -431,12 +441,15 @@ export function assembleParts({ meta, current, priorDocs = [], docs = [] }) {
     ? { screenshots: [], dataUrl: null }
     : screenshotsOf(meta.screenshots, limits, ordered[shotIndex] ?? null, shotIndex);
   if (!screenshots.length) {
-    if (shotOff) notes.push(SCREENSHOT_NOTES.off);
+    if (shotOff) notes.push(screenshotOffNote(meta));
     else if (maskFailed) notes.push(SCREENSHOT_NOTES.notHidden(meta.maskFailure));
     else if (typeof meta.screenshotNote === 'string' && meta.screenshotNote !== '') notes.push(cap(meta.screenshotNote, NOTE_TEXT_MAX));
     else if (source === 'console') notes.push('Screenshots are not available without the extension.');
     else if (Array.isArray(meta.screenshots) && meta.screenshots.length) notes.push('No screenshot: the image could not be included.');
     else notes.push('No screenshot: none was taken.');
+  } else {
+    const visible = frameCount(meta.framesVisible);
+    if (visible !== null) notes.push(SCREENSHOT_NOTES.framesVisible(visible));
   }
 
   const failed = (r) => (typeof r.status === 'number' && r.status >= 400) || (r.error !== null && r.error !== undefined);

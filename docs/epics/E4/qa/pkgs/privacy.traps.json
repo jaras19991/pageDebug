@@ -1,0 +1,11 @@
+{
+ "jwt": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwZHMtdHJhcC03NTY1ZjY0MTgyOWYiLCJleHAiOjE4OTM0NTYwMDB9.6d83c957c95633b26acd45be86f4a36b6952c418e01fef07",
+ "sid": "8b098dc5e3812a29db01da5429c136fe",
+ "token": "tkc72bef8b4353e55433f7b43f97dd",
+ "bearer": "brbaa9a752a30a6cd8b1b89d37451c61ea",
+ "email": "jan.kowalski@example.com",
+ "password": "Sekret123!",
+ "phone": "+48 600 700 800",
+ "card": "4111 1111 1111 1111",
+ "cardDigits": "4111111111111111"
+}

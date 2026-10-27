@@ -63,7 +63,7 @@ describe('manifest sources', () => {
   it('overlays only use allowed target keys', () => {
     // D4: overlays may only add target-specific keys; everything shared lives in the base.
     for (const key of Object.keys(chrome)) {
-      expect(['minimum_chrome_version', 'background'], `chrome overlay: ${key}`).toContain(key);
+      expect(['minimum_chrome_version', 'background', 'storage'], `chrome overlay: ${key}`).toContain(key);
     }
     for (const key of Object.keys(firefox)) {
       expect(['browser_specific_settings', 'background'], `firefox overlay: ${key}`).toContain(key);

@@ -6,11 +6,28 @@ import { MESSAGES, messageFor } from './messages.js';
 const BLOCKED_TARGETS = new Set(['restricted', 'fileAccess', 'fileUnsupportedFirefox', 'noTab']);
 
 function model(section, opts = {}) {
-  const { since = '', hint = false, note = '', statusText = '', isError = false } = opts;
-  return { section, since, hint, note, statusText, isError, buttons: { record: !!opts.record, save: !!opts.save } };
+  const { since = '', hint = false, note = '', statusText = '', isError = false, savedFile = '', savedShot = '', savedMissing = '' } = opts;
+  return {
+    section,
+    since,
+    hint,
+    note,
+    statusText,
+    isError,
+    buttons: { record: !!opts.record, save: !!opts.save },
+    savedFile,
+    savedShot,
+    savedMissing,
+  };
 }
 
-const outcomeText = (outcome) => (outcome ? messageFor(outcome) : '');
+// The collect answer's `screenshot` → the sentence under the file name on the saved screen (QA F-5); 'included' → none.
+const SAVED_SHOT = { off: 'screenshotOffSaved', failed: 'screenshotFailedSaved' };
+// Bounds what the view reads from the developer options (AC-6.5): the closed set of disclosureDevExtra keys.
+const MAX_DEV_RULES = 20;
+
+// The saved verdict has its own screen (E4 D7): it is never a status line.
+const outcomeText = (outcome) => (outcome && outcome.kind !== 'saved' ? messageFor(outcome) : '');
 const isErrorOutcome = (outcome) => !!outcome && outcome.kind !== 'saved';
 
 /**
@@ -19,16 +36,36 @@ const isErrorOutcome = (outcome) => !!outcome && outcome.kind !== 'saved';
  *           busy?: 'starting' | 'saving' | null,
  *           outcome?: { kind: string, fileName?: string, screenshot?: string } | null,
  *           crossOriginFrames?: number | null,
- *           frameCheck?: 'pending' | 'failed' | 'done' | null }} ctx  crossOriginFrames: `frameCheck` answer, null = unknown;
- *           frameCheck: null when not asked (no recording of this tab)
- * @returns {{ section: 'ready' | 'recording' | null, since: string, hint: boolean, note: string,
+ *           frameCheck?: 'pending' | 'failed' | 'done' | null,
+ *           showReady?: boolean, fileMissing?: boolean,
+ *           devOptions?: { disabledRules: string[] } | null }} ctx  crossOriginFrames: `frameCheck` answer, null = unknown;
+ *           frameCheck: null when not asked (no recording of this tab); showReady: "Nowe nagranie" clicked in this popup;
+ *           fileMissing: "Pokaż plik" found no file; devOptions: loadDevOptions() result, null until known
+ * @returns {{ section: 'ready' | 'recording' | 'saved' | null, since: string, hint: boolean, note: string,
  *             statusText: string, isError: boolean, buttons: { record: boolean, save: boolean },
+ *             savedFile: string, savedShot: string, savedMissing: string, disclosureDev: string,
  *             screenshotDefault: boolean, screenshotNote: string }}
  */
 export function renderModel(status, ctx) {
   // `screenshotDefault`: the checkbox state the popup starts from; off when the page embeds frames of other sites,
   // which are never masked (store review S1). `screenshotNote` says why. Same in every section of one popup.
-  return { ...sectionModel(status, ctx), ...screenshotDefaults(ctx) };
+  return { ...sectionModel(status, ctx), disclosureDev: disclosureDevText(ctx.devOptions), ...screenshotDefaults(ctx) };
+}
+
+// What the developer's configuration adds to "Do pliku trafią:" (AC-6.5): texts of the turned-off default rules,
+// in the order of the options (DEFAULT_RULES); anything else is ignored. '' = the item stays hidden.
+function disclosureDevText(devOptions) {
+  const rules = devOptions?.disabledRules;
+  if (!Array.isArray(rules)) return '';
+  const texts = [];
+  for (let i = 0; i < Math.min(rules.length, MAX_DEV_RULES); i++) {
+    const rule = rules[i];
+    if (typeof rule === 'string' && Object.hasOwn(MESSAGES.disclosureDevExtra, rule)) {
+      const text = MESSAGES.disclosureDevExtra[rule];
+      if (!texts.includes(text)) texts.push(text);
+    }
+  }
+  return texts.join('; ');
 }
 
 // Fail-closed (review N6): while this tab's frame check is pending or after it failed, the default is off;
@@ -45,7 +82,7 @@ function screenshotDefaults({ crossOriginFrames = null, frameCheck = null }) {
 }
 
 function sectionModel(status, ctx) {
-  const { target, busy = null, outcome = null } = ctx;
+  const { target, busy = null, outcome = null, showReady = false, fileMissing = false } = ctx;
   if (BLOCKED_TARGETS.has(target)) {
     return model(null, { statusText: MESSAGES[target], isError: true });
   }
@@ -80,12 +117,23 @@ function sectionModel(status, ctx) {
     return model('ready', { statusText: MESSAGES.starting });
   }
 
-  // Ready: a local outcome wins, then another tab's recording, then the last saved file.
+  // Idle: a local outcome wins, then another tab's recording.
   let statusText = outcomeText(outcome);
-  let isError = isErrorOutcome(outcome);
+  const isError = isErrorOutcome(outcome);
   if (!statusText && status.otherTabRecording) statusText = MESSAGES.otherTabRecording;
-  if (!statusText && typeof status.lastSaved?.fileName === 'string' && status.lastSaved.fileName) {
-    statusText = MESSAGES.saved(status.lastSaved.fileName);
+
+  // Saved screen (E4 D7): this tab's last file, until "Nagrywaj" (the background then drops lastSaved) or, only in
+  // this popup, "Nowe nagranie". Only the file name comes from the data (AC-2.2).
+  const fileName = status.lastSaved?.fileName;
+  if (!showReady && typeof fileName === 'string' && fileName) {
+    const shot = outcome?.kind === 'saved' && Object.hasOwn(SAVED_SHOT, outcome.screenshot) ? MESSAGES[SAVED_SHOT[outcome.screenshot]] : '';
+    return model('saved', {
+      statusText: statusText === MESSAGES.otherTabRecording ? MESSAGES.otherTabRecordingSaved : statusText,
+      isError,
+      savedFile: MESSAGES.savedFile(fileName),
+      savedShot: shot,
+      savedMissing: fileMissing ? MESSAGES.fileMissing : '',
+    });
   }
   return model('ready', { statusText, isError, record: true });
 }
@@ -99,11 +147,28 @@ function sinceText(status) {
 const appliedDefaults = new WeakMap();
 const touchedBoxes = new WeakSet();
 
+/** True once the reporter has clicked the checkbox in this popup (E4 D8: the reason sent with an unticked box). */
+export function wasTouched(box) {
+  return !!box && touchedBoxes.has(box);
+}
+
 /** Writes a model into the popup document (ids from popup.html). Text only, never HTML. */
 export function applyModel(doc, m) {
   const byId = (id) => doc.getElementById(id);
   byId('ready').hidden = m.section !== 'ready';
   byId('recording').hidden = m.section !== 'recording';
+  const saved = byId('saved');
+  if (saved) {
+    saved.hidden = m.section !== 'saved';
+    byId('savedFile').textContent = m.savedFile ?? '';
+    byId('savedShot').textContent = m.savedShot ?? '';
+    byId('savedMissing').textContent = m.savedMissing ?? '';
+  }
+  const disclosureDev = byId('disclosureDev');
+  if (disclosureDev) {
+    disclosureDev.textContent = m.disclosureDev ?? '';
+    disclosureDev.hidden = !m.disclosureDev;
+  }
   byId('since').textContent = m.since;
   byId('hint').hidden = !m.hint;
   byId('note').textContent = m.note;

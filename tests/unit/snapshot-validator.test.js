@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { unzipSync } from 'fflate';
 import { exportPackage } from '../../src/lib/export.js';
 import { validateSnapshot, assertValidSnapshot, validateZipEntries, REQUIRED_KEYS } from '../helpers/snapshot-validator.js';
+import { RULES_VERSION } from '../../src/lib/redact-rules.js';
 import { JWT, TOKEN, EMAIL, PASSWORD, COOKIE_SID, leaks } from './helpers/redaction-traps.js';
 
 // tests/fixtures/snapshots/v4.json is snapshot.json of the zip that exportPackage writes for v4Input() below (synthetic
@@ -351,13 +352,13 @@ describe('snapshot validator v4 (E3-T7, spec „Dane”)', () => {
     expect(errorsOf(zero)).toContain('redaction.masked.steps: not a positive integer: 0');
   });
 
-  it('redaction: keys, rulesVersion 1, disabledRules ⊆ Default rules without duplicates, masked sections known (AC-4.5)', () => {
+  it('redaction: keys, rulesVersion 1–2, disabledRules ⊆ Default rules without duplicates, masked sections known (AC-4.5)', () => {
     const pkg = build();
-    pkg.redaction.rulesVersion = 2;
+    pkg.redaction.rulesVersion = 0;
     pkg.redaction.disabledRules = ['jwt', 'email', 'email'];
     pkg.redaction.masked.overview = 1;
     expect(errorsOf(pkg)).toEqual(expect.arrayContaining([
-      'redaction.rulesVersion: expected 1, got 2',
+      'redaction.rulesVersion: expected an integer 1–2, got 0',
       'redaction.disabledRules[0]: not a rule that can be turned off: "jwt"',
       'redaction.disabledRules[2]: listed twice: "email"',
       'redaction.masked.overview: not a section of the package',
@@ -538,8 +539,49 @@ describe('snapshot validator v4 (E3-T7, spec „Dane”)', () => {
   });
 });
 
+describe('redaction.rulesVersion 2 (E4-T10, AC-2.8)', () => {
+  it('v4.json (rulesVersion 1) still valid', () => {
+    const fixture = JSON.parse(readFileSync(fixtureUrl, 'utf8'));
+    expect(fixture.redaction.rulesVersion).toBe(1);
+    expect(errorsOf(fixture)).toEqual([]);
+    expect(validateSnapshot(fixture, { expectRulesVersion: 1 }).errors).toEqual([]);
+  });
+
+  it('fresh export has rulesVersion 2 with expectRulesVersion', () => {
+    expect(RULES_VERSION).toBe(2);
+    expect(built.pkg.redaction.rulesVersion).toBe(2);
+    expect(validateSnapshot(built.pkg, { expectRulesVersion: 2 }).errors).toEqual([]);
+    expect(() => assertValidSnapshot(built.pkg, { expectRulesVersion: 2 })).not.toThrow();
+    const old = build();
+    old.redaction.rulesVersion = 1;
+    expect(errorsOf(old)).toEqual([]);
+    expect(validateSnapshot(old, { expectRulesVersion: 2 }).errors).toEqual(['redaction.rulesVersion: expected 2, got 1']);
+    expect(() => assertValidSnapshot(old, { expectRulesVersion: 2 })).toThrow(/redaction\.rulesVersion: expected 2, got 1/);
+  });
+
+  it('rulesVersion 3 invalid', () => {
+    for (const v of [3, 1.5, '2', null]) {
+      const pkg = build();
+      pkg.redaction.rulesVersion = v;
+      expect(errorsOf(pkg)).toEqual([`redaction.rulesVersion: expected an integer 1–2, got ${JSON.stringify(v)}`]);
+    }
+  });
+
+  it('disabledRules from the developer config (D5) pass in both rules versions', async () => {
+    const out = await exportOf(v4Input(), { disabledRules: ['email', 'phone'] });
+    expect(out.pkg.redaction).toEqual(expect.objectContaining({ rulesVersion: 2, disabledRules: ['email', 'phone'] }));
+    expect(validateSnapshot(out.pkg, { expectRulesVersion: 2 }).errors).toEqual([]);
+    out.pkg.redaction.rulesVersion = 1;
+    expect(errorsOf(out.pkg)).toEqual([]);
+  });
+});
+
+// v4.json stays the 0.5.0 example (`rulesVersion: 1`, design E4 „Schema paczki”): the same export, with the rules version
+// of 0.5.0 written back, so compatibility with older packages keeps a test while the shape still follows exportPackage.
+const asRelease050 = (text) => text.replace(`"rulesVersion": ${RULES_VERSION},`, '"rulesVersion": 1,');
+
 describe('fixture v4.json (E3-T7)', () => {
-  if (process.env.PDS_UPDATE_FIXTURES === '1') writeFileSync(fixtureUrl, `${built.text}\n`);
+  if (process.env.PDS_UPDATE_FIXTURES === '1') writeFileSync(fixtureUrl, `${asRelease050(built.text)}\n`);
   const text = readFileSync(fixtureUrl, 'utf8');
   const fixture = JSON.parse(text);
 
@@ -547,8 +589,9 @@ describe('fixture v4.json (E3-T7)', () => {
     expect(errorsOf(fixture)).toEqual([]);
   });
 
-  it('v4.json is snapshot.json that exportPackage writes for the synthetic input', () => {
-    expect(text).toBe(`${built.text}\n`);
+  it('v4.json is snapshot.json that exportPackage writes for the synthetic input (with rulesVersion 1 of 0.5.0)', () => {
+    expect(built.text).toContain(`"rulesVersion": ${RULES_VERSION},`);
+    expect(text).toBe(`${asRelease050(built.text)}\n`);
   });
 
   it('v4.json covers 2 documents, cookies, masked storage, structure, file step, element summary, a screenshot', () => {

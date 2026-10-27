@@ -77,12 +77,12 @@ export function installFrameHooks({ win, doc, now, record, json, intrinsics = {}
         installFrameHooks({ win: frameWin, doc: frameWin.document, now, record, json, intrinsics, depth: depth + 1, shared: ctx }),
       );
     }
-    for (const hook of hooks) {
-      const restoreHook = framesTry(hook, null);
+    for (let i = 0; i < hooks.length; i++) {
+      const restoreHook = framesTry(hooks[i], null);
       if (typeof restoreHook === 'function') restores.push(restoreHook);
     }
     state.restoreFrame = () => {
-      for (const restoreHook of restores) framesTry(restoreHook);
+      for (let i = 0; i < restores.length; i++) framesTry(restores[i]);
     };
   }
 
@@ -99,6 +99,13 @@ export function installFrameHooks({ win, doc, now, record, json, intrinsics = {}
     ctx.count += 1;
     // Already loaded (or about:blank that fired `load` synchronously on insertion) — hook now.
     hookFrame(el, state);
+  }
+
+  // Tracked frames as [el, state] pairs, read with Map#forEach: the page may replace the array iterator (E4-IN2b).
+  function trackedPairs() {
+    const pairs = [];
+    tracked.forEach((state, el) => { pairs.push([el, state]); });
+    return pairs;
   }
 
   function untrack(el, state) {
@@ -118,7 +125,9 @@ export function installFrameHooks({ win, doc, now, record, json, intrinsics = {}
   function onMutations(mutations) {
     if (!ctx.active) return;
     let removed = false;
-    for (const mutation of mutations) {
+    const n = framesTry(() => mutations.length >>> 0, 0);
+    for (let m = 0; m < n; m++) {
+      const mutation = mutations[m];
       if (mutation.removedNodes && mutation.removedNodes.length) removed = true;
       const added = mutation.addedNodes || [];
       for (let i = 0; i < added.length; i += 1) {
@@ -126,8 +135,9 @@ export function installFrameHooks({ win, doc, now, record, json, intrinsics = {}
       }
     }
     if (removed) {
-      for (const [el, state] of tracked) {
-        if (!framesTry(() => el.isConnected, true)) untrack(el, state);
+      const pairs = trackedPairs();
+      for (let i = 0; i < pairs.length; i++) {
+        if (!framesTry(() => pairs[i][0].isConnected, true)) untrack(pairs[i][0], pairs[i][1]);
       }
     }
   }
@@ -148,6 +158,7 @@ export function installFrameHooks({ win, doc, now, record, json, intrinsics = {}
     if (!shared) ctx.active = false;
     if (observer) framesTry(() => observer.disconnect());
     observer = null;
-    for (const [el, state] of [...tracked]) untrack(el, state);
+    const pairs = trackedPairs();
+    for (let i = 0; i < pairs.length; i++) untrack(pairs[i][0], pairs[i][1]);
   };
 }

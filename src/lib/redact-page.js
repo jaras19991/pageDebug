@@ -7,6 +7,7 @@ import { shortHash } from './sha256.js';
 
 const MARKER = /^\[redacted:[a-z0-9_*-]+\]$/;
 const FORM_VALUE = '[redacted:form-value]';
+const HTML_STRUCTURE = '[redacted:html-structure]';
 // The v3 collector replaced password/hidden values with this plain marker; its length says nothing.
 const V3_REDACTED = '[redacted]';
 
@@ -84,9 +85,15 @@ function redactStorage(storage, ctx) {
 
 // ---- DOM ----------------------------------------------------------------------------------------------------------
 
-const INPUT_TAG = /<input\b[^>]*>/gi;
+// A tag runs to the first `>` outside a quoted attribute (`<input data-x="a>b" value="S1">`, E4-REREVIEW). An unclosed
+// quote or tag runs to the end of the text, so every match succeeds from its first `<input`/`<textarea`: no retry from
+// the next one, the scan stays linear.
+const TAG_REST = String.raw`(?:[^>"']|"[^"]*(?:"|$)|'[^']*(?:'|$))*(?:>|$)`;
+const INPUT_TAG = new RegExp(String.raw`<input\b${TAG_REST}`, 'gi');
 const VALUE_ATTRIBUTE = /(\svalue\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi;
-const TEXTAREA = /(<textarea\b[^>]*>)([^<]*)(<\/textarea>)/gi;
+// Textarea content is text up to `</textarea` (any case), tags inside included (`<textarea>S3 <b></textarea>`); an
+// unclosed textarea runs to the end, as in the browser.
+const TEXTAREA = new RegExp(String.raw`(<textarea\b${TAG_REST})([\s\S]*?)(<\/textarea(?=[\s/>])|$)`, 'gi');
 
 // Full HTML (developer option, v3 outerHTML): `value` of inputs and textarea content → form-value, then the text pass.
 function redactHtml(html, ctx) {
@@ -127,12 +134,34 @@ function redactMetaAttributes(map, ctx) {
   return out;
 }
 
+// `<iframe srcdoc>` is the whole HTML of the frame, texts and field values included (QA E4 F-2): like the page HTML it
+// becomes the html-structure marker; only with html-structure off (dom.fullHtml) it is kept, as fullHtml (redactHtml).
+function redactFrameAttributes(map, ctx) {
+  if (!isObject(map)) return attributes(map, ctx);
+  const out = {};
+  for (const key of Object.keys(map)) {
+    const value = map[key];
+    if (key.toLowerCase() !== 'srcdoc' || typeof value !== 'string' || value === '') {
+      put(out, key, attributes({ [key]: value }, ctx)[key]);
+    } else if (ctx.disabledRules.includes('html-structure')) {
+      put(out, key, redactHtml(value, ctx));
+    } else if (MARKER.test(value)) {
+      put(out, key, value);
+    } else {
+      ctx.applied++;
+      put(out, key, HTML_STRUCTURE);
+    }
+  }
+  return out;
+}
+
 // Element summary (meta, scripts, stylesheets, iframes, images): addresses as URLs, attribute maps by key.
-function redactElement(el, ctx, meta = false) {
+function redactElement(el, ctx, kind = null) {
+  const map = kind === 'meta' ? redactMetaAttributes : kind === 'iframe' ? redactFrameAttributes : attributes;
   return ctx.fields(el, {
     src: ctx.urlValue,
     href: ctx.urlValue,
-    attributes: (map) => (meta ? redactMetaAttributes(map, ctx) : attributes(map, ctx)),
+    attributes: (value) => map(value, ctx),
   });
 }
 
@@ -159,13 +188,13 @@ function redactDom(dom, ctx) {
   const list = (fn) => (items) => ctx.list(items, fn);
   return ctx.fields(dom, {
     html: (html) => ctx.fields(html, { outerHTML: (text) => redactHtml(text, ctx) }),
-    meta: list((el) => redactElement(el, ctx, true)),
+    meta: list((el) => redactElement(el, ctx, 'meta')),
     canonical: ctx.urlValue,
     hreflangs: list((el) => ctx.fields(el, { href: ctx.urlValue })),
     scripts: list((el) => redactElement(el, ctx)),
     stylesheets: list((el) => redactElement(el, ctx)),
     images: list((el) => redactElement(el, ctx)),
-    iframes: list((el) => redactElement(el, ctx)),
+    iframes: list((el) => redactElement(el, ctx, 'iframe')),
     forms: list((form) => ctx.fields(form, {
       action: ctx.urlValue,
       elements: list((el) => redactFormElement(el, ctx)),

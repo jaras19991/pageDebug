@@ -1,0 +1,606 @@
+{
+  "schemaVersion": 4,
+  "extensionVersion": "0.5.0",
+  "source": "extension",
+  "collectedAt": "2026-01-15T10:05:00.000Z",
+  "recordingStartedAt": "2026-01-15T10:00:00.000Z",
+  "recordingStoppedReason": null,
+  "timeOrigin": 1768471204200.25,
+  "overview": {
+    "runtimeErrors": 2,
+    "consoleErrors": 1,
+    "failedRequests": 3,
+    "steps": 10,
+    "poorVitals": 1,
+    "screenshot": true
+  },
+  "redaction": {
+    "rulesVersion": 1,
+    "disabledRules": [],
+    "masked": {
+      "network": 2,
+      "consoleLogs": 3,
+      "environment": 2,
+      "storage": 2,
+      "dom": 1
+    }
+  },
+  "limits": {
+    "consoleLogs": 5000,
+    "runtimeErrors": 1000,
+    "network": 5000,
+    "steps": 2000,
+    "entryChars": 40000,
+    "stackChars": 16000,
+    "responseBodyChars": 4096,
+    "responseBodyTotalChars": 262144,
+    "screenshotBytes": 307200,
+    "longTasks": 20,
+    "html": 300000,
+    "packageBytes": 2097152
+  },
+  "truncated": {
+    "consoleLogs": false,
+    "runtimeErrors": false,
+    "network": false,
+    "steps": false,
+    "responseBodies": false,
+    "html": false,
+    "resources": false,
+    "dom": false,
+    "storage": false,
+    "stacks": false
+  },
+  "documents": [
+    {
+      "id": 0,
+      "url": "http://127.0.0.1:8080/form.html",
+      "timeOrigin": 1768471200120.5,
+      "navigationType": "reload",
+      "status": 200,
+      "recorded": true,
+      "flushed": true,
+      "current": false,
+      "counts": {
+        "consoleLogs": 1,
+        "runtimeErrors": 0,
+        "network": 2,
+        "steps": 8
+      },
+      "kept": {
+        "consoleLogs": 1,
+        "runtimeErrors": 0,
+        "network": 2,
+        "steps": 8
+      }
+    },
+    {
+      "id": 1,
+      "url": "http://127.0.0.1:8080/result.html",
+      "timeOrigin": 1768471204200.25,
+      "navigationType": "navigate",
+      "status": 500,
+      "recorded": true,
+      "flushed": true,
+      "current": true,
+      "counts": {
+        "consoleLogs": 3,
+        "runtimeErrors": 2,
+        "network": 3,
+        "steps": 2
+      },
+      "kept": {
+        "consoleLogs": 3,
+        "runtimeErrors": 2,
+        "network": 3,
+        "steps": 2
+      }
+    }
+  ],
+  "notes": [
+    "Recording started at 2026-01-15T10:00:00.000Z (page reloaded); earlier data is not included.",
+    "LCP, CLS and INP are values at the time of saving; they could still grow."
+  ],
+  "steps": [
+    {
+      "t": 0,
+      "doc": 0,
+      "type": "navigate",
+      "url": "http://127.0.0.1:8080/form.html",
+      "via": "reload"
+    },
+    {
+      "t": 812.4,
+      "doc": 0,
+      "type": "click",
+      "selector": "#start",
+      "text": "Zacznij"
+    },
+    {
+      "t": 930,
+      "doc": 0,
+      "type": "input",
+      "selector": "form > input:nth-of-type(1)",
+      "inputType": "email",
+      "valueLength": 15
+    },
+    {
+      "t": 1201.7,
+      "doc": 0,
+      "type": "input",
+      "selector": "#pass",
+      "inputType": "password"
+    },
+    {
+      "t": 1300.2,
+      "doc": 0,
+      "type": "change",
+      "selector": "[data-testid=\"terms\"]",
+      "inputType": "checkbox",
+      "checked": true
+    },
+    {
+      "t": 1350,
+      "doc": 0,
+      "type": "change",
+      "selector": "#avatar",
+      "inputType": "file",
+      "fileCount": 2
+    },
+    {
+      "t": 1400,
+      "doc": 0,
+      "type": "key",
+      "selector": "#pass",
+      "key": "Enter"
+    },
+    {
+      "t": 1401,
+      "doc": 0,
+      "type": "submit",
+      "selector": "#loginForm"
+    },
+    {
+      "t": 0,
+      "doc": 1,
+      "type": "navigate",
+      "url": "http://127.0.0.1:8080/result.html",
+      "via": "navigate"
+    },
+    {
+      "t": 2050,
+      "doc": 1,
+      "type": "click",
+      "selector": "#slow",
+      "text": "Zapisz"
+    }
+  ],
+  "runtimeErrors": [
+    {
+      "t": 8.7,
+      "doc": 1,
+      "type": "error",
+      "message": "Uncaught TypeError: x is undefined",
+      "filename": "http://127.0.0.1:8080/result.html",
+      "lineno": 3,
+      "colno": 9,
+      "stack": "TypeError: x is undefined\n    at http://127.0.0.1:8080/result.html:3:9"
+    },
+    {
+      "t": 9.5,
+      "doc": 1,
+      "type": "error",
+      "message": "Uncaught RangeError: too much recursion",
+      "filename": "http://127.0.0.1:8080/inner.html",
+      "lineno": 1,
+      "colno": 1,
+      "stack": "Error: frame failed",
+      "frame": "http://127.0.0.1:8080/inner.html"
+    }
+  ],
+  "network": [
+    {
+      "t": 40.1,
+      "doc": 0,
+      "type": "img",
+      "method": "GET",
+      "url": "http://127.0.0.1:8080/img/missing.png",
+      "status": 404,
+      "statusText": null,
+      "ok": false,
+      "redirected": null,
+      "durationMs": 2.4,
+      "sizeBytes": 9,
+      "requestHeaders": {},
+      "responseHeaders": {},
+      "requestBody": null,
+      "error": null,
+      "initiatorType": "img"
+    },
+    {
+      "t": 41,
+      "doc": 0,
+      "type": "img",
+      "method": "GET",
+      "url": "https://cdn.example/logo.png",
+      "status": null,
+      "statusText": null,
+      "ok": null,
+      "redirected": null,
+      "durationMs": 2.4,
+      "sizeBytes": null,
+      "requestHeaders": {},
+      "responseHeaders": {},
+      "requestBody": null,
+      "error": null,
+      "statusUnavailable": "cross-origin",
+      "initiatorType": "img"
+    },
+    {
+      "t": 12.5,
+      "doc": 1,
+      "type": "fetch",
+      "method": "POST",
+      "url": "http://127.0.0.1:8080/api/fail?try=2",
+      "status": 200,
+      "statusText": "OK",
+      "ok": true,
+      "redirected": false,
+      "durationMs": 3.21,
+      "sizeBytes": 23,
+      "requestHeaders": {
+        "content-type": "application/json",
+        "authorization": "[redacted:key-authorization]"
+      },
+      "responseHeaders": {
+        "content-type": "application/json"
+      },
+      "requestBody": "{\"name\":\"Example\",\"password\":\"[redacted:key-password]\"}",
+      "error": null,
+      "responseBodyPreview": "{\"error\":\"expired\"}",
+      "responseBodyTruncated": false
+    },
+    {
+      "t": 20,
+      "doc": 1,
+      "type": "script",
+      "method": "GET",
+      "url": "http://127.0.0.1:8080/missing.js",
+      "status": null,
+      "statusText": null,
+      "ok": false,
+      "redirected": null,
+      "durationMs": 2.4,
+      "sizeBytes": 9,
+      "requestHeaders": {},
+      "responseHeaders": {},
+      "requestBody": null,
+      "error": "net::ERR_FAILED",
+      "initiatorType": "script"
+    },
+    {
+      "t": 21,
+      "doc": 1,
+      "type": "css",
+      "method": "GET",
+      "url": "http://127.0.0.1:8080/style.css",
+      "status": 200,
+      "statusText": null,
+      "ok": true,
+      "redirected": null,
+      "durationMs": 2.4,
+      "sizeBytes": 9,
+      "requestHeaders": {},
+      "responseHeaders": {},
+      "requestBody": null,
+      "error": null,
+      "initiatorType": "link"
+    },
+    {
+      "t": 99,
+      "doc": 1,
+      "type": "css",
+      "method": "GET",
+      "url": "http://127.0.0.1:8080/only-in-b.css",
+      "status": 200,
+      "statusText": null,
+      "ok": true,
+      "redirected": null,
+      "durationMs": 2.4,
+      "sizeBytes": 9,
+      "requestHeaders": {},
+      "responseHeaders": {},
+      "requestBody": null,
+      "error": null,
+      "initiatorType": "link"
+    }
+  ],
+  "vitals": [
+    {
+      "doc": 0,
+      "TTFB": {
+        "available": true,
+        "value": 47,
+        "rating": "good",
+        "t": 47,
+        "finalized": true
+      },
+      "FCP": {
+        "available": true,
+        "value": 820,
+        "rating": "good",
+        "t": 820,
+        "finalized": true
+      },
+      "LCP": {
+        "available": true,
+        "value": 1712,
+        "rating": "good",
+        "t": 1712,
+        "finalized": true,
+        "selector": "#hero",
+        "url": "http://127.0.0.1:8080/img/hero.png"
+      },
+      "CLS": {
+        "available": false,
+        "reason": "unsupported-browser"
+      },
+      "INP": {
+        "available": false,
+        "reason": "unsupported-browser"
+      },
+      "longTasks": {
+        "available": false,
+        "reason": "unsupported-browser"
+      }
+    },
+    {
+      "doc": 1,
+      "TTFB": {
+        "available": true,
+        "value": 52,
+        "rating": "good",
+        "t": 52,
+        "finalized": true
+      },
+      "FCP": {
+        "available": true,
+        "value": 910,
+        "rating": "good",
+        "t": 910,
+        "finalized": true
+      },
+      "LCP": {
+        "available": true,
+        "value": 2100,
+        "rating": "needs-improvement",
+        "t": 4300,
+        "finalized": false,
+        "selector": "#hero",
+        "url": "http://127.0.0.1:8080/img/hero.png"
+      },
+      "CLS": {
+        "available": true,
+        "value": 0.183,
+        "rating": "needs-improvement",
+        "t": 560,
+        "finalized": false,
+        "sources": [
+          {
+            "selector": "main > h1",
+            "value": 0.183,
+            "t": 560
+          }
+        ]
+      },
+      "INP": {
+        "available": false,
+        "reason": "no-interaction"
+      },
+      "longTasks": {
+        "available": true,
+        "items": [
+          {
+            "t": 300.2,
+            "duration": 212,
+            "blockingDuration": 162,
+            "scripts": [
+              {
+                "url": "http://127.0.0.1:8080/heavy.js",
+                "function": "heavyWork",
+                "invoker": "BUTTON#slow.onclick",
+                "duration": 205
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "screenshots": [
+    {
+      "t": 5230.1,
+      "doc": 1,
+      "reason": "save",
+      "mime": "image/jpeg",
+      "width": 1,
+      "height": 1,
+      "bytes": 136,
+      "file": "screenshot.jpg",
+      "maskedFields": 3
+    }
+  ],
+  "consoleLogs": [
+    {
+      "t": 30.1,
+      "doc": 0,
+      "level": "info",
+      "args": [
+        "\"form ready\""
+      ]
+    },
+    {
+      "t": 15.2,
+      "doc": 1,
+      "level": "error",
+      "args": [
+        {
+          "name": "TypeError",
+          "message": "x is undefined",
+          "stack": "TypeError: x is undefined\n    at onSave (http://127.0.0.1:8080/result.js:12:9)",
+          "cause": {
+            "name": "Error",
+            "message": "save failed",
+            "stack": "Error: save failed\n    at save (http://127.0.0.1:8080/result.js:3:1)"
+          }
+        }
+      ],
+      "stack": "at onSave (http://127.0.0.1:8080/result.js:12:9)"
+    },
+    {
+      "t": 16,
+      "doc": 1,
+      "level": "log",
+      "args": [
+        "clicked",
+        {
+          "tagName": "BUTTON",
+          "id": "slow",
+          "className": "btn",
+          "structure": "<button id=\"slow\" class=\"btn\" type=\"button\"></button>"
+        }
+      ]
+    },
+    {
+      "t": 17,
+      "doc": 1,
+      "level": "warn",
+      "args": [
+        "session [redacted:jwt]",
+        {
+          "password": "[redacted:key-password]",
+          "user": "[redacted:email]"
+        }
+      ]
+    }
+  ],
+  "environment": {
+    "location": {
+      "href": "http://127.0.0.1:8080/result.html?access_token=[redacted:key-token]",
+      "hostname": "127.0.0.1",
+      "pathname": "/result.html",
+      "search": "?access_token=[redacted:key-token]",
+      "hash": ""
+    },
+    "navigator": {
+      "userAgent": "Mozilla/5.0 (Synthetic) Test/1.0",
+      "language": "pl-PL"
+    },
+    "viewport": {
+      "innerWidth": 1280,
+      "innerHeight": 720,
+      "devicePixelRatio": 1
+    }
+  },
+  "performance": {
+    "timeOrigin": 1768471204200.25,
+    "navigation": {
+      "type": "navigate",
+      "name": "http://127.0.0.1:8080/result.html"
+    },
+    "resources": []
+  },
+  "storage": {
+    "cookies": [
+      {
+        "name": "sid",
+        "sizeBytes": 20,
+        "valueHash": "0badc0de"
+      },
+      {
+        "name": "theme",
+        "sizeBytes": 10,
+        "valueHash": "e6bb5689"
+      },
+      {
+        "name": "lang",
+        "sizeBytes": 7,
+        "valueHash": "1c2d3e4f"
+      },
+      {
+        "name": "cart",
+        "sizeBytes": 10,
+        "valueHash": null
+      }
+    ],
+    "cookiesTotalBytes": 47,
+    "localStorage": {
+      "theme": "dark",
+      "authToken": "[redacted:key-token]",
+      "profile": "{\"email\":\"[redacted:email]\",\"plan\":\"free\"}"
+    },
+    "sessionStorage": {
+      "cart": "3"
+    }
+  },
+  "dom": {
+    "counts": {
+      "totalElements": 14,
+      "scripts": 1,
+      "stylesheets": 0,
+      "images": 1,
+      "links": 0,
+      "iframes": 0,
+      "forms": 1
+    },
+    "html": {
+      "doctype": {
+        "name": "html",
+        "publicId": "",
+        "systemId": ""
+      },
+      "lang": "pl",
+      "charset": "UTF-8",
+      "compatMode": "CSS1Compat"
+    },
+    "forms": [
+      {
+        "id": "profile",
+        "name": null,
+        "method": "post",
+        "action": "http://127.0.0.1:8080/profile",
+        "enctype": "multipart/form-data",
+        "elements": [
+          {
+            "tagName": "INPUT",
+            "type": "email",
+            "name": "email",
+            "id": "mail",
+            "valueLength": 20
+          },
+          {
+            "tagName": "INPUT",
+            "type": "password",
+            "name": "password",
+            "id": "pass"
+          },
+          {
+            "tagName": "INPUT",
+            "type": "file",
+            "name": "avatar",
+            "id": "avatar",
+            "fileCount": 0
+          }
+        ]
+      }
+    ],
+    "rootMarkers": {
+      "bodyClassName": "page",
+      "htmlClassName": null,
+      "dataAttributesOnHtml": {},
+      "dataAttributesOnBody": {}
+    },
+    "structure": "<html lang=\"pl\"><head><meta charset=\"utf-8\"><script></script></head><body class=\"page\"><main id=\"app\" data-section=\"result\"><h1></h1><button id=\"slow\" class=\"btn\" type=\"button\"></button><img id=\"hero\"><form id=\"profile\"><input type=\"email\" id=\"mail\"><input type=\"password\" id=\"pass\"><input type=\"file\" id=\"avatar\"></form><div data-user=\"[redacted:email]\"></div></main></body></html>",
+    "fullHtml": null
+  }
+}

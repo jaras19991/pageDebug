@@ -8,9 +8,12 @@
 //   armStart    { requestId, tabId, origin, pattern } (not awaited, same tick as the click)
 //   start       { requestId, tabId }                 -> { ok: true, startedAt } | { ok: false, reason }
 //   disarm      { requestId, tabId }
-//   collect     { tabId, includeScreenshot }         -> { ok: true, zipBase64, fileName, packageBytes, screenshot? } | { ok: false, reason }
+//   collect     { tabId, includeScreenshot, screenshotOffReason?, crossOriginFrames? }
+//                                                    -> { ok: true, zipBase64, fileName, packageBytes, screenshot? } | { ok: false, reason }
 //                                                       (E3 D7: the zip travels as base64; includeScreenshot from the checkbox;
-//                                                       screenshot 'included'|'off'|'failed' for the "Zapisano" text, QA F-5)
+//                                                       screenshot 'included'|'off'|'failed' for the "Zapisano" text, QA F-5;
+//                                                       E4 D8: with an unticked box, why — 'reporter'|'frames'|'frameCheckFailed',
+//                                                       crossOriginFrames 1..999 only with 'frames')
 //   frameCheck  { tabId }                            -> { ok: true, crossOriginFrames } | { ok: false }
 //                                                       (store S1: asked when this tab records; > 0 turns the screenshot
 //                                                       default off; no answer keeps it on)
@@ -21,8 +24,11 @@
 //           lastError: outcome kind | null (one-shot) }
 // 'starting' = armed request for this tab, not started yet; 'stopped' = time limit reached (D10).
 // otherOrigin comes from the background's tabs.get; the popup re-asks on tabs.onUpdated of its tab (E2 D8).
+// Saved screen (E4 D7): idle + lastSaved of this tab; the background drops lastSaved on the next successful start.
+// "Pokaż plik" talks to downloads directly (search + show of lastSaved.downloadId), never to the background.
 import { classifyUrl, isFileAccessAllowed, isFirefoxRuntime } from './target.js';
 import { originPatternFor } from '../lib/origin.js';
+import { loadDevOptions } from '../lib/dev-options.js';
 import { renderModel } from './view.js';
 
 export const RESPONSE_TIMEOUT_MS = 15_000;
@@ -37,6 +43,11 @@ const SCREENSHOT_RESULTS = new Set(['included', 'off', 'failed']);
 // The page may still be reloading right after "Nagrywaj": a failed frameCheck is asked again on a later status.
 const FRAME_CHECK_ATTEMPTS = 3;
 const FRAME_CHECK_TIMEOUT_MS = 3000;
+// The background accepts 1..999 frames (E4 D8).
+const MAX_FRAMES_SENT = 999;
+// "Pokaż plik" (D7, spike S1 not confirmed): Chrome may still report exists: true right after the file was removed,
+// because its check starts only with downloads.search. One more search this long after the click catches that.
+const FILE_RECHECK_MS = 500;
 const STATUS_ERRORS = new Set(['saveCancelled', 'downloadFailed', 'pageBusy', 'permissionDenied', 'recordFailed', 'restricted', 'failed']);
 // Error verdicts stay until the next user action or a new lastError (AC-1.4, AC-2.4): a state change
 // without lastError says nothing new — after a refused consent the background goes starting -> idle
@@ -74,7 +85,19 @@ export function createController(api) {
   const randomUUID = api.randomUUID ?? (() => globalThis.crypto.randomUUID());
   const logError = api.logError ?? (() => {});
 
-  const ctx = { target: null, tab: null, origin: null, pattern: null, busy: null, outcome: null, crossOriginFrames: null, frameCheck: null };
+  const ctx = {
+    target: null,
+    tab: null,
+    origin: null,
+    pattern: null,
+    busy: null,
+    outcome: null,
+    crossOriginFrames: null,
+    frameCheck: null,
+    showReady: false, // "Nowe nagranie": local only, a reopened popup shows the saved screen again (AC-1.6)
+    fileMissing: false,
+    devOptions: null,
+  };
   const frameCheck = { attempts: 0, running: false, done: false };
   let status = null;
   let requestId = null; // one per popup: a repeated click re-arms the same request (D9)
@@ -84,12 +107,58 @@ export function createController(api) {
   let missedError = null;
   let save = null; // { downloadId, url, timer } while waiting for the background's verdict
   let destroyed = false;
+  let searchedId = null; // downloadId already searched for when the saved screen was shown
+  let showing = false;
+  let recheckTimer = null;
 
   const render = () => {
-    if (!destroyed) {
-      api.render(renderModel(status, { target: ctx.target, busy: ctx.busy, outcome: ctx.outcome, crossOriginFrames: ctx.crossOriginFrames, frameCheck: ctx.frameCheck }));
-    }
+    if (destroyed) return;
+    api.render(
+      renderModel(status, {
+        target: ctx.target,
+        busy: ctx.busy,
+        outcome: ctx.outcome,
+        crossOriginFrames: ctx.crossOriginFrames,
+        frameCheck: ctx.frameCheck,
+        showReady: ctx.showReady,
+        fileMissing: ctx.fileMissing,
+        devOptions: ctx.devOptions,
+      }),
+    );
+    primeFileCheck();
   };
+
+  // The saved file's download id while the saved screen is what this popup shows; null otherwise.
+  function savedDownloadId() {
+    const last = status?.lastSaved;
+    if (ctx.target !== 'web' || ctx.showReady || ctx.busy || !last || typeof last.fileName !== 'string' || !last.fileName) return null;
+    if (status.isRecordingTab === true && status.state !== 'idle') return null;
+    return Number.isInteger(last.downloadId) ? last.downloadId : null;
+  }
+
+  // D7: a search when the saved screen appears makes Chrome start checking that the file is still there.
+  function primeFileCheck() {
+    const id = savedDownloadId();
+    if (id === null || id === searchedId) return;
+    searchedId = id;
+    // Only a definite "gone" counts here; the click decides the rest.
+    Promise.resolve()
+      .then(() => api.downloads.search({ id }))
+      .then(([item] = []) => {
+        if (item?.exists === false) onDownloadChanged({ id, exists: { current: false } });
+      })
+      .catch(() => {});
+  }
+
+  // true = the file is known to be gone (no entry, not complete, exists false); false = maybe there. Never throws.
+  async function fileState(id) {
+    try {
+      const [item] = (await api.downloads.search({ id })) ?? [];
+      return !item || item.state !== 'complete' || item.exists === false;
+    } catch {
+      return true;
+    }
+  }
 
   // runtime.sendMessage raced against the 15 s limit (AC-2.4).
   function call(message, timeoutMs = RESPONSE_TIMEOUT_MS) {
@@ -169,11 +238,16 @@ export function createController(api) {
   function applyStatus(next) {
     // A new background state makes an older local message stale.
     if (status && status.state !== next.state && !ctx.busy && !STICKY_OUTCOMES.has(ctx.outcome?.kind)) ctx.outcome = null;
+    // Another saved file: its own "Pokaż plik" check.
+    if (next.lastSaved?.downloadId !== status?.lastSaved?.downloadId) forgetFileCheck();
     status = next;
     const lastError = STATUS_ERRORS.has(next.lastError) ? next.lastError : missedError;
     missedError = null;
     if (save && next.lastSaved && next.lastSaved.downloadId === save.downloadId) {
       finishSave({ kind: 'saved', fileName: next.lastSaved.fileName, screenshot: save.screenshot });
+      // A new file in this popup is shown on the saved screen, also after "Nowe nagranie".
+      ctx.showReady = false;
+      forgetFileCheck();
     } else if (lastError) {
       if (save) finishSave({ kind: lastError });
       else ctx.outcome = { kind: lastError };
@@ -209,6 +283,13 @@ export function createController(api) {
     render();
   }
 
+  function forgetFileCheck() {
+    ctx.fileMissing = false;
+    searchedId = null;
+    clearTimer(recheckTimer);
+    recheckTimer = null;
+  }
+
   function isRecordingHere(next) {
     return next.isRecordingTab === true && (next.state === 'recording' || next.state === 'stopped');
   }
@@ -226,6 +307,14 @@ export function createController(api) {
     refresh();
   };
 
+  // D7: the browser noticed the saved file is gone (Chrome reports it after a search started the check).
+  const onDownloadChanged = (delta) => {
+    const id = savedDownloadId();
+    if (id === null || delta?.id !== id || delta.exists?.current !== false || ctx.fileMissing) return;
+    ctx.fileMissing = true;
+    render();
+  };
+
   // Chrome has no tabId filter for onUpdated: other tabs are filtered here.
   const onTabUpdated = (tabId) => {
     if (tabId === ctx.tab?.id) refresh();
@@ -240,7 +329,52 @@ export function createController(api) {
     render();
     api.storage?.session?.onChanged?.addListener(onStorageChanged);
     api.tabs?.onUpdated?.addListener(onTabUpdated);
+    api.downloads?.onChanged?.addListener(onDownloadChanged);
+    // Read-only (AC-6.2); never blocks the first render and never throws (D5, ≤ 1 s).
+    loadDevOptions({ storage: api.storage }).then((options) => {
+      ctx.devOptions = options;
+      render();
+    });
     await refresh();
+  }
+
+  // "Pokaż plik" (D7, AC-1.2): search again, then show the file of lastSaved. Anything that says the file is gone —
+  // no entry, not complete, exists false, show rejecting or answering false (Firefox) — gives fileMissing; nothing
+  // reaches the console (the reporter only needs the message). The method is read at the click (e2e spies on it).
+  async function onShowFile() {
+    const id = savedDownloadId();
+    if (id === null || showing) return;
+    showing = true;
+    let missing = await fileState(id);
+    if (!missing) {
+      try {
+        missing = (await Promise.resolve(api.downloads.show(id))) === false;
+      } catch {
+        missing = true;
+      }
+    }
+    showing = false;
+    if (destroyed || savedDownloadId() !== id) return;
+    ctx.fileMissing = missing;
+    render();
+    if (!missing) {
+      // Spike S1 not confirmed: a removed file may still look present right after the first search.
+      clearTimer(recheckTimer);
+      recheckTimer = setTimer(async () => {
+        recheckTimer = null;
+        if (destroyed || savedDownloadId() !== id || ctx.fileMissing) return;
+        if (await fileState(id)) onDownloadChanged({ id, exists: { current: false } });
+      }, FILE_RECHECK_MS);
+    }
+  }
+
+  // "Nowe nagranie": back to the disclosure and "Nagrywaj" in this popup only; nothing is sent (D7, AC-1.6).
+  function onNewRecording() {
+    if (ctx.target !== 'web' || ctx.busy) return;
+    ctx.showReady = true;
+    ctx.outcome = null;
+    forgetFileCheck();
+    render();
   }
 
   // Must stay synchronous up to permissions.request: the browser keeps the user gesture only
@@ -297,8 +431,19 @@ export function createController(api) {
     await refresh();
   }
 
+  // Why the box was unticked (E4 D8): the reporter's own click, or the default from the frame check.
+  function screenshotOff(screenshotTouched) {
+    if (screenshotTouched === true) return { screenshotOffReason: 'reporter' };
+    if (Number.isInteger(ctx.crossOriginFrames) && ctx.crossOriginFrames > 0) {
+      return { screenshotOffReason: 'frames', crossOriginFrames: Math.min(ctx.crossOriginFrames, MAX_FRAMES_SENT) };
+    }
+    if (ctx.frameCheck !== 'done') return { screenshotOffReason: 'frameCheckFailed' };
+    return { screenshotOffReason: 'reporter' };
+  }
+
   // `includeScreenshot` is the checkbox above "Zapisz paczkę" (E3 D6); missing means its default, checked.
-  async function onSave({ includeScreenshot = true } = {}) {
+  // `screenshotTouched`: the reporter clicked that box in this popup (view.wasTouched).
+  async function onSave({ includeScreenshot = true, screenshotTouched = false } = {}) {
     if (ctx.target !== 'web' || ctx.busy) return;
     const tabId = ctx.tab.id;
     ctx.busy = 'saving';
@@ -316,7 +461,9 @@ export function createController(api) {
       }, RESPONSE_TIMEOUT_MS);
     });
     const work = (async () => {
-      const res = await api.runtime.sendMessage({ type: 'collect', tabId, includeScreenshot: includeScreenshot !== false });
+      const include = includeScreenshot !== false;
+      const message = { type: 'collect', tabId, includeScreenshot: include, ...(include ? {} : screenshotOff(screenshotTouched)) };
+      const res = await api.runtime.sendMessage(message);
       if (res?.ok !== true || typeof res.zipBase64 !== 'string' || !res.zipBase64 || typeof res.fileName !== 'string' || !res.fileName) {
         if (!COLLECT_FAILURES.has(res?.reason)) logError('collect: unexpected answer', res);
         return { failure: COLLECT_FAILURES.has(res?.reason) ? res.reason : 'failed' };
@@ -387,6 +534,8 @@ export function createController(api) {
     destroyed = true;
     api.storage?.session?.onChanged?.removeListener(onStorageChanged);
     api.tabs?.onUpdated?.removeListener(onTabUpdated);
+    api.downloads?.onChanged?.removeListener(onDownloadChanged);
+    clearTimer(recheckTimer);
     if (save) {
       clearTimer(save.timer);
       if (save.url) api.URL.revokeObjectURL(save.url);
@@ -394,5 +543,5 @@ export function createController(api) {
     }
   }
 
-  return { init, onRecord, onSave, refresh, destroy };
+  return { init, onRecord, onSave, onShowFile, onNewRecording, refresh, destroy };
 }

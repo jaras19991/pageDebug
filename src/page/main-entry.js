@@ -26,7 +26,8 @@ function mainTry(fn, fallback) {
 function mainChangeMark(snapshot) {
   const counts = snapshot && snapshot.counts ? snapshot.counts : {};
   let total = 0;
-  for (const key of Object.keys(counts)) total += typeof counts[key] === 'number' ? counts[key] : 0;
+  const keys = Object.keys(counts);
+  for (let i = 0; i < keys.length; i++) total += typeof counts[keys[i]] === 'number' ? counts[keys[i]] : 0;
   return `${total}|${snapshot && snapshot.stopReason ? snapshot.stopReason : ''}`;
 }
 

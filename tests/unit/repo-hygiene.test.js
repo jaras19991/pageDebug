@@ -110,5 +110,5 @@ describe('repository state', () => {
       .filter((p) => re.test(readFileSync(p, 'utf8')))
       .map((p) => relative(root, p));
     expect(hits).toEqual([]);
-  });
+  }, 30_000); // walks the whole tree; 6 s on /mnt/c (E4 TEST0, timeout only)
 });

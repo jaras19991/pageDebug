@@ -12,6 +12,7 @@ import {
   screenshotErrorReason,
   SCREENSHOT_LIMITS,
   planMask,
+  MASK_LIMITS,
   maskScreenshot,
 } from '../../src/lib/screenshot.js';
 
@@ -254,19 +255,43 @@ describe('createCanvasCodec', () => {
 describe('planMask', () => {
   const vp = (innerWidth, innerHeight) => ({ innerWidth, innerHeight, scrollX: 0, scrollY: 0, dpr: 1 });
 
-  it('rect scaled ×2 at dpr 2 and ×1.25 at zoom 125%, with margin', () => {
-    // dpr 2: margin = max(2 CSS px × 2, 8 image px) = 8.
+  // E4 D10 (IN7): margin round(2 CSS px × scale) image px at every DPR; the 8 image px floor is gone.
+  it('rect scaled ×2 at dpr 2 and ×1.25 at zoom 125%, with a 2 CSS px margin', () => {
+    // dpr 2: margin = 2 CSS px × 2 = 4 image px.
     expect(planMask({ rects: [{ x: 10, y: 20, w: 100, h: 30 }], viewport: vp(800, 600), imageWidth: 1600, imageHeight: 1200 })).toEqual([
-      { x: 12, y: 32, w: 216, h: 76 },
+      { x: 16, y: 36, w: 208, h: 68 },
     ]);
-    // zoom 125%: 1024 CSS px on a 1280 px image; margin = max(2.5, 8) = 8.
+    // zoom 125%: 1024 CSS px on a 1280 px image; margin = round(2 × 1.25) = 3.
     expect(planMask({ rects: [{ x: 100, y: 100, w: 80, h: 40 }], viewport: vp(1024, 640), imageWidth: 1280, imageHeight: 800 })).toEqual([
-      { x: 117, y: 117, w: 116, h: 66 },
+      { x: 122, y: 122, w: 106, h: 56 },
     ]);
-    // scale 5: the CSS margin wins (2 × 5 = 10 > 8).
+    // scale 5: 2 × 5 = 10.
     expect(planMask({ rects: [{ x: 10, y: 10, w: 10, h: 10 }], viewport: vp(200, 100), imageWidth: 1000, imageHeight: 500 })).toEqual([
       { x: 40, y: 40, w: 70, h: 70 },
     ]);
+  });
+
+  it('margin is 2 CSS px at dpr 1 (2 px) and dpr 2 (4 px)', () => {
+    expect(MASK_LIMITS.marginCssPx).toBe(2);
+    expect('marginImagePx' in MASK_LIMITS).toBe(false);
+    const rect = { x: 100, y: 100, w: 50, h: 20 };
+    expect(planMask({ rects: [rect], viewport: vp(800, 600), imageWidth: 800, imageHeight: 600 })).toEqual([{ x: 98, y: 98, w: 54, h: 24 }]);
+    expect(planMask({ rects: [rect], viewport: vp(800, 600), imageWidth: 1600, imageHeight: 1200 })).toEqual([{ x: 196, y: 196, w: 108, h: 48 }]);
+  });
+
+  it.each([1, 2])('label rect 4 CSS px above field not intersected by mask, field rect fully inside mask at dpr %i (AC-3.11, E3 AC-2.2)', (dpr) => {
+    const field = { x: 40, y: 120.5, w: 200.25, h: 31.75 };
+    // Label text ends 4 CSS px above the field's border box.
+    const label = { x: 40, y: 100, w: 120, h: field.y - 4 - 100 };
+    const [mask] = planMask({ rects: [field], viewport: vp(800, 600), imageWidth: 800 * dpr, imageHeight: 600 * dpr });
+    const px = (r) => ({ x0: r.x * dpr, y0: r.y * dpr, x1: (r.x + r.w) * dpr, y1: (r.y + r.h) * dpr });
+    const f = px(field);
+    expect(mask.x).toBeLessThanOrEqual(f.x0);
+    expect(mask.y).toBeLessThanOrEqual(f.y0);
+    expect(mask.x + mask.w).toBeGreaterThanOrEqual(f.x1);
+    expect(mask.y + mask.h).toBeGreaterThanOrEqual(f.y1);
+    // Whole image pixels of the label (its last row ends at ceil(y1)) stay outside the mask.
+    expect(Math.ceil(px(label).y1)).toBeLessThanOrEqual(mask.y);
   });
 
   it('rects clipped to image', () => {
@@ -280,7 +305,7 @@ describe('planMask', () => {
       imageWidth: 800,
       imageHeight: 600,
     });
-    expect(plan).toEqual([{ x: 0, y: 582, w: 58, h: 18 }]);
+    expect(plan).toEqual([{ x: 0, y: 588, w: 52, h: 12 }]);
   });
 
   it('aspect mismatch → null', () => {
@@ -384,7 +409,7 @@ describe('maskScreenshot (AC-2.2, AC-2.4)', () => {
   it('mask applied at quality 60 on the decoded image, rects in image pixels', async () => {
     const codec = maskingCodec();
     const res = await maskScreenshot({ dataUrl: original, rects, viewport, codec, maxBytes: MAX });
-    expect(codec.masks).toEqual([{ source: 'original', width: 1280, height: 960, rects: [{ x: 12, y: 12, w: 216, h: 56 }], quality: 60 }]);
+    expect(codec.masks).toEqual([{ source: 'original', width: 1280, height: 960, rects: [{ x: 16, y: 16, w: 208, h: 48 }], quality: 60 }]);
     expect(res.shot).toMatchObject({ width: 1280, height: 960, bytes: 2000, mime: 'image/jpeg', maskedFields: 1 });
     expect(res.shot.dataUrl).not.toBe(original);
     expect(codec.decoded.every((bitmap) => bitmap.close.mock.calls.length > 0)).toBe(true);

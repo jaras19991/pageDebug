@@ -35,7 +35,7 @@ function leaks(secret, text) {
 
 describe('rule set (D2, D3)', () => {
   it('version and levels', () => {
-    expect(RULES_VERSION).toBe(1);
+    expect(RULES_VERSION).toBe(2);
     expect(DEFAULT_RULES).toEqual(['email', 'phone', 'html-structure']);
     for (const rule of ['jwt', 'bearer', 'basic', 'card', 'iban', 'pesel', 'long-secret', 'url-credentials', 'url-fragment', 'form-value']) {
       expect(ALWAYS_RULES).toContain(rule);
@@ -308,6 +308,109 @@ describe('retest E3-PD2 and re-review N1, N2, N4', () => {
     expect(maskText('&lt;token&gt;abc&amp;def&lt;/token&gt;').text).toBe('&lt;token&gt;[redacted:key-token]&lt;/token&gt;');
     expect(maskText('<pre>&lt;secret>CutS3c').text).toBe('<pre>&lt;secret>[redacted:key-secret]');
     expect(maskText('&lt;title>Raport&lt;/title>').text).toBe('&lt;title>Raport&lt;/title>');
+  });
+});
+
+describe('E4-IN1, E4-IN3: key at the start of a JSON string, prose, code/ticket in text (D9, PB-2)', () => {
+  it('sensitive corpus has the in1/in3 cases; benign has the prose and code cases', () => {
+    const ids = sensitive.map((i) => i.id);
+    for (const id of ['in1-json-start', 'in1-json-start-esc', 'in1-auth-code', 'in1-password-phrase', 'in3-relative', 'in3-amp',
+      'in3-hash', 'in3-ticket', 'in3-json-escaped', 'in1b-error-prefix', 'in1b-uncaught-error', 'in1b-type-error', 'in1b-warning',
+      'in1b-chain', 'in1b-chain-long', 'in1b-mid-sentence', 'in1b-json-prefix', 'in1b-json-prefix-esc']) expect(ids).toContain(id);
+    const benignIds = benign.map((i) => i.id);
+    for (const id of ['in1-prose-auth', 'in1-prose-session', 'in3-benign-json', 'in3-benign-country', 'in3-benign-error']) expect(benignIds).toContain(id);
+  });
+
+  it('key: value after another key-like token (Error:, TypeError:, chains, mid-sentence) masked (E4-IN1b)', () => {
+    const table = [
+      ['Error: password: Hunter2Secret!', 'Error: password: [redacted:key-password]'],
+      ['Error: x-api-key: 9f8e7d6c5b4a', 'Error: x-api-key: [redacted:key-key]'],
+      ['Uncaught Error: token: abc123def456', 'Uncaught Error: token: [redacted:key-token]'],
+      ['TypeError: secret: s3cr3t', 'TypeError: secret: [redacted:key-secret]'],
+      ['Warning: pin: 1234', 'Warning: pin: [redacted:key-pin]'],
+      ['user: jan password: Pa55word!', 'user: jan password: [redacted:key-password]'],
+      ['a: b: c: token: t0k3n, next: 1', 'a: b: c: token: [redacted:key-token], next: 1'],
+      ['the server said: token: Zx9Yw8Vu7Ts6', 'the server said: token: [redacted:key-token]'],
+      ['{"log":"Error: password: hunter2x"}', '{"log":"Error: password: [redacted:key-password]"}'],
+    ];
+    for (const [input, output] of table) {
+      expect([input, maskText(input)]).toEqual([input, { text: output, applied: 1 }]);
+      expect([input, maskText(output).applied]).toEqual([input, 0]);
+    }
+    // Prose (PB-2) and plain messages with a prefix stay as they are.
+    for (const text of ['Error: auth: "Invalid credentials"', 'Error: Network request failed', 'Warning: session expired: log in again',
+      'Error: Failed to load resource: the server responded with a status of 404', 'TypeError: Failed to fetch: https://a.example.com/x']) {
+      expect(maskText(text, ALL)).toEqual({ text, applied: 0 });
+    }
+  });
+
+  it('a long line of non-secret key: tokens stays linear (E4-IN1b)', () => {
+    for (const input of ['a: '.repeat(40000), 'Error: '.repeat(20000), `${'k'.repeat(250)}: `.repeat(400), 'a: b'.repeat(30000)]) {
+      const start = performance.now();
+      maskText(input, ALL);
+      expect([input.slice(0, 12), performance.now() - start < 300]).toEqual([input.slice(0, 12), true]);
+    }
+  });
+
+  it('a secret value followed by a long run of blanks stays linear, same masking (E4-FIX3)', () => {
+    for (const n of [40000, 200000]) {
+      for (const [input, expected] of [
+        [`'password: x${' '.repeat(n)}y'`, `'password: [redacted:key-password]'`],
+        [`'password: x${' '.repeat(n)}'`, `'password: [redacted:key-password]${' '.repeat(n)}'`],
+        [`password: x${' '.repeat(n)}y`, 'password: [redacted:key-password]'],
+        [`password: x${' '.repeat(n)}`, `password: [redacted:key-password]${' '.repeat(n)}`],
+        [`'password: x${' \t'.repeat(n / 2)}y'`, `'password: [redacted:key-password]'`],
+        [`password: x${'\t'.repeat(n)}`, `password: [redacted:key-password]${'\t'.repeat(n)}`],
+        [`Cookie: sid=1${' '.repeat(n)}y`, 'Cookie: [redacted:key-cookie]'],
+        [`'password: ${' \t'.repeat(n / 2)}'`, `'password: ${' \t'.repeat(n / 2)}'`],
+      ]) {
+        const start = performance.now();
+        const { text } = maskText(input, ALL);
+        expect([input.slice(0, 14), n, performance.now() - start < 300]).toEqual([input.slice(0, 14), n, true]);
+        expect(text).toBe(expected);
+      }
+    }
+  });
+
+  it('{"log":"password: x"} masked and stays valid JSON; the escaped form too (AC-2.3)', () => {
+    const { text, applied } = maskText('{"log":"password: x"}');
+    expect(text).toBe('{"log":"password: [redacted:key-password]"}');
+    expect(applied).toBe(1);
+    expect(JSON.parse(text)).toEqual({ log: 'password: [redacted:key-password]' });
+    const escaped = JSON.stringify(JSON.stringify({ msg: 'token: abcd1234efgh' }));
+    expect(JSON.parse(JSON.parse(maskText(escaped).text))).toEqual({ msg: 'token: [redacted:key-token]' });
+    // A JSON key `"k":` is still a JSON key (BARE/QUOTED forms), not a colon pair.
+    expect(maskText('{"password":"p1","n":"x"}').text).toBe('{"password":"[redacted:key-password]","n":"x"}');
+  });
+
+  it('auth: "Invalid credentials" unchanged; auth: "a1b2c3d4e5" masked; password: "correct horse battery" masked (PB-2)', () => {
+    for (const text of ['auth: "Invalid credentials"', 'session: "Expired session"', 'key: "Not found."', 'Auth: "Zła sesja"']) {
+      expect(maskText(text, ALL)).toEqual({ text, applied: 0 });
+    }
+    expect(maskText('auth: "a1b2c3d4e5"').text).toBe('auth: "[redacted:key-auth]"');
+    expect(maskText('password: "correct horse battery"').text).toBe('password: "[redacted:key-password]"');
+    // Only an unquoted key, only auth/session/key, only ≥ 2 words of letters.
+    expect(maskText("'auth': \"Invalid credentials\"").text).toBe("'auth': \"[redacted:key-auth]\"");
+    expect(maskText('token: "Invalid credentials"').text).toBe('token: "[redacted:key-token]"');
+    expect(maskText('auth: "Invalid"').text).toBe('auth: "[redacted:key-auth]"');
+    expect(maskText('session: "abc def-1"').text).toBe('session: "[redacted:key-session]"');
+    expect(maskText('auth_token: "Invalid credentials"').text).toBe('auth_token: "[redacted:key-token]"');
+  });
+
+  it('/cb?code=, &code=, #code=, ticket, https:\\/\\/…?code= masked; {"code":"PL"}, country_code=PL unchanged (AC-2.4)', () => {
+    expect(maskText('GET /cb?code=SplxlOBeZQQYbYS6 failed').text).toBe('GET /cb?code=[redacted:key-code] failed');
+    expect(maskText('to /cb?state=xyz&code=abc123xyz failed').text).toBe('to /cb?state=xyz&code=[redacted:key-code] failed');
+    expect(maskText('on /cb#code=abc123xyz&state=1').text).toBe('on /cb#code=[redacted:key-code]&state=1');
+    expect(maskText('/cas/login?TICKET=ST-1234-abcd').text).toBe('/cas/login?TICKET=[redacted:key-ticket]');
+    expect(maskText('<a href="/cb?a=1&amp;code=abc123xyz">').text).toBe('<a href="/cb?a=1&amp;code=[redacted:key-code]">');
+    const escaped = JSON.stringify({ next: 'https://a.pl/cb?code=SplxlOBeZQQ' }).replace(/\//g, '\\/');
+    expect(JSON.parse(maskText(escaped).text)).toEqual({ next: 'https://a.pl/cb?code=[redacted:key-code]' });
+    for (const text of ['{"code":"PL"}', 'country_code=PL', 'error code=42', 'zip_code=00-950&ticket_type=vip']) {
+      expect(maskText(text, ALL)).toEqual({ text, applied: 0 });
+    }
+    const once = maskText('GET /cb?code=SplxlOBeZQQYbYS6&ticket=ST-1 failed');
+    expect(once.applied).toBe(2);
+    expect(maskText(once.text)).toEqual({ text: once.text, applied: 0 });
   });
 });
 

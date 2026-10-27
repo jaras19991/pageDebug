@@ -1,0 +1,201 @@
+{
+ "comment": "E4 corpus of console arguments (D9, AC-2.6, AC-2.7). All values are fake. `args` are the arguments of one console call (`repeat` = the list repeated N times, so that the entry exceeds `entryChars`); each row is redacted as full arguments and as the `{ truncated, preview }` entry that serializeCapped makes of them. `secrets`: neither a secret nor any 8-character fragment of it may remain; `expectUnchanged`: the arguments stay as they are; `falsePositive`: documented false positive.",
+ "items": [
+  {
+   "id": "in5-container-obj",
+   "args": [
+    "password:",
+    {
+     "v": "CorpPwdObj1x"
+    }
+   ],
+   "secrets": [
+    "CorpPwdObj1x"
+   ]
+  },
+  {
+   "id": "in5-container-arr",
+   "args": [
+    "password",
+    [
+     "CorpPwdArr2x"
+    ]
+   ],
+   "secrets": [
+    "CorpPwdArr2x"
+   ]
+  },
+  {
+   "id": "in5-nested",
+   "args": [
+    "token=",
+    {
+     "a": {
+      "b": "CorpTokNest3x"
+     }
+    }
+   ],
+   "secrets": [
+    "CorpTokNest3x"
+   ]
+  },
+  {
+   "id": "in5-sentence",
+   "args": [
+    "Your password is",
+    "CorpPwdSent4x"
+   ],
+   "secrets": [
+    "CorpPwdSent4x"
+   ]
+  },
+  {
+   "id": "in5-sentence-pl",
+   "args": [
+    "Twoje password jest",
+    "CorpPwdSent5x"
+   ],
+   "secrets": [
+    "CorpPwdSent5x"
+   ]
+  },
+  {
+   "id": "in5-sentence-key",
+   "args": [
+    "API key is",
+    "CorpKeySent6x"
+   ],
+   "secrets": [
+    "CorpKeySent6x"
+   ]
+  },
+  {
+   "id": "in5-sentence-colon",
+   "args": [
+    "Your token is:",
+    "CorpTokSent7x"
+   ],
+   "secrets": [
+    "CorpTokSent7x"
+   ]
+  },
+  {
+   "id": "in4-preview",
+   "args": [
+    "token=",
+    "x",
+    "more"
+   ],
+   "repeat": 2000,
+   "secrets": [
+    "x"
+   ]
+  },
+  {
+   "id": "in5-preview",
+   "args": [
+    "password:",
+    {
+     "v": "CorpPwdPrev8x"
+    },
+    "more"
+   ],
+   "repeat": 2000,
+   "secrets": [
+    "CorpPwdPrev8x"
+   ]
+  },
+  {
+   "id": "console-benign-count",
+   "args": [
+    "Loaded",
+    3,
+    "items"
+   ],
+   "expectUnchanged": true
+  },
+  {
+   "id": "console-benign-status",
+   "args": [
+    "status is",
+    "ok"
+   ],
+   "expectUnchanged": true
+  },
+  {
+   "id": "console-benign-auth-flow",
+   "args": [
+    "auth flow step",
+    2
+   ],
+   "expectUnchanged": true
+  },
+  {
+   "id": "fix2-preview-named-pair",
+   "args": [
+    {
+     "name": "password",
+     "value": "CorpPwdPair9x"
+    },
+    "more"
+   ],
+   "repeat": 2000,
+   "secrets": [
+    "CorpPwdPair9x"
+   ]
+  },
+  {
+   "id": "fix2-preview-key-pair",
+   "args": [
+    {
+     "key": "api_key",
+     "value": {
+      "v": "CorpKeyPair0x"
+     }
+    },
+    "more"
+   ],
+   "repeat": 2000,
+   "secrets": [
+    "CorpKeyPair0x"
+   ]
+  },
+  {
+   "id": "fix2-preview-named-benign",
+   "args": [
+    {
+     "name": "color",
+     "value": "dark"
+    },
+    {
+     "name": "mode",
+     "value": 3
+    }
+   ],
+   "expectUnchanged": true
+  },
+  {
+   "id": "fix2-key-field",
+   "args": [
+    {
+     "key": "mode",
+     "value": 3
+    },
+    "more"
+   ],
+   "repeat": 2000,
+   "falsePositive": "`key` is a key word: {key, value} with a harmless name masks the name (ctx.keyed); the marker must not name the value in a second pass (idempotence)"
+  },
+  {
+   "id": "console-fp",
+   "args": [
+    "Pressed key",
+    "Enter"
+   ],
+   "secrets": [
+    "Enter"
+   ],
+   "falsePositive": "a sentence ending with a key word (`key`) masks the next argument (E4-IN5, D9); accepted: false positives are allowed, false negatives are not"
+  }
+ ]
+}

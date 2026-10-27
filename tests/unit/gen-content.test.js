@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
-import { bundle, generateAll, BUNDLES, HEADER } from '../../scripts/gen-content.mjs';
+import { bundle, generateAll, BUNDLES, HEADER, HTML_BUNDLES } from '../../scripts/gen-content.mjs';
 
 // E1-T14 (D6): ES modules from src/page/ glued into classic IIFE bundles. Fixtures live in
 // tests/fixtures/modules/; the real entries come with T15.
@@ -213,6 +213,10 @@ describe('generateAll', () => {
     for (const { entry } of BUNDLES) {
       await writeFile(join(root, 'src', entry), `globalThis.__out?.push(${JSON.stringify(entry)});\n`);
     }
+    // E4-T3a: the viewer page is generated too (tests in gen-viewer.test.js).
+    await mkdir(join(root, 'src', 'viewer'), { recursive: true });
+    await writeFile(join(root, 'src', 'viewer', 'viewer.html'), '<meta content="{{CSP}}"><style></style><script>{{SCRIPT}}</script>\n');
+    await writeFile(join(root, 'src', 'viewer', 'viewer-entry.js'), 'globalThis.__out?.push(1);\n');
     return root;
   }
 
@@ -226,7 +230,7 @@ describe('generateAll', () => {
 
   it('writes all bundles, then check mode reports nothing stale', async () => {
     const root = await project('gen-ok');
-    expect(await generateAll({ root })).toEqual({ written: BUNDLES.map((b) => b.out), stale: [] });
+    expect(await generateAll({ root })).toEqual({ written: [...BUNDLES, ...HTML_BUNDLES].map((b) => b.out), stale: [] });
     expect(await generateAll({ root, check: true })).toEqual({ written: [], stale: [] });
     const main = await readFile(join(root, 'src', 'content', 'main-world.js'), 'utf8');
     expect(run(main).out).toEqual(['page/main-entry.js']);

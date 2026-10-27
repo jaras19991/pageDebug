@@ -1,0 +1,11 @@
+{
+ "flag": null,
+ "jsAnchors": 0,
+ "anchors": 0,
+ "scripts": 0,
+ "seen": {
+  "requests": [],
+  "dialogs": [],
+  "errors": []
+ }
+}

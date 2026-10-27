@@ -9,6 +9,7 @@
 // Redaction at the source (E3 D1, defence in depth; the background pass decides): values of request headers with a
 // sensitive name become `[redacted:key-<token>]` and the URL goes through the Always rules for URL fields, both
 // before anything reaches the buffer. The call of the page always gets its own, unchanged arguments.
+// Index loops only, no for…of, array destructuring or spread (E4-IN2): the page may replace Array.prototype[Symbol.iterator].
 
 import { maskSecrets, cutPreview, maskUrl, secretKeyRule, MASK_LIMITS, redactRegExp, redactReplace, redactSplit, redactSlice } from '../lib/mask-secrets.js';
 
@@ -136,11 +137,14 @@ function makeTools(ctx) {
     };
     if (headers == null || typeof headers !== 'object') return out;
     if (Array.isArray(headers)) {
-      for (const pair of headers.slice(0, NETWORK_LIMITS.headers)) if (pair) add(pair[0], pair[1]);
+      const n = Math.min(headers.length, NETWORK_LIMITS.headers);
+      for (let i = 0; i < n; i++) if (headers[i]) add(headers[i][0], headers[i][1]);
     } else if (typeof headers.forEach === 'function') {
       headers.forEach((value, key) => add(key, value));
     } else {
-      for (const key of Object.keys(headers).slice(0, NETWORK_LIMITS.headers)) add(key, headers[key]);
+      const keys = Object.keys(headers);
+      const n = Math.min(keys.length, NETWORK_LIMITS.headers);
+      for (let i = 0; i < n; i++) add(keys[i], headers[keys[i]]);
     }
     return out;
   };
@@ -153,7 +157,8 @@ function makeTools(ctx) {
   };
 
   const contentTypeOf = (headers) => {
-    for (const key of Object.keys(headers || {})) if (key.toLowerCase() === 'content-type') return headers[key];
+    const keys = Object.keys(headers || {});
+    for (let i = 0; i < keys.length; i++) if (keys[i].toLowerCase() === 'content-type') return headers[keys[i]];
     return null;
   };
 
@@ -250,12 +255,15 @@ function readLimited(tools, stream, done) {
 // unexplained 0 is `unknown`. `statusUnavailable` is placed right after `status` (key order of the package schema).
 function markStatusUnavailable(entry, reason) {
   const keys = Object.keys(entry);
-  const tail = [];
-  for (const key of keys.slice(keys.indexOf('status') + 1)) tail.push([key, entry[key]]);
-  for (const [key] of tail) delete entry[key];
+  const values = [];
+  const from = keys.indexOf('status') + 1;
+  for (let i = from; i < keys.length; i++) {
+    values[i] = entry[keys[i]];
+    delete entry[keys[i]];
+  }
   entry.status = null;
   entry.statusUnavailable = reason;
-  for (const [key, value] of tail) entry[key] = value;
+  for (let i = from; i < keys.length; i++) entry[keys[i]] = values[i];
   entry.ok = null;
 }
 
@@ -274,7 +282,8 @@ export function installFetchHook(ctx) {
   let active = true;
 
   const describe = (args) => {
-    const [input, init] = args;
+    const input = args[0];
+    const init = args[1];
     const req = isRequestLike(input) ? input : null;
     const hasInit = init !== null && typeof init === 'object';
     const rawMethod = (hasInit && init.method != null ? init.method : null) ?? (req ? req.method : 'GET');
@@ -368,9 +377,11 @@ export function installFetchHook(ctx) {
 function parseResponseHeaders(raw, toObject) {
   if (typeof raw !== 'string' || !raw) return {};
   const pairs = [];
-  for (const line of redactSplit(raw.trim(), LINE_BREAKS)) {
+  const lines = redactSplit(raw.trim(), LINE_BREAKS);
+  for (let n = 0; n < lines.length; n++) {
+    const line = lines[n];
     const i = line.indexOf(':');
-    if (i > 0) pairs.push([line.slice(0, i).trim(), line.slice(i + 1).trim()]);
+    if (i > 0) pairs[pairs.length] = [line.slice(0, i).trim(), line.slice(i + 1).trim()];
     if (pairs.length >= NETWORK_LIMITS.headers) break;
   }
   return toObject(pairs);
@@ -430,12 +441,15 @@ export function installXhrHook(ctx) {
         return I.Reflect.apply(proto.send, this, arguments);
       },
     };
-    for (const name of Object.keys(methods)) {
-      I.Reflect.defineProperty(xhr, name, { value: methods[name], writable: true, enumerable: false, configurable: true });
+    const names = Object.keys(methods);
+    for (let i = 0; i < names.length; i++) {
+      I.Reflect.defineProperty(xhr, names[i], { value: methods[names[i]], writable: true, enumerable: false, configurable: true });
     }
 
     const listen = (type, fn) => I.Reflect.apply(I.addEventListener, xhr, [type, fn]);
-    for (const type of ['error', 'abort', 'timeout']) {
+    const errorTypes = ['error', 'abort', 'timeout'];
+    for (let i = 0; i < errorTypes.length; i++) {
+      const type = errorTypes[i];
       listen(type, () => {
         state.error = type;
       });
